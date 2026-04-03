@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Hono } from 'hono'
 import { initDb, upsertHost } from '../db.ts'
 
@@ -59,6 +59,10 @@ describe('PKCE OAuth routes', () => {
   })
 
   describe('GET /auth/callback', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
     it('redirects to /login?error=spotify_denied when Spotify returns error', async () => {
       const app = new Hono()
       app.route('/auth', authRouter)

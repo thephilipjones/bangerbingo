@@ -8,8 +8,12 @@
   const loginError = params.get('error')
 
   onMount(async () => {
-    const me = await getMe()
-    if (me) onAuthenticated()
+    try {
+      const me = await getMe()
+      if (me) onAuthenticated()
+    } catch {
+      // session check failed — stay on login page
+    }
   })
 </script>
 

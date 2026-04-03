@@ -1,6 +1,6 @@
 # Story 1.1: PKCE OAuth & Session
 
-Status: review
+Status: done
 
 ## Story
 
@@ -190,6 +190,18 @@ claude-sonnet-4-6
 - src/client/App.svelte
 - src/client/pages/LoginPage.svelte
 - src/client/lib/api.ts
+
+### Review Findings
+
+- [x] [Review][Patch] Unhandled exception when getMe() throws in App.svelte and LoginPage.svelte [src/client/App.svelte:10, src/client/pages/LoginPage.svelte:10] — both onMount handlers call getMe() without try/catch; non-401 errors (network failure, 5xx) leave page stuck at 'loading' forever
+- [x] [Review][Patch] global.fetch mutated in test without cleanup [src/server/__tests__/auth.test.ts:87] — `global.fetch = vi.fn()` not restored after test; subsequent tests see the mock
+- [x] [Review][Patch] tokenRes.json() / meRes.json() can throw on malformed Spotify response [src/server/auth.ts:90,104] — JSON parse errors propagate as unhandled 500 instead of redirecting to error page
+- [x] [Review][Patch] upsertHost() not wrapped in try/catch in callback [src/server/auth.ts:115] — SQLite error leaves session cookie unset and pkce_verifier un-deleted; user gets 500 with no recovery path
+- [x] [Review][Defer] SESSION_SECRET required but unused in session cookie signing [src/server/config.ts:12] — deferred, pre-existing; spec says "wire up now, use later"
+- [x] [Review][Defer] No token expiration check in requireAuth [src/server/auth.ts:requireAuth] — deferred, pre-existing; Story 1.2 handles refresh explicitly
+- [x] [Review][Defer] Tokens stored in plaintext SQLite [src/server/db.ts] — deferred, pre-existing; acceptable for friends-use MVP
+- [x] [Review][Defer] No timeout on external Spotify fetch calls [src/server/auth.ts:85,100] — deferred, pre-existing; acceptable for MVP scope
+- [x] [Review][Defer] refresh_token assumed present in Spotify token response [src/server/auth.ts:122] — deferred, pre-existing; PKCE auth code flow always returns refresh_token per Spotify docs
 
 ## Change Log
 

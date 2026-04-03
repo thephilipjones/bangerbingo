@@ -8,10 +8,10 @@
   let page: Page = $state('loading')
 
   onMount(async () => {
-    const me = await getMe()
-    if (me) {
-      page = 'dashboard'
-    } else {
+    try {
+      const me = await getMe()
+      page = me ? 'dashboard' : 'login'
+    } catch {
       page = 'login'
     }
   })
