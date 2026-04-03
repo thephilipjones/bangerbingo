@@ -98,10 +98,11 @@ authRouter.get('/callback', async (ctx) => {
     return ctx.redirect('/login?error=token_exchange_failed')
   }
 
-  const tokens = await tokenRes.json() as {
-    access_token: string
-    refresh_token: string
-    expires_in: number
+  let tokens: { access_token: string; refresh_token: string; expires_in: number }
+  try {
+    tokens = await tokenRes.json() as typeof tokens
+  } catch {
+    return ctx.redirect('/login?error=token_exchange_failed')
   }
 
   // Fetch user identity
@@ -113,21 +114,26 @@ authRouter.get('/callback', async (ctx) => {
     return ctx.redirect('/login?error=me_fetch_failed')
   }
 
-  const me = await meRes.json() as {
-    id: string
-    display_name: string
-    email: string
+  let me: { id: string; display_name: string; email: string }
+  try {
+    me = await meRes.json() as typeof me
+  } catch {
+    return ctx.redirect('/login?error=me_fetch_failed')
   }
 
   // Persist host
-  upsertHost({
-    user_id: me.id,
-    display_name: me.display_name ?? me.id,
-    email: me.email ?? '',
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    token_expires_at: Date.now() + tokens.expires_in * 1000,
-  })
+  try {
+    upsertHost({
+      user_id: me.id,
+      display_name: me.display_name ?? me.id,
+      email: me.email ?? '',
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      token_expires_at: Date.now() + tokens.expires_in * 1000,
+    })
+  } catch {
+    return ctx.redirect('/login?error=server_error')
+  }
 
   // Clean up verifier cookie, set session cookie
   deleteCookie(ctx, 'pkce_verifier', { path: '/auth/callback' })
