@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-03  # 1-1-pkce-oauth-and-session → done
+last_updated: 2026-04-03  # 1-2-token-refresh-and-degraded → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -45,7 +45,7 @@ development_status:
   # Epic 1: Spotify Auth & Token Management
   epic-1: in-progress
   1-1-pkce-oauth-and-session: done
-  1-2-token-refresh-and-degraded: backlog
+  1-2-token-refresh-and-degraded: done
   epic-1-retrospective: optional
 
   # Epic 2: Web Playback SDK Spike
