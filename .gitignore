@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-shm
+*.db-wal
+
+# AI tool personal settings and framework tooling (not project config)
+.claude/
+.gemini/
+_bmad/
