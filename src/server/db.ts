@@ -42,6 +42,26 @@ export function getHostById(userId: string): Host | undefined {
   return db.prepare('SELECT * FROM hosts WHERE user_id = ?').get(userId) as Host | undefined
 }
 
+export function updateHostTokens(
+  userId: string,
+  accessToken: string,
+  refreshToken: string,
+  expiresAt: number
+): void {
+  const result = db.prepare(`
+    UPDATE hosts SET
+      access_token = ?,
+      refresh_token = ?,
+      token_expires_at = ?
+    WHERE user_id = ?
+  `).run(accessToken, refreshToken, expiresAt, userId)
+  if (result.changes === 0) throw new Error(`updateHostTokens: no host found for userId ${userId}`)
+}
+
+export function getAllHosts(): Host[] {
+  return db.prepare('SELECT * FROM hosts').all() as Host[]
+}
+
 export function getDb(): Database.Database {
   return db
 }
