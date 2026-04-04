@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-03  # 1-2-token-refresh-and-degraded → done
+last_updated: 2026-04-03  # 2-1-web-playback-sdk-spike → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -49,7 +49,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Web Playback SDK Spike
-  epic-2: backlog
+  epic-2: in-progress
+  2-1-web-playback-sdk-spike: done
   epic-2-retrospective: optional
 
   # Epic 3: Server Skeleton + Room Model
