@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createAdaptorServer } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
-import { initDb, upsertHost, createRoom } from '../db.ts'
+import { initDb, upsertHost, createRoom, getDb } from '../db.ts'
 
 vi.stubEnv('SPOTIFY_CLIENT_ID', 'test_client_id')
 vi.stubEnv('SPOTIFY_CLIENT_SECRET', 'test_secret')
@@ -414,6 +414,60 @@ describe('Host ownership enforcement (AC: 6)', () => {
     expect(closed.code).toBe(4003)
 
     host1.close()
+  })
+})
+
+// ── Late-join round:start (Story 4-3, AC: 7) ─────────────────────────────
+
+describe('Late-join after round:start', () => {
+  it('guest connecting after round:start receives round:start with lateJoin:true and blank card', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    // Mock getPlaylistTracks so the HTTP round endpoint works
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+
+    // Import the app for HTTP requests
+    const { app: honoApp } = await import('../index.ts')
+
+    // Connect host via WS
+    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host.next('session:connect')
+
+    // Start a round via HTTP
+    const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+    })
+    expect(roundRes.status).toBe(200)
+
+    // Consume the round:start the host receives over WS
+    await host.next('round:start')
+
+    // Now a late-joining guest connects
+    const lateGuest = await connect('/ws?code=AAAA&name=LateAlice')
+
+    // They should get session:connect first, then round:start (or vice versa depending on buffering)
+    const sessionMsg = await lateGuest.next('session:connect')
+    expect(sessionMsg.role).toBe('guest')
+
+    const roundMsg = await lateGuest.next('round:start')
+    expect(roundMsg.type).toBe('round:start')
+    expect(roundMsg.lateJoin).toBe(true)
+
+    // Card should be an array of 25 tiles, all blank (trackId = '')
+    const card = roundMsg.card as Array<{ trackId: string; free?: boolean }>
+    expect(card).toHaveLength(25)
+    expect(card.every(t => t.trackId === '')).toBe(true)
+    expect(card[12].free).toBe(true)
+
+    vi.restoreAllMocks()
+    host.close()
+    lateGuest.close()
   })
 })
 

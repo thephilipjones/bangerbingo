@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Hono } from 'hono'
+import WebSocket from 'ws'
 import { initDb, upsertHost, createRoom } from '../db.ts'
 
 // Must set env vars before importing config/auth/rooms
@@ -184,9 +185,15 @@ describe('GET /api/rooms', () => {
 // ── POST /api/rooms/:code/round ────────────────────────────────────────────
 
 describe('POST /api/rooms/:code/round', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     initDb(':memory:')
     roomSockets.clear()
+    vi.restoreAllMocks()
+    // Mock Spotify so validation tests don't hit the real API
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
   })
 
   const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }
@@ -310,5 +317,202 @@ describe('POST /api/rooms/:code/round', () => {
     const body = await res.json() as { clipDuration: string; titleRevealDelay: null }
     expect(body.clipDuration).toBe('full')
     expect(body.titleRevealDelay).toBeNull()
+  })
+})
+
+// ── POST /api/rooms/:code/round — card generation (Story 4-3) ──────────────
+
+function makeTracks(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `track_${i}`,
+    title: `Song ${i}`,
+    artist: `Artist ${i}`,
+    albumArtUrl: `https://img/${i}`,
+  }))
+}
+
+function makeMockWs(readyState = WebSocket.OPEN) {
+  const sent: string[] = []
+  return {
+    readyState,
+    send: (data: string) => { sent.push(data) },
+    getSent: () => sent.map(s => JSON.parse(s) as Record<string, unknown>),
+  }
+}
+
+describe('POST /api/rooms/:code/round — card generation', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+  })
+
+  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }
+
+  it('returns 422 when playlist has fewer than 25 tracks', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockRejectedValue(
+      Object.assign(new Error("This playlist doesn't have enough tracks — need at least 25"), { name: 'InsufficientTracksError' })
+    )
+
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it('broadcasts round:start to host and guests with unique cards', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    // Seed mock WebSocket connections
+    const hostWs = makeMockWs()
+    const aliceWs = makeMockWs()
+    const bobWs = makeMockWs()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.host = hostWs as unknown as WebSocket
+    roomState.guests.set('Alice', aliceWs as unknown as WebSocket)
+    roomState.guests.set('Bob', bobWs as unknown as WebSocket)
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+
+    // Each WS should have received exactly one message
+    const hostMsg = hostWs.getSent()
+    const aliceMsg = aliceWs.getSent()
+    const bobMsg = bobWs.getSent()
+    expect(hostMsg).toHaveLength(1)
+    expect(aliceMsg).toHaveLength(1)
+    expect(bobMsg).toHaveLength(1)
+
+    // All messages are round:start
+    expect(hostMsg[0].type).toBe('round:start')
+    expect(aliceMsg[0].type).toBe('round:start')
+    expect(bobMsg[0].type).toBe('round:start')
+
+    // Each has a card array of 25 tiles
+    expect(Array.isArray(hostMsg[0].card)).toBe(true)
+    expect((hostMsg[0].card as unknown[]).length).toBe(25)
+    expect((aliceMsg[0].card as unknown[]).length).toBe(25)
+    expect((bobMsg[0].card as unknown[]).length).toBe(25)
+
+    // Cards are different between players (at least one tile differs)
+    const hostCardKey = (hostMsg[0].card as Array<{ trackId: string; free?: boolean }>)
+      .filter(t => !t.free).map(t => t.trackId).join(',')
+    const aliceCardKey = (aliceMsg[0].card as Array<{ trackId: string; free?: boolean }>)
+      .filter(t => !t.free).map(t => t.trackId).join(',')
+    const bobCardKey = (bobMsg[0].card as Array<{ trackId: string; free?: boolean }>)
+      .filter(t => !t.free).map(t => t.trackId).join(',')
+    expect(hostCardKey).not.toBe(aliceCardKey)
+    expect(hostCardKey).not.toBe(bobCardKey)
+    expect(aliceCardKey).not.toBe(bobCardKey)
+
+    // round:start includes playlist, clipDuration, titleRevealDelay
+    expect(hostMsg[0].roundNumber).toBe(1)
+    expect(hostMsg[0].clipDuration).toBe(30)
+    expect(hostMsg[0].titleRevealDelay).toBe(5)
+    expect(Array.isArray(hostMsg[0].playlist)).toBe(true)
+  })
+
+  it('centre tile (index 12) is FREE on every card', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    const hostWs = makeMockWs()
+    const aliceWs = makeMockWs()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.host = hostWs as unknown as WebSocket
+    roomState.guests.set('Alice', aliceWs as unknown as WebSocket)
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+
+    const hostCard = hostWs.getSent()[0].card as Array<{ free?: boolean }>
+    const aliceCard = aliceWs.getSent()[0].card as Array<{ free?: boolean }>
+    expect(hostCard[12].free).toBe(true)
+    expect(aliceCard[12].free).toBe(true)
+  })
+
+  it('records played_songs in SQLite after round:start', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+
+    const { getPlayedSongs } = await import('../db.ts')
+    const played = getPlayedSongs('ABCD')
+    expect(played.length).toBeGreaterThanOrEqual(25)
+  })
+
+  it('does not broadcast to closed WebSocket connections', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    const closedWs = makeMockWs(WebSocket.CLOSED)
+    const roomState = roomSockets.get('ABCD')!
+    roomState.host = closedWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+    expect(closedWs.getSent()).toHaveLength(0)
+  })
+
+  it('increments roundNumber based on currentRound on second call', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    const res2 = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res2.status).toBe(200)
+    const body = await res2.json() as { roundNumber: number }
+    expect(body.roundNumber).toBe(2)
   })
 })

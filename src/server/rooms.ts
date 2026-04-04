@@ -1,8 +1,12 @@
 import { Hono } from 'hono'
 import crypto from 'node:crypto'
-import { createRoom, getRoomsByHost, getRoomByCode, type Room } from './db.ts'
+import WebSocket from 'ws'
+import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, type Room } from './db.ts'
 import { requireAuth, type AuthEnv } from './auth.ts'
 import { roomSockets, type RoundConfig, type ClipDuration, type TitleRevealDelay } from './ws.ts'
+import { refreshWithRetry, isHostDegraded } from './refresh.ts'
+import { getPlaylistTracks } from './music/spotify.ts'
+import { buildPool, generateCards } from './game/cards.ts'
 
 // ── Room code generation ───────────────────────────────────────────────────
 
@@ -61,7 +65,7 @@ const VALID_CLIP_DURATIONS: ClipDuration[] = [20, 30, 45, 60, 'full']
 const VALID_TITLE_REVEAL_DELAYS: TitleRevealDelay[] = [0, 5, 10, 15, null]
 
 roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
-  const host = ctx.var.host
+  let host = ctx.var.host
   const code = ctx.req.param('code')
 
   const room = getRoomByCode(code)
@@ -81,13 +85,88 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
     return ctx.json({ message: 'Invalid titleRevealDelay' }, 400)
 
   const roomState = roomSockets.get(code)
-  const roundNumber = roomState?.pendingRound ? roomState.pendingRound.roundNumber + 1 : 1
+  const roundNumber = roomState?.currentRound
+    ? roomState.currentRound.roundNumber + 1
+    : roomState?.pendingRound
+      ? roomState.pendingRound.roundNumber + 1
+      : 1
 
   const roundConfig: RoundConfig = { playlistId, clipDuration, titleRevealDelay, roundNumber }
 
-  if (roomState) {
-    roomState.pendingRound = roundConfig
+  // Inline token refresh before Spotify call
+  if (host.token_expires_at - Date.now() < 60_000) {
+    await refreshWithRetry(host.user_id)
+    if (isHostDegraded(host.user_id)) {
+      return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
+    }
+    const refreshed = getHostById(host.user_id)
+    if (!refreshed) return ctx.json({ message: 'Unauthorized' }, 401)
+    host = refreshed
   }
+
+  // Fetch tracks — returns 422 if fewer than 25 (InsufficientTracksError thrown by getPlaylistTracks)
+  let playlist
+  try {
+    playlist = await getPlaylistTracks(playlistId, host.access_token)
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'InsufficientTracksError') {
+      return ctx.json({ message: err.message }, 422)
+    }
+    throw err
+  }
+
+  // Build pool with down-ranking
+  const sessionPlayedIds = roomState?.currentRound?.sessionPlayedIds ?? []
+  const historicPlayedIds = getPlayedSongs(code)
+  const pool = buildPool(playlist, sessionPlayedIds, historicPlayedIds)
+
+  // Generate a card per player (host + all connected guests)
+  const hostKey = host.user_id
+  const guestKeys = roomState ? Array.from(roomState.guests.keys()) : []
+  const playerIds = [hostKey, ...guestKeys]
+  const cards = generateCards(pool, playerIds)
+
+  // Cache the round-start payload (without card — added per-player below)
+  const roundStartPayload = {
+    type: 'round:start',
+    roundNumber,
+    playlist,
+    clipDuration,
+    titleRevealDelay,
+  }
+
+  // Track session-played accumulation
+  const dealtTrackIds = pool.slice(0, 25).map(t => t.id)
+  const newSessionPlayed = [...sessionPlayedIds, ...dealtTrackIds]
+
+  // Store round state
+  if (roomState) {
+    roomState.currentRound = {
+      roundNumber,
+      config: roundConfig,
+      playlist,
+      cards,
+      roundStartPayload,
+      sessionPlayedIds: newSessionPlayed,
+      active: true,
+    }
+    roomState.pendingRound = roundConfig
+
+    // Broadcast round:start per-client (each gets their own card)
+    if (roomState.host?.readyState === WebSocket.OPEN) {
+      const hostCard = cards.get(hostKey) ?? []
+      roomState.host.send(JSON.stringify({ ...roundStartPayload, card: hostCard }))
+    }
+    for (const [guestName, ws] of roomState.guests) {
+      if (ws.readyState === WebSocket.OPEN) {
+        const guestCard = cards.get(guestName) ?? []
+        ws.send(JSON.stringify({ ...roundStartPayload, card: guestCard }))
+      }
+    }
+  }
+
+  // Persist played songs to SQLite
+  recordPlayedSongs(code, dealtTrackIds)
 
   return ctx.json(roundConfig)
 })

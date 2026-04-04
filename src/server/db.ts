@@ -33,6 +33,12 @@ export function initDb(dbPath = './bangerbingo.db'): void {
       code TEXT PRIMARY KEY,
       host_user_id TEXT NOT NULL REFERENCES hosts(user_id),
       created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS played_songs (
+      room_id TEXT NOT NULL,
+      track_id TEXT NOT NULL,
+      played_at INTEGER NOT NULL,
+      PRIMARY KEY (room_id, track_id)
     )
   `)
 }
@@ -90,4 +96,19 @@ export function getRoomsByHost(hostUserId: string): Room[] {
 
 export function getRoomByCode(code: string): Room | undefined {
   return db.prepare('SELECT * FROM rooms WHERE code = ?').get(code) as Room | undefined
+}
+
+export function getPlayedSongs(roomId: string): string[] {
+  return (db.prepare('SELECT track_id FROM played_songs WHERE room_id = ?').all(roomId) as Array<{ track_id: string }>)
+    .map(r => r.track_id)
+}
+
+export function recordPlayedSongs(roomId: string, trackIds: string[]): void {
+  const stmt = db.prepare(
+    'INSERT OR IGNORE INTO played_songs (room_id, track_id, played_at) VALUES (?, ?, ?)'
+  )
+  const now = Date.now()
+  for (const trackId of trackIds) {
+    stmt.run(roomId, trackId, now)
+  }
 }

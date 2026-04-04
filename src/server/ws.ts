@@ -3,6 +3,8 @@ import type { IncomingMessage, Server } from 'node:http'
 import type { Socket } from 'node:net'
 import { authEvents } from './refresh.ts'
 import { getRoomByCode, getHostById } from './db.ts'
+import type { Track } from './music/spotify.ts'
+import type { Tile } from './game/cards.ts'
 
 // ── Round config types ─────────────────────────────────────────────────────
 
@@ -16,6 +18,16 @@ export interface RoundConfig {
   roundNumber: number
 }
 
+export interface RoundState {
+  roundNumber: number
+  config: RoundConfig
+  playlist: Track[]
+  cards: Map<string, Tile[]>   // playerKey → card (host: userId, guests: name)
+  roundStartPayload: object     // cached for late joiners
+  sessionPlayedIds: string[]    // tracks played this session (grows across rounds)
+  active: boolean
+}
+
 // ── Room state ─────────────────────────────────────────────────────────────
 
 interface RoomState {
@@ -24,6 +36,7 @@ interface RoomState {
   hostHasEverConnected: boolean
   guests: Map<string, WebSocket> // name → socket
   pendingRound?: RoundConfig
+  currentRound?: RoundState
 }
 
 export const roomSockets = new Map<string, RoomState>()
@@ -161,6 +174,21 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     roomState.guests.set(name, ws)
 
     ws.send(JSON.stringify({ type: 'session:connect', role: 'guest', players: getPlayerList(code) }))
+
+    // If a round is in progress, send round:start with a blank card
+    const round = roomState.currentRound
+    if (round?.active) {
+      const blankCard: Tile[] = Array.from({ length: 25 }, (_, i) =>
+        i === 12
+          ? { trackId: '', title: '', artist: '', albumArtUrl: '', free: true as const }
+          : { trackId: '', title: '', artist: '', albumArtUrl: '' }
+      )
+      ws.send(JSON.stringify({
+        ...round.roundStartPayload,
+        card: blankCard,
+        lateJoin: true,
+      }))
+    }
 
     broadcast(code, { type: 'player:joined', name }, ws)
 
