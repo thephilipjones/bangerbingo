@@ -173,6 +173,41 @@ describe('requireAuth middleware', () => {
   })
 })
 
+describe('GET /auth/token', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+  })
+
+  it('200 — returns accessToken for authenticated host', async () => {
+    upsertHost({
+      user_id: 'tok_user',
+      display_name: 'Token User',
+      email: 'tok@example.com',
+      access_token: 'my_access_token',
+      refresh_token: 'ref',
+      token_expires_at: Date.now() + 3600_000,
+    })
+
+    const app = new Hono()
+    app.route('/auth', authRouter)
+
+    const res = await app.request('/auth/token', {
+      headers: { Cookie: 'session=tok_user' },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ accessToken: 'my_access_token' })
+  })
+
+  it('401 — returns 401 without session cookie', async () => {
+    const app = new Hono()
+    app.route('/auth', authRouter)
+
+    const res = await app.request('/auth/token')
+    expect(res.status).toBe(401)
+  })
+})
+
 describe('/api/me endpoint', () => {
   beforeEach(() => {
     initDb(':memory:')

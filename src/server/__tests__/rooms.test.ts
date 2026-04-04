@@ -1069,3 +1069,84 @@ describe('POST /api/rooms/:code/round/end', () => {
     expect(res.status).toBe(404)
   })
 })
+
+// ── POST /api/rooms/:code/sdk/device ─────────────────────────────────────
+
+describe('POST /api/rooms/:code/sdk/device', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+  })
+
+  it('200 — stores deviceId in roomState.sdkDeviceId', async () => {
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/sdk/device', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'abc123' }),
+    })
+    expect(res.status).toBe(200)
+
+    const roomState = roomSockets.get('ABCD')!
+    expect(roomState.sdkDeviceId).toBe('abc123')
+  })
+
+  it('200 — overwrites on subsequent call (reconnect)', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'old-device'
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/sdk/device', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'new-device' }),
+    })
+    expect(res.status).toBe(200)
+    expect(roomState.sdkDeviceId).toBe('new-device')
+  })
+
+  it('403 — wrong host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/sdk/device', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'abc123' }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('404 — room not found', async () => {
+    seedHost()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ZZZZ/sdk/device', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'abc123' }),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('503 — room exists but no active WS session', async () => {
+    seedHost()
+    await seedRoom()
+    roomSockets.clear() // simulate no WS connection yet
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/sdk/device', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'abc123' }),
+    })
+    expect(res.status).toBe(503)
+  })
+})
