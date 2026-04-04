@@ -4,7 +4,7 @@
 
   let { prefillCode = '', onJoined }: {
     prefillCode?: string
-    onJoined: (name: string, role: string, players: string[]) => void
+    onJoined: (name: string, role: string, players: string[], code: string, ws: WebSocket) => void
   } = $props()
 
   let name = $state('')
@@ -50,7 +50,9 @@
     activeWs = connectAsGuest(name, code, {
       onConnect(role, players) {
         connecting = false
-        onJoined(name, role, players)
+        const handedOff = activeWs!
+        activeWs = undefined // prevent onDestroy from closing the handed-off socket
+        onJoined(name, role, players, code, handedOff)
       },
       onError(message) {
         connecting = false

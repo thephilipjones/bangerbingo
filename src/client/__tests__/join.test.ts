@@ -205,4 +205,42 @@ describe('connectAsGuest', () => {
     const ws = connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError: vi.fn(), onMessage: vi.fn() })
     expect(ws).toBe(mockInstance)
   })
+
+  it('calls onHostDisconnected on host:disconnected message', () => {
+    const onHostDisconnected = vi.fn()
+    connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError: vi.fn(), onMessage: vi.fn(), onHostDisconnected })
+    mockInstance.onmessage!({ data: JSON.stringify({ type: 'host:disconnected' }) })
+    expect(onHostDisconnected).toHaveBeenCalled()
+  })
+
+  it('calls onHostReconnected on host:reconnected message', () => {
+    const onHostReconnected = vi.fn()
+    connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError: vi.fn(), onMessage: vi.fn(), onHostReconnected })
+    mockInstance.onmessage!({ data: JSON.stringify({ type: 'host:reconnected' }) })
+    expect(onHostReconnected).toHaveBeenCalled()
+  })
+
+  it('does not call onMessage for host:disconnected (consumed by dedicated handler)', () => {
+    const onMessage = vi.fn()
+    connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError: vi.fn(), onMessage, onHostDisconnected: vi.fn() })
+    mockInstance.onmessage!({ data: JSON.stringify({ type: 'host:disconnected' }) })
+    expect(onMessage).not.toHaveBeenCalled()
+  })
+
+  it('does not call onMessage for host:reconnected (consumed by dedicated handler)', () => {
+    const onMessage = vi.fn()
+    connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError: vi.fn(), onMessage, onHostReconnected: vi.fn() })
+    mockInstance.onmessage!({ data: JSON.stringify({ type: 'host:reconnected' }) })
+    expect(onMessage).not.toHaveBeenCalled()
+  })
+
+  it('host:disconnected without handler does not throw', () => {
+    connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError: vi.fn(), onMessage: vi.fn() })
+    expect(() => mockInstance.onmessage!({ data: JSON.stringify({ type: 'host:disconnected' }) })).not.toThrow()
+  })
+
+  it('host:reconnected without handler does not throw', () => {
+    connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError: vi.fn(), onMessage: vi.fn() })
+    expect(() => mockInstance.onmessage!({ data: JSON.stringify({ type: 'host:reconnected' }) })).not.toThrow()
+  })
 })

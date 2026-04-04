@@ -13,6 +13,7 @@
   let prefillCode = $state('')
   let guestName = $state('')
   let guestRoomCode = $state('')
+  let guestWs: WebSocket | null = $state(null)
   let currentRoomCode = $state('')
 
   onMount(async () => {
@@ -26,9 +27,10 @@
     page = 'dashboard'
   }
 
-  function handleJoined(name: string, _role: string, _players: string[], code: string) {
+  function handleJoined(name: string, _role: string, _players: string[], code: string, ws: WebSocket) {
     guestName = name
     guestRoomCode = code
+    guestWs = ws
     page = 'room'
   }
 
@@ -55,7 +57,7 @@
 {:else if page === 'roundconfig'}
   <RoundConfigPage code={currentRoomCode} />
 {:else if page === 'room'}
-  <RoomPage name={guestName} code={guestRoomCode} />
+  <RoomPage name={guestName} ws={guestWs!} />
 {/if}
 
 <style>

@@ -9,6 +9,7 @@ import { getRoomByCode, getHostById } from './db.ts'
 interface RoomState {
   host: WebSocket | null
   hostUserId: string
+  hostHasEverConnected: boolean
   guests: Map<string, WebSocket> // name → socket
 }
 
@@ -87,23 +88,32 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       return
     }
 
-    if (!roomSockets.has(code)) {
-      roomSockets.set(code, { host: null, hostUserId: sessionUserId, guests: new Map() })
+    const wasInMap = roomSockets.has(code)
+    if (!wasInMap) {
+      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map() })
     }
     const roomState = roomSockets.get(code)!
 
-    // Close any existing host socket before replacing
+    // If there is already an active host connection, reject the new one
     if (roomState.host && roomState.host.readyState === WebSocket.OPEN) {
-      roomState.host.close(4000, 'replaced by new connection')
+      ws.close(4003, 'not your room')
+      return
     }
+
+    const isReconnect = wasInMap && roomState.host === null && roomState.hostHasEverConnected
     roomState.host = ws
     roomState.hostUserId = sessionUserId
+    roomState.hostHasEverConnected = true
 
     ws.send(JSON.stringify({ type: 'session:connect', role: 'host', players: getPlayerList(code) }))
 
+    if (isReconnect) {
+      broadcast(code, { type: 'host:reconnected' }, ws)
+    }
+
     ws.on('close', () => {
       const r = roomSockets.get(code)
-      if (r) {
+      if (r && r.host === ws) {
         r.host = null
         broadcast(code, { type: 'host:disconnected' })
       }
@@ -123,7 +133,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     }
 
     if (!roomSockets.has(code)) {
-      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, guests: new Map() })
+      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map() })
     }
     const roomState = roomSockets.get(code)!
 

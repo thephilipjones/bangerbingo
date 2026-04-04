@@ -325,6 +325,98 @@ describe('Host player list accuracy', () => {
   })
 })
 
+// ── Host disconnect / reconnect (Story 3-5) ───────────────────────────────
+
+describe('Host disconnect → host:disconnected broadcast', () => {
+  it('guests receive host:disconnected within 200ms when host WS closes', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=AAAA&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    const start = Date.now()
+    host.close()
+
+    const msg = await alice.next('host:disconnected')
+    const elapsed = Date.now() - start
+
+    expect(msg).toEqual({ type: 'host:disconnected' })
+    expect(elapsed).toBeLessThan(200)
+
+    alice.close()
+  })
+})
+
+describe('Host reconnect → host:reconnected broadcast', () => {
+  it('host reconnecting via same session cookie restores slot and guests receive host:reconnected', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    // Initial connect
+    const host1 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host1.next('session:connect')
+
+    const alice = await connect('/ws?code=AAAA&name=Alice')
+    await alice.next('session:connect')
+    await host1.next('player:joined')
+
+    // Host disconnects
+    await new Promise<void>((resolve) => {
+      host1.ws.once('close', () => resolve())
+      host1.close()
+    })
+    await alice.next('host:disconnected')
+
+    // Host reconnects
+    const host2 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const reconnectAck = await host2.next('session:connect')
+
+    expect(reconnectAck.role).toBe('host')
+    expect(reconnectAck.players).toEqual(['Alice'])
+
+    const reconnectMsg = await alice.next('host:reconnected')
+    expect(reconnectMsg).toEqual({ type: 'host:reconnected' })
+
+    host2.close()
+    alice.close()
+  })
+})
+
+describe('Host ownership enforcement (AC: 6)', () => {
+  it('different user_id attempting to claim room → WS closed with 4003', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    createRoom('AAAA', 'host_1')
+
+    const ws = rawConnect('/ws?code=AAAA', { cookie: 'session=host_2' })
+    const closed = await waitClose(ws)
+
+    expect(closed.code).toBe(4003)
+    expect(closed.reason).toBe('not your room')
+  })
+
+  it('room with active host: second host connection attempt → 4003', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const host1 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host1.next('session:connect')
+
+    // Same owner tries to open a second connection while first is active
+    const ws2 = rawConnect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const closed = await waitClose(ws2)
+
+    expect(closed.code).toBe(4003)
+
+    host1.close()
+  })
+})
+
 // ── auth:degraded broadcast (AC: 8) ───────────────────────────────────────
 
 describe('auth:degraded broadcast', () => {
