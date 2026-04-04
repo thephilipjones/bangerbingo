@@ -132,6 +132,13 @@
 - `me.email` always returns null in Dev Mode (Spotify Feb 2026 change) — auth stores empty string via `?? ''` fallback (src/server/auth.ts:129); graceful but field is permanently empty. Remove the column or keep as empty placeholder; low priority for personal MVP.
 - `currentRoomCode` could be empty string if LobbyPage flow is bypassed — WS connects to `/ws?code=` with no guard. (src/client/pages/HostRoomPage.svelte)
 
+## Deferred from: code review of 5-5-win-detection-and-win-overlay (2026-04-04)
+
+- `claimedTileIds` array length unbounded in `/round/claim` — O(25×n) card scan; acceptable for personal MVP; add max-length guard at hardening time. (src/server/rooms.ts)
+- Late-joining guest's card absent from `round.cards` — they'll always receive 422 on a claim; explicitly deferred to story 5-6 (late-join sync). (src/server/rooms.ts + src/server/ws.ts)
+- `WinData` type and `WIN_LINES` constant duplicated between client and server — code quality; no runtime bug; extract to shared types if a build step is added. (src/client/pages/RoomPage.svelte, src/client/pages/HostRoomPage.svelte, src/server/rooms.ts)
+- `applyWinPath` may silently produce no highlight if a song was never revealed on a late-joined client — pre-existing pattern from bingo.ts; acceptable for MVP.
+
 ## Deferred from: code review of 3-3-guest-join-screen (2026-04-03)
 
 - Host login path (`page = 'login'`) now unreachable — by design for this sprint; story 3-4 will restore host login routing once the login+lobby screens are built.
