@@ -8,7 +8,7 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 ---
 
-## Epic 1: Spotify Auth & Token Management
+## Epic 1: Spotify Auth & Token Management ✅ DONE
 
 *Unblocks everything. Build this first, build it right.*
 
@@ -30,7 +30,7 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 ---
 
-## Epic 2: Web Playback SDK Spike
+## Epic 2: Web Playback SDK Spike ✅ DONE
 
 *De-risk the highest technical unknown before building game logic around it.*
 
@@ -47,12 +47,12 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 ---
 
-## Epic 3: Server Skeleton + Room Model
+## Epic 3: Server Skeleton + Room Model ✅ DONE
 
 *Depends on Epic 1 (host identity). Can develop alongside Epic 2.*
 
 **Server (Hono + native WebSockets):**
-- Room creation → room code generation (uppercase A–Z, excluding O and I, 5 chars)
+- Room creation → room code generation (uppercase A–Z, excluding O and I, 4 chars)
 - In-memory game state: room map `code → { host, guests, round, songs }`
 - `session:connect` handshake — role-aware payload (host vs. guest)
 - `player:joined` / `player:left` broadcast
