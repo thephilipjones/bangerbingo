@@ -4,12 +4,14 @@
     currentTrack,
     players,
     isPlaying,
+    sdkReady,
     onRoundEnded,
   }: {
     code: string
     currentTrack: { title: string; artist: string } | null
     players: string[]
     isPlaying: boolean
+    sdkReady: boolean
     onRoundEnded: () => void
   } = $props()
 
@@ -71,9 +73,13 @@
     {/if}
   </div>
 
+  {#if !sdkReady}
+    <p class="sdk-connecting" role="status">Connecting to Spotify audio…</p>
+  {/if}
+
   <div class="playback-controls">
     <button class="ctrl-btn prev-btn" disabled aria-label="Previous (unavailable)">Prev</button>
-    <button class="ctrl-btn play-pause-btn" onclick={handlePlayPause} aria-label={isPlaying ? 'Pause' : 'Play'}>
+    <button class="ctrl-btn play-pause-btn" onclick={handlePlayPause} disabled={!sdkReady} aria-label={isPlaying ? 'Pause' : 'Play'}>
       {isPlaying ? 'Pause' : 'Play'}
     </button>
     <button class="ctrl-btn next-btn" onclick={handleNext} aria-label="Next">Next</button>
@@ -141,6 +147,13 @@
     padding: 4px 10px;
     cursor: pointer;
     font-size: 13px;
+  }
+
+  .sdk-connecting {
+    font-size: 13px;
+    color: #aaa;
+    text-align: center;
+    margin: 0;
   }
 
   .track-info {

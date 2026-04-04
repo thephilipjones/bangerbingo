@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import BingoCard from '../components/BingoCard.svelte'
   import HostControlsPanel from '../components/HostControlsPanel.svelte'
+  import SdkFailureBanner from '../components/SdkFailureBanner.svelte'
   import {
     initTiles,
     applyMask,
@@ -23,14 +24,71 @@
   let players = $state<string[]>([])
   let panelOpen = $state(false)
   let wsError = $state(false)
+  let sdkReady = $state(false)
+  let sdkFailed = $state(false)
+  let currentTrackId = $state<string | null>(null)
   let revealTimer: ReturnType<typeof setTimeout> | undefined
   let ws: WebSocket
+  let player: Spotify.Player | undefined
+  let sdkScript: HTMLScriptElement | undefined
+  let sdkErrorFired = false
 
   function handleTileClick(index: number) {
     tiles = toggleMark(tiles, index)
   }
 
+  function initSdkPlayer() {
+    player = new Spotify.Player({
+      name: 'Bangerbingo',
+      getOAuthToken: async (callback) => {
+        const res = await fetch('/api/auth/token')
+        const data = await res.json()
+        callback(data.accessToken)
+      },
+      volume: 0.8,
+    })
+    player.addListener('ready', async ({ device_id }) => {
+      await fetch(`/api/rooms/${code}/sdk/device`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId: device_id }),
+      })
+      sdkReady = true
+    })
+    player.addListener('not_ready', () => { sdkReady = false })
+    player.addListener('initialization_error', () => {
+      if (sdkErrorFired) return
+      sdkErrorFired = true
+      sdkReady = false
+      sdkFailed = true
+    })
+    player.addListener('authentication_error', () => {
+      if (sdkErrorFired) return
+      sdkErrorFired = true
+      sdkReady = false
+      sdkFailed = true
+    })
+    player.addListener('account_error', () => {
+      if (sdkErrorFired) return
+      sdkErrorFired = true
+      sdkReady = false
+      sdkFailed = true
+    })
+    player.connect()
+  }
+
   onMount(() => {
+    // SDK init — if already loaded (e.g. re-mount), init synchronously; otherwise inject script (AC 1)
+    if ((window as any).Spotify) {
+      initSdkPlayer()
+    } else {
+      ;(window as any).onSpotifyWebPlaybackSDKReady = initSdkPlayer
+      sdkScript = document.createElement('script')
+      sdkScript.src = 'https://sdk.scdn.co/spotify-player.js'
+      sdkScript.async = true
+      document.head.appendChild(sdkScript)
+    }
+
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const wsUrl = `${wsProtocol}//${window.location.host}/ws?code=${code}`
     ws = new WebSocket(wsUrl)
@@ -51,6 +109,7 @@
           }
           statusLine = `Song ${data.songIndex + 1} of this round`
           currentTrack = { title: data.title, artist: data.artist }
+          currentTrackId = data.trackId
           isPlaying = true
         } else if (data.type === 'song:reveal') {
           tiles = startReveal(tiles, data.trackId)
@@ -80,11 +139,20 @@
   onDestroy(() => {
     clearTimeout(revealTimer)
     ws?.close()
+    player?.disconnect()
+    if (sdkScript && document.head.contains(sdkScript)) {
+      document.head.removeChild(sdkScript)
+    }
+    delete (window as any).onSpotifyWebPlaybackSDKReady
   })
 </script>
 
 {#if wsError}
   <div class="error-banner" role="alert">Connection lost — please refresh the page.</div>
+{/if}
+
+{#if sdkFailed}
+  <SdkFailureBanner trackId={currentTrackId} />
 {/if}
 
 <div class="host-game">
@@ -95,6 +163,9 @@
     {:else}
       <p class="status-line" role="status">{statusLine}</p>
     {/if}
+    {#if !sdkReady && !sdkFailed}
+      <p class="sdk-status" role="status">Connecting to Spotify audio…</p>
+    {/if}
   </div>
 
   <!-- Desktop: controls always visible in right column -->
@@ -104,6 +175,7 @@
       {currentTrack}
       {players}
       {isPlaying}
+      {sdkReady}
       {onRoundEnded}
     />
   </div>
@@ -121,6 +193,7 @@
       {currentTrack}
       {players}
       {isPlaying}
+      {sdkReady}
       {onRoundEnded}
     />
   </div>
@@ -160,6 +233,13 @@
     margin-top: 12px;
     font-size: 14px;
     color: #aaa;
+    text-align: center;
+  }
+
+  .sdk-status {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #888;
     text-align: center;
   }
 
