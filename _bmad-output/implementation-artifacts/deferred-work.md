@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of 5-4-spotify-web-playback-sdk-integration (2026-04-04)
+
+- `GET /auth/token` returns token without on-demand refresh — intentional per story Dev Notes (Story 1-2 proactive refresh handles freshness); small expiry window remains if background scheduler lags.
+- `startSong` and `/round/pause` Spotify calls use `host.access_token` without expiry check — fire-and-forget silent failure if token expired; same root cause as above, design decision.
+- `not_ready` fires mid-session: controls lock with no recovery explanation and no visible reason beyond "Connecting to Spotify audio…" — spec doesn't address this case.
+- `player.connect()` return value (Promise<boolean>) ignored — if resolves `false` with no event, UI stuck on "Connecting…" indefinitely with no user feedback.
+- `fetch('/api/auth/token')` in `getOAuthToken` has no error handling — network failure passes `undefined` to SDK callback, SDK fires `authentication_error` (handled), but uncaught promise rejection surfaces in console.
+- `sdkErrorFired` one-way latch prevents recovery after transient error — intentional MVP design, retry requires page reload.
+
 ## Deferred from: code review (2026-04-04)
 
 - Existing sessions don't gain new playlist scopes until re-auth — OAuth inherent; needs scope-detection + re-auth prompt feature.
