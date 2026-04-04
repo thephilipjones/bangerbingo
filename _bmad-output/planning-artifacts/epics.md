@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [step-01-validate-prerequisites, step-02-design-epics, step-03-create-stories-in-progress]
+stepsCompleted: [step-01-validate-prerequisites, step-02-design-epics, step-03-create-stories]
 inputDocuments:
   - _bmad-output/prd.md
   - _bmad-output/ux-spec.md
@@ -583,4 +583,336 @@ So that I can play immediately without duplicate or repeated tiles.
 **Given** a guest connects after `round:start` has already been broadcast
 **When** their `session:connect` completes
 **Then** the server sends them a fresh blank card and the current `round:start` payload so they can begin playing
+
+---
+
+## Epic 5: Game Loop
+
+*Full round plays end-to-end: songs play and auto-advance, guests mark tiles, server detects bingo, winner overlay fires on all screens.*
+
+### Story 5-1: Song Scheduling & Host Playback Controls
+
+As a host,
+I want to start playback and have songs advance automatically,
+So that the game loop runs without me manually triggering every song.
+
+**Acceptance Criteria:**
+
+**Given** a round has been started (`round:start` broadcast, `currentRound` populated with the ordered track pool)
+**When** the host calls `POST /api/rooms/:code/round/play`
+**Then** the server sets `currentSongIndex = 0`, appends the first track to `currentRound.songHistory`, and broadcasts `song:start` to all connected WebSocket clients
+**And** the `song:start` payload includes: `trackId`, `title`, `artist`, `albumArtUrl`, `seekPositionMs` (fixed 60 000 ms for MVP), `clipDuration`, `titleRevealDelay`, `songIndex`, and `roundNumber`
+
+**Given** `titleRevealDelay` is greater than 0
+**When** the server broadcasts `song:start`
+**Then** the server schedules a `setTimeout` for `titleRevealDelay` milliseconds that broadcasts `song:reveal` with `trackId` and `songIndex` to all connected clients
+**And** if the song is advanced or the round ends before the timer fires, the pending timer is cancelled
+
+**Given** `clipDuration` is set (clip mode, not full-song mode)
+**When** the server broadcasts `song:start`
+**Then** the server schedules a `setTimeout` for `clipDuration` milliseconds that automatically calls the next-song logic (same as `POST /round/next`)
+**And** if the host manually advances before the timer fires, the pending auto-advance timer is cancelled
+
+**Given** `clipDuration` is null (full-song mode)
+**When** the server broadcasts `song:start`
+**Then** no auto-advance timer is scheduled; the host must call `POST /round/next` manually
+
+**Given** the host calls `POST /api/rooms/:code/round/next`
+**When** there are more tracks remaining in `currentRound.trackPool`
+**Then** `currentSongIndex` increments, the next track is appended to `songHistory`, any pending auto-advance and reveal timers for the previous song are cancelled, and a new `song:start` is broadcast
+
+**Given** the host calls `POST /api/rooms/:code/round/pause`
+**When** a song is currently playing
+**Then** all pending auto-advance and reveal timers are cancelled
+**And** a `song:pause` event is broadcast to all clients so they can update playback state
+
+**Given** the host calls `POST /api/rooms/:code/round/play` while paused mid-song
+**When** the server processes the request
+**Then** `song:start` is rebroadcast for the current song index (no `songIndex` increment) so the SDK resumes from the same track
+
+**Given** all tracks in the pool have been played
+**When** the auto-advance timer fires on the last song
+**Then** no new `song:start` is broadcast; the server broadcasts `songs:exhausted` to notify all clients the pool is empty
+
+**Given** the host is authenticated and their room has an active round
+**When** any playback control endpoint is called by a non-host client
+**Then** the server returns HTTP 403
+
+**Given** `song:start` events are broadcast
+**When** timing is measured under typical home-network conditions
+**Then** all connected clients receive the event within 200ms (NFR2)
+
+---
+
+### Story 5-2: Bingo Card UI & Tile Marking
+
+As a player,
+I want to see my bingo card and mark tiles as songs play,
+So that I can track my progress and claim bingo when I complete a line.
+
+**Acceptance Criteria:**
+
+**Given** a player's client has received `round:start` with their card payload
+**When** `RoomPage` renders
+**Then** a 5×5 grid of tiles is displayed, each showing the song `title` (2-line max, ellipsis) and `artist` (10px muted)
+**And** the centre tile (index 12, position 3,3) is always in `free` state: lighter brand fill with "FREE" label, auto-marked
+
+**Given** a tile is in `unmarked` state
+**When** the player taps it
+**Then** the tile transitions to `marked` state: brand fill + white text
+**And** tapping it again toggles it back to `unmarked`
+**And** the `free` tile is not tappable and cannot be unmarked
+
+**Given** `titleRevealDelay` is greater than 0 and the server broadcasts `song:start`
+**When** the client receives `song:start`
+**Then** the tile matching `trackId` transitions to `masked` state: CSS `blur(4px)` applied to the title text, overlaid with "Song N" where N = `songIndex + 1`
+**And** the status line below the card updates to "Song N of this round"
+
+**Given** `titleRevealDelay` is 0 (reveal immediately setting)
+**When** the client receives `song:start`
+**Then** the matching tile does NOT enter masked state; title remains visible
+
+**Given** a tile is in `masked` state and the server broadcasts `song:reveal`
+**When** the client receives `song:reveal` with matching `trackId`
+**Then** the CSS blur animates off over 300ms and the "Song N" overlay label fades out, revealing the title
+
+**Given** a player is waiting between songs
+**When** no `song:start` has arrived since the last song ended
+**Then** the status line reads "Waiting for next song…"
+
+**Given** `round:win` is broadcast with a winning tile set
+**When** the client receives `round:win`
+**Then** all tiles in the winning line transition to `win-path` state: gold/amber 2px outline applied on top of their current state
+
+**Given** the player is on a touch device
+**When** any tile is rendered
+**Then** all interactive tile elements are at least 44×44px (WCAG AA touch target, NFR5/UX-DR21)
+**And** card tiles are approximately 60×60px at 375px viewport width with minimal gaps
+
+**Given** a tile's title is truncated to 2 lines
+**When** the player long-presses the tile on touch or hovers on desktop
+**Then** the full title is revealed via a tooltip or inline expand
+
+**Given** text is rendered on any tile background
+**When** contrast is measured
+**Then** all text meets WCAG AA ≥ 4.5:1 contrast ratio against its tile background colour
+
+**Given** a player's `round:start` payload arrives
+**When** the card renders
+**Then** the card is fully interactive within 2 seconds of `session:connect` completing (NFR3)
+
+---
+
+### Story 5-3: Host Card View & Controls Panel
+
+As a host,
+I want to see my bingo card alongside playback controls,
+So that I can play the game and manage the round without switching between views.
+
+**Acceptance Criteria:**
+
+**Given** the host's client receives `round:start`
+**When** the host's game view renders
+**Then** the host sees the same 5×5 bingo card as guests, using the identical tile component from Story 5-2
+**And** the host can mark their own tiles exactly as a guest can (FR36)
+
+**Given** the host is on a mobile viewport (< 768px)
+**When** the game view renders
+**Then** a persistent "Controls ▲" handle is visible at the bottom of the screen with an explicit text label (not a hidden gesture)
+**And** tapping the handle opens the Controls Panel as a partial bottom sheet with approximately 40% of the card still visible above it
+
+**Given** the Controls Panel is open on mobile
+**When** it renders
+**Then** it displays: current track name and artist; Prev, Play/Pause, and Next buttons (Next is the largest); a live player list; and an End Round button (small, low-prominence, right-aligned)
+
+**Given** the host is on a desktop viewport (≥ 768px)
+**When** the game view renders
+**Then** the card occupies approximately 60% of the width on the left and the controls panel occupies approximately 40% on the right, always simultaneously visible with no overlay or context switching required (FR37)
+
+**Given** the host taps Play in the Controls Panel
+**When** no song is currently playing
+**Then** the client calls `POST /round/play` and the button switches to a Pause icon while awaiting and after the server confirms
+
+**Given** the host taps Next in the Controls Panel
+**When** a song is playing
+**Then** the client calls `POST /round/next`; any local auto-advance timer UI resets
+
+**Given** the host taps End Round
+**When** the button is tapped
+**Then** a confirmation dialog appears asking the host to confirm ending the round
+
+**Given** the host confirms ending the round in the dialog
+**When** confirmation is received
+**Then** a cancellable toast notification appears at the top of the screen for 2 seconds with an "Undo" action
+**And** if not cancelled within 2 seconds, the client calls `POST /api/rooms/:code/round/end`
+
+**Given** `POST /round/end` is called
+**When** the server processes it
+**Then** the server cancels all pending timers, clears `currentRound`, broadcasts `round:end` to all clients, and returns HTTP 200
+**And** all connected clients (host and guests) receive `round:end` and navigate back to the lobby state
+
+**Given** the host cancels the end-round toast within 2 seconds
+**When** "Undo" is tapped
+**Then** the toast dismisses, no `POST /round/end` is called, and the round continues normally
+
+---
+
+### Story 5-4: Spotify Web Playback SDK Integration
+
+As a host,
+I want music to play through my browser automatically when songs advance,
+So that guests hear the correct song clip without me managing a separate Spotify app.
+
+**Acceptance Criteria:**
+
+**Given** the host's game view mounts
+**When** the Spotify Web Playback SDK script is loaded
+**Then** `SpotifySDKProvider` is instantiated, implementing the `MusicProvider` interface (interface defined by Epic 2 spike: `play(uri, positionMs)`, `pause()`, `resume()`, `onStateChange(cb)`, `onError(cb)`)
+**And** the SDK is only loaded for the host role — guest clients do not load the SDK
+
+**Given** `SpotifySDKProvider.init()` is called
+**When** the SDK requires an OAuth token via its `getOAuthToken` callback
+**Then** the client fetches `GET /api/auth/sdk-token` (authenticated host endpoint) and returns the access token to the SDK
+**And** the access token is never stored in client-side state beyond the callback — the server holds it (NFR7)
+
+**Given** the SDK initialises successfully
+**When** `player.connect()` resolves
+**Then** the device appears in the Spotify Connect device list
+**And** the initialisation latency is logged for diagnostics (informed by Epic 2 spike findings)
+
+**Given** the host's client receives `song:start`
+**When** `SpotifySDKProvider.play(trackUri, seekPositionMs)` is called
+**Then** `PUT /v1/me/player/play` is called with the track URI and `position_ms`
+**And** playback begins from that position within 1 second (NFR1)
+
+**Given** Spotify's SDK emits `state_changed` events in rapid burst after a seek
+**When** events arrive within the first 500ms of a new `song:start`
+**Then** the provider debounces or ignores state events until the playback position has advanced past the seek point before acting on state
+
+**Given** the host's client receives `song:pause` or `round:end`
+**When** the event is processed
+**Then** `SpotifySDKProvider.pause()` is called and `player.pause()` rejection is handled gracefully (logged, not thrown)
+
+**Given** the SDK emits `initialization_error` or `authentication_error`
+**When** either error fires
+**Then** the host sees a non-blocking SDK Failure Banner at the top of the screen (does not obscure card or controls)
+**And** the banner text leads with "The game still runs fine" followed by an expandable "How to fix ▾" section with step-by-step fallback instructions
+**And** the banner includes a `spotify:track:<id>` deep link for the currently playing track
+
+**Given** the SDK Failure Banner is active
+**When** the Controls Panel renders
+**Then** the Prev/Play/Pause/Next buttons are replaced with "Audio playing via Spotify app" text
+**And** a `spotify:track:<id>` deep link for the current track is shown in the panel
+
+**Given** `getValidAccessToken(hostId)` is needed in any server handler
+**When** token expiry is checked
+**Then** a single shared `getValidAccessToken(hostId)` helper is used — no inline token-refresh blocks duplicated across handlers (addressing Epic 4 deferred item)
+
+---
+
+### Story 5-5: Win Detection & Win Overlay
+
+As a player,
+I want to claim bingo and have it verified instantly,
+So that the winner is confirmed fairly and everyone sees the result.
+
+**Acceptance Criteria:**
+
+**Given** a player marks tiles on their card
+**When** any marked tile completes a winning line (row, column, or either diagonal — counting the FREE centre tile)
+**Then** a "Bingo!" button becomes visible and tappable on the player's card view
+**And** the button is not shown before a winning line is detected client-side
+
+**Given** the "Bingo!" button is tapped
+**When** the player submits the claim
+**Then** the client calls `POST /api/rooms/:code/round/claim` with the array of `trackId` values the player has marked (plus `"FREE"` for the centre tile)
+**And** the button enters a disabled/loading state immediately to prevent duplicate claims
+
+**Given** the server receives a bingo claim
+**When** it validates the claim
+**Then** it checks: (a) the claimed tile IDs are all present on the player's server-stored card (`currentRound.cards[playerName]`), and (b) the claimed tile IDs that are non-FREE all appear in `currentRound.songHistory` (i.e. have been played)
+**And** it checks that at least one complete winning line (5 in a row/column/diagonal) exists within the claimed set
+
+**Given** the claim is valid
+**When** validation passes
+**Then** the server broadcasts `round:win` to all clients with: `winnerName`, `winningTileIds` (the validated line), and `songHistory` snapshot
+**And** all pending auto-advance and reveal timers are cancelled
+**And** `currentRound.ended = true` is set so no further `song:start` events are emitted
+
+**Given** the claim is invalid (tiles not played, not on card, or no complete line)
+**When** validation fails
+**Then** the server returns HTTP 422 to the claiming client with a brief error reason
+**And** no `round:win` is broadcast; other players are unaffected
+**And** the claiming player's "Bingo!" button re-enables so they can retry
+
+**Given** all clients receive `round:win`
+**When** the event is processed
+**Then** a full-screen Win Overlay renders above all other content (highest z-index)
+**And** it displays: a CSS confetti animation (~2 seconds), the winner's name at 24px, and a list of the 5 winning songs (title + artist)
+
+**Given** the Win Overlay is shown on a guest's screen
+**When** 5 seconds elapse
+**Then** the overlay auto-dismisses and the player returns to their card view in a post-round state
+
+**Given** the Win Overlay is shown on the host's screen
+**When** 1.5 seconds elapse
+**Then** a "Start Next Round" CTA appears on the overlay
+**And** a secondary "Dismiss" button is also visible
+**And** tapping "Start Next Round" navigates the host to the Round Config screen; tapping "Dismiss" returns to the card in post-round state
+
+**Given** two players submit claims simultaneously
+**When** both `POST /round/claim` requests reach the server
+**Then** the first request to arrive (by server receipt timestamp) is validated and wins; the second receives HTTP 409 or 422 indicating the round has already ended
+
+---
+
+### Story 5-6: Song History, Late-Join Sync & Auth Re-auth
+
+As a player,
+I want to review all songs played so far and have the game remain accessible when I join late or when auth lapses,
+So that I can catch up on missed songs and the host can recover without ending the session.
+
+**Acceptance Criteria:**
+
+**Given** the server broadcasts `song:start`
+**When** the event is emitted
+**Then** the track object (`trackId`, `title`, `artist`, `albumArtUrl`, `songIndex`) is appended to `currentRound.songHistory` on the server before broadcast
+
+**Given** a player is in an active round
+**When** they tap `≡ History` in the card view header
+**Then** a Song History bottom sheet opens at approximately 70% of the screen height and is scrollable
+**And** entries are listed newest-first, each showing: song number, title, artist, and 40×40px album art (with a music-note icon fallback if art is unavailable)
+**And** the sheet is accessible at any time during the round — between songs and while a song is playing
+
+**Given** a guest connects via `session:connect` while a round is already in progress
+**When** the server responds
+**Then** the `session:connect` response includes `currentRound.songHistory` alongside their blank card and the `round:start` payload (extending the late-join logic from Story 4-3)
+**And** the guest can immediately open the History drawer to self-mark songs they recognise on their blank card (FR34)
+
+**Given** a host reconnects mid-round via `session:connect`
+**When** the server responds
+**Then** the host receives the same `round:start` re-send (card + config) and `songHistory` that a late-joining guest would receive
+**And** their role is restored as host (addressing Epic 4 deferred item: host reconnect mid-round receives no round:start re-send)
+
+**Given** the History drawer is open
+**When** a new `song:start` arrives
+**Then** the new entry is prepended to the list in real time without requiring the drawer to be closed and reopened
+
+**Given** the `auth:degraded` event is received by the host client (wired in Epic 3)
+**When** the Auth Degraded Banner is displayed
+**Then** a "Re-authenticate →" button is present in the banner
+
+**Given** the host taps "Re-authenticate →"
+**When** the button is tapped
+**Then** the Spotify OAuth authorize URL opens in a **popup window** (not a full redirect — a redirect would destroy the active game session)
+**And** the main game window remains open and the game state is preserved
+
+**Given** the OAuth popup completes successfully
+**When** the server receives the new tokens via the callback
+**Then** the server updates the host's tokens in the database and emits a `auth:restored` WebSocket event to the host's client
+**And** the host client closes the popup (or it closes automatically), `SpotifySDKProvider` re-initialises with the fresh token, and the Auth Degraded Banner clears automatically
+
+**Given** the OAuth popup is closed by the user without completing auth
+**When** the popup closes
+**Then** the Auth Degraded Banner remains visible with no change to game state
 

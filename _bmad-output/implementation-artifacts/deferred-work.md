@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review (2026-04-04)
+
+- Existing sessions don't gain new playlist scopes until re-auth — OAuth inherent; needs scope-detection + re-auth prompt feature.
+- 502 response from `/rooms/:code/round` can't distinguish Spotify 404 (bad playlist ID) from Spotify 401 (stale token) — needs status-aware error handling and auth recovery.
+- `data.playlists` key could be absent in Spotify search response — pre-existing; `?.` guard returns empty array silently but no error is surfaced.
+
 ## Deferred from: code review of 5-1-song-scheduling-and-host-playback-controls (2026-04-04)
 
 - `/next` silently unpauses a paused round — spec (AC3) has no guard; calling `/next` while paused advances and clears `paused` as a side effect. May need explicit guard in a later story.
