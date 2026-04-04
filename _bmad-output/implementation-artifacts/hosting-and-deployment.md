@@ -18,14 +18,12 @@ Domain: **bangerbingo.net**
 
 ### LXC Specs
 ```
-OS: Alpine Linux (latest stable)
+OS: Debian 12 (consistent with existing Ansible repo)
 CPU: 1 vCPU
-RAM: 1GB  (Alpine ~35MB idle vs Debian ~90MB; still need headroom for Docker daemon ~75MB + Node app ~150MB)
+RAM: 1GB  (OS ~90MB + Docker daemon ~75MB + Node app ~150MB ≈ 350MB peak; 1GB gives safe headroom)
 Disk: 4GB (Node image ~160MB + app ~50MB + SQLite stays small)
 Packages: node 22, git, docker, cloudflared
 ```
-
-**Alpine notes**: Uses `apk` (not `apt`), OpenRC (not systemd). The app runs in `node:22-alpine` containers so musl libc is already the runtime — no mismatch. For cloudflared service management, Ansible uses `community.general.openrc` instead of `ansible.builtin.systemd`.
 
 ### Ports (inside LXC)
 | Env | Port |
@@ -50,7 +48,9 @@ Both routes defined in cloudflared tunnel config (YAML on the LXC, not in repo).
 
 ### Install cloudflared (on the LXC)
 ```bash
-apk add cloudflared
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bookworm main' | tee /etc/apt/sources.list.d/cloudflared.list
+apt update && apt install -y cloudflared
 cloudflared tunnel login
 cloudflared tunnel create bangerbingo
 ```
@@ -74,11 +74,11 @@ cloudflared tunnel route dns bangerbingo bangerbingo.net
 cloudflared tunnel route dns bangerbingo pre.bangerbingo.net
 ```
 
-### Run as system service (OpenRC)
+### Run as system service
 ```bash
 cloudflared service install
-rc-update add cloudflared default
-rc-service cloudflared start
+systemctl enable cloudflared
+systemctl start cloudflared
 ```
 
 **WebSocket note**: Cloudflare Tunnel passes `Connection: Upgrade` headers natively. No extra proxy config needed for WebSockets.
@@ -238,7 +238,7 @@ Infrastructure setup is scripted via Ansible (separate repo). The process is pha
 
 ### Phase 3 — Ansible (configure + deploy)
 - Template `~/.cloudflared/config.yml` from vault credentials + tunnel ID var
-- Enable + start cloudflared OpenRC service (`rc-update add` + `rc-service start`)
+- Enable + start cloudflared systemd service
 - Register DNS routes via Cloudflare API
 - Deploy app: git clone + build + docker compose up
 
