@@ -1,23 +1,40 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import LoginPage from './pages/LoginPage.svelte'
+  import JoinPage from './pages/JoinPage.svelte'
+  import RoomPage from './pages/RoomPage.svelte'
   import { getMe } from './lib/api.ts'
+  import { sanitizeCode } from './lib/ws.ts'
 
-  type Page = 'loading' | 'login' | 'dashboard'
+  type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'room'
 
   let page: Page = $state('loading')
+  let prefillCode = $state('')
+  let guestName = $state('')
 
   onMount(async () => {
-    try {
-      const me = await getMe()
-      page = me ? 'dashboard' : 'login'
-    } catch {
-      page = 'login'
+    const path = window.location.pathname
+    const roomMatch = path.match(/^\/room\/([A-Za-z]{4})$/)
+
+    const me = await getMe().catch(() => null)
+
+    if (me) {
+      page = 'dashboard'
+    } else if (roomMatch) {
+      prefillCode = sanitizeCode(roomMatch[1])
+      page = 'join'
+    } else {
+      page = 'join'
     }
   })
 
   function handleAuthenticated() {
     page = 'dashboard'
+  }
+
+  function handleJoined(name: string, _role: string, _players: string[]) {
+    guestName = name
+    page = 'room'
   }
 </script>
 
@@ -25,10 +42,14 @@
   <!-- intentionally blank while checking session -->
 {:else if page === 'login'}
   <LoginPage onAuthenticated={handleAuthenticated} />
+{:else if page === 'join'}
+  <JoinPage {prefillCode} onJoined={handleJoined} />
 {:else if page === 'dashboard'}
   <div class="dashboard">
     <h1>Dashboard (coming soon)</h1>
   </div>
+{:else if page === 'room'}
+  <RoomPage name={guestName} />
 {/if}
 
 <style>
