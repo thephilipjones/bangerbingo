@@ -54,7 +54,7 @@ describe('startRound', () => {
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: false,
       json: async () => { throw new Error('not json') },
-    } as Response)
+    } as unknown as Response)
 
     await expect(startRound('ABCD', { playlistId: 'pl1', clipDuration: 30, titleRevealDelay: 5 }))
       .rejects.toThrow('Request failed')

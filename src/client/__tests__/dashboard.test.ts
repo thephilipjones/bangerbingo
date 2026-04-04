@@ -184,35 +184,35 @@ describe('connectAsHost', () => {
 
   it('calls onConnect with initial player list on session:connect', () => {
     const onConnect = vi.fn()
-    connectAsHost('ABCD', { onConnect, onPlayerJoined: vi.fn(), onPlayerLeft: vi.fn(), onAuthDegraded: vi.fn() })
+    connectAsHost('ABCD', { onConnect, onPlayerJoined: vi.fn(), onPlayerLeft: vi.fn(), onAuthDegraded: vi.fn(), onDisconnected: vi.fn() })
     mockInstance.onmessage!({ data: JSON.stringify({ type: 'session:connect', role: 'host', players: ['Alice', 'Bob'] }) })
     expect(onConnect).toHaveBeenCalledWith(['Alice', 'Bob'])
   })
 
   it('defaults players to empty array when missing from session:connect', () => {
     const onConnect = vi.fn()
-    connectAsHost('ABCD', { onConnect, onPlayerJoined: vi.fn(), onPlayerLeft: vi.fn(), onAuthDegraded: vi.fn() })
+    connectAsHost('ABCD', { onConnect, onPlayerJoined: vi.fn(), onPlayerLeft: vi.fn(), onAuthDegraded: vi.fn(), onDisconnected: vi.fn() })
     mockInstance.onmessage!({ data: JSON.stringify({ type: 'session:connect', role: 'host' }) })
     expect(onConnect).toHaveBeenCalledWith([])
   })
 
   it('calls onPlayerJoined with name on player:joined message', () => {
     const onPlayerJoined = vi.fn()
-    connectAsHost('ABCD', { onConnect: vi.fn(), onPlayerJoined, onPlayerLeft: vi.fn(), onAuthDegraded: vi.fn() })
+    connectAsHost('ABCD', { onConnect: vi.fn(), onPlayerJoined, onPlayerLeft: vi.fn(), onAuthDegraded: vi.fn(), onDisconnected: vi.fn() })
     mockInstance.onmessage!({ data: JSON.stringify({ type: 'player:joined', name: 'Alice' }) })
     expect(onPlayerJoined).toHaveBeenCalledWith('Alice')
   })
 
   it('calls onPlayerLeft with name on player:left message', () => {
     const onPlayerLeft = vi.fn()
-    connectAsHost('ABCD', { onConnect: vi.fn(), onPlayerJoined: vi.fn(), onPlayerLeft, onAuthDegraded: vi.fn() })
+    connectAsHost('ABCD', { onConnect: vi.fn(), onPlayerJoined: vi.fn(), onPlayerLeft, onAuthDegraded: vi.fn(), onDisconnected: vi.fn() })
     mockInstance.onmessage!({ data: JSON.stringify({ type: 'player:left', name: 'Alice' }) })
     expect(onPlayerLeft).toHaveBeenCalledWith('Alice')
   })
 
   it('calls onAuthDegraded on auth:degraded message', () => {
     const onAuthDegraded = vi.fn()
-    connectAsHost('ABCD', { onConnect: vi.fn(), onPlayerJoined: vi.fn(), onPlayerLeft: vi.fn(), onAuthDegraded })
+    connectAsHost('ABCD', { onConnect: vi.fn(), onPlayerJoined: vi.fn(), onPlayerLeft: vi.fn(), onAuthDegraded, onDisconnected: vi.fn() })
     mockInstance.onmessage!({ data: JSON.stringify({ type: 'auth:degraded' }) })
     expect(onAuthDegraded).toHaveBeenCalled()
   })
