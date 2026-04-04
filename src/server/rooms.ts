@@ -56,6 +56,28 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     roundNumber: round.roundNumber,
   })
 
+  // Fire-and-forget Spotify play via Web API (AC 5)
+  const sdkDevice = roomState.sdkDeviceId
+  if (sdkDevice) {
+    const sdkHost = getHostById(roomState.hostUserId)
+    if (sdkHost?.access_token) {
+      fetch(
+        `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(sdkDevice)}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${sdkHost.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            uris: [`spotify:track:${track.id}`],
+            position_ms: SEEK_POSITION_MS,
+          }),
+        }
+      ).catch(() => {})
+    }
+  }
+
   // P4: capture roundNumber so stale timers from a previous round don't fire against a new one
   const capturedRoundNumber = round.roundNumber
 
@@ -316,6 +338,39 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
   clearRoundTimers(round)
   round.paused = true
   broadcast(code, { type: 'song:pause', songIndex: round.currentSongIndex })
+
+  // Fire-and-forget Spotify pause via Web API (AC 6)
+  const sdkDevice = roomState.sdkDeviceId
+  if (sdkDevice) {
+    const sdkHost = getHostById(roomState.hostUserId)
+    if (sdkHost?.access_token) {
+      fetch(
+        `https://api.spotify.com/v1/me/player/pause?device_id=${encodeURIComponent(sdkDevice)}`,
+        {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${sdkHost.access_token}` },
+        }
+      ).catch(() => {})
+    }
+  }
+
+  return ctx.json({})
+})
+
+roomsRouter.post('/rooms/:code/sdk/device', requireAuth, async (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const body = await ctx.req.json().catch(() => null)
+  if (!body || typeof body.deviceId !== 'string') return ctx.json({ message: 'Invalid request body' }, 400)
+
+  const roomState = roomSockets.get(code)
+  if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
+  roomState.sdkDeviceId = body.deviceId
 
   return ctx.json({})
 })

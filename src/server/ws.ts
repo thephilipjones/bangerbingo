@@ -53,6 +53,7 @@ export interface RoomState {
   guests: Map<string, WebSocket> // name → socket
   pendingRound?: RoundConfig
   currentRound?: RoundState
+  sdkDeviceId?: string
 }
 
 export const roomSockets = new Map<string, RoomState>()

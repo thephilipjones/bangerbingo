@@ -147,3 +147,8 @@ authRouter.get('/callback', async (ctx) => {
 
   return ctx.redirect('/')
 })
+
+// GET /auth/token
+authRouter.get('/token', requireAuth, (ctx) => {
+  return ctx.json({ accessToken: ctx.var.host.access_token })
+})
