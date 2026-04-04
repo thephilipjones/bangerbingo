@@ -319,3 +319,22 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
 
   return ctx.json({})
 })
+
+roomsRouter.post('/rooms/:code/round/end', requireAuth, (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  const round = roomState?.currentRound
+  if (!round?.active) return ctx.json({ message: 'No active round' }, 404)
+
+  clearRoundTimers(round)
+  roomState!.currentRound = undefined
+  broadcast(code, { type: 'round:end' })
+
+  return ctx.json({})
+})

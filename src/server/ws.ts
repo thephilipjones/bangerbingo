@@ -149,6 +149,13 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     ws.send(JSON.stringify({ type: 'session:connect', role: 'host', players: getPlayerList(code) }))
 
+    // Send round:start if there is an active round (needed for HostRoomPage initial load)
+    const activeRound = roomState.currentRound
+    if (activeRound?.active) {
+      const hostCard = activeRound.cards.get(sessionUserId) ?? []
+      ws.send(JSON.stringify({ ...activeRound.roundStartPayload, card: hostCard }))
+    }
+
     if (isReconnect) {
       broadcast(code, { type: 'host:reconnected' }, ws)
     }

@@ -1001,3 +1001,71 @@ describe('POST /api/rooms/:code/round/pause', () => {
     expect(res.status).toBe(400)
   })
 })
+
+// ── POST /api/rooms/:code/round/end ──────────────────────────────────────
+
+describe('POST /api/rooms/:code/round/end', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+  })
+
+  it('clears currentRound and broadcasts round:end', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    seedActiveRound()
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/end', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(200)
+
+    expect(roomState.currentRound).toBeUndefined()
+    expect(sent).toHaveLength(1)
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('round:end')
+  })
+
+  it('returns 403 for non-owner host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    seedActiveRound()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/end', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 404 when room not found', async () => {
+    seedHost()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ZZZZ/round/end', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 404 when no active round', async () => {
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/end', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(404)
+  })
+})
