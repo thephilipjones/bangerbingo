@@ -57,6 +57,12 @@
 - `applyPlayerEvent` does not deduplicate player names — inflated player count if server sends duplicate `player:joined`; server already prevents duplicate names at connection time.
 - `player:joined` before `session:connect` ordering race — client overwrites any optimistic state with `session:connect` snapshot; server sends `session:connect` synchronously on connect, making this a near-impossible race in practice.
 
+## Deferred from: code review of 3-5-host-disconnect-and-reconnect (2026-04-03)
+
+- Flaky 200ms wall-clock timing assertion in host disconnect test (`ws.test.ts`) — `Date.now()` delta will fail non-deterministically under load or constrained CI; replace with a structural assertion or mock timers.
+- Silent error swallowing in `RoomPage.onMount` `onError` handler — if server closes the guest WS (4004, 4009, etc.), the guest sees no UI feedback; revisit when double-WebSocket lifecycle is corrected.
+- `closeCodeToMessage` in `ws.ts` has no entries for close codes 4000 ("missing name") and 4001 ("unauthorized") — pre-existing gap; guest receives generic "Connection failed" message for these codes.
+
 ## Deferred from: code review of 3-3-guest-join-screen (2026-04-03)
 
 - Host login path (`page = 'login'`) now unreachable — by design for this sprint; story 3-4 will restore host login routing once the login+lobby screens are built.
