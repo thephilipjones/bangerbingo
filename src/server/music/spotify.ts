@@ -70,9 +70,9 @@ export async function searchPlaylists(query: string, accessToken: string): Promi
 
   const data = await res.json() as SpotifySearchResponse
 
-  return (data.playlists?.items ?? []).map(item => ({
+  return (data.playlists?.items ?? []).filter(item => item !== null).map(item => ({
     name: item.name,
-    owner: item.owner.display_name,
+    owner: item.owner.display_name ?? item.owner.id,
     trackCount: item.tracks.total,
     playlistId: item.id,
   }))

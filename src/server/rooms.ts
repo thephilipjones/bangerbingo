@@ -5,7 +5,7 @@ import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs,
 import { requireAuth, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { refreshWithRetry, isHostDegraded } from './refresh.ts'
-import { getPlaylistTracks } from './music/spotify.ts'
+import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { buildPool, generateCards } from './game/cards.ts'
 
 // ── Song scheduling constants and helpers ─────────────────────────────────
@@ -191,6 +191,9 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'InsufficientTracksError') {
       return ctx.json({ message: err.message }, 422)
+    }
+    if (err instanceof SpotifyApiError) {
+      return ctx.json({ message: 'Failed to fetch playlist from Spotify' }, 502)
     }
     throw err
   }
