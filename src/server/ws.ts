@@ -18,6 +18,14 @@ export interface RoundConfig {
   roundNumber: number
 }
 
+export interface SongHistoryEntry {
+  trackId: string
+  title: string
+  artist: string
+  albumArtUrl: string
+  songIndex: number
+}
+
 export interface RoundState {
   roundNumber: number
   config: RoundConfig
@@ -26,11 +34,19 @@ export interface RoundState {
   roundStartPayload: object     // cached for late joiners
   sessionPlayedIds: string[]    // tracks played this session (grows across rounds)
   active: boolean
+  // ── NEW in Story 5-1 ──────────────────────────────────────────
+  currentSongIndex: number        // -1 = round not yet started
+  songHistory: SongHistoryEntry[] // append-only; used by 5-5 win validation + 5-6 drawer
+  paused: boolean                 // true after /pause; cleared on /play
+  timers: {
+    autoAdvance?: ReturnType<typeof setTimeout>
+    reveal?: ReturnType<typeof setTimeout>
+  }
 }
 
 // ── Room state ─────────────────────────────────────────────────────────────
 
-interface RoomState {
+export interface RoomState {
   host: WebSocket | null
   hostUserId: string
   hostHasEverConnected: boolean

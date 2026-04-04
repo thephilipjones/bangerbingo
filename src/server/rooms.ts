@@ -3,10 +3,90 @@ import crypto from 'node:crypto'
 import WebSocket from 'ws'
 import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, type Room } from './db.ts'
 import { requireAuth, type AuthEnv } from './auth.ts'
-import { roomSockets, type RoundConfig, type ClipDuration, type TitleRevealDelay } from './ws.ts'
+import { roomSockets, broadcast, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { refreshWithRetry, isHostDegraded } from './refresh.ts'
 import { getPlaylistTracks } from './music/spotify.ts'
 import { buildPool, generateCards } from './game/cards.ts'
+
+// ── Song scheduling constants and helpers ─────────────────────────────────
+
+const SEEK_POSITION_MS = 60_000  // Fixed chorus-position offset for MVP (validated in Epic 2 spike)
+
+function clearRoundTimers(round: RoundState): void {
+  clearTimeout(round.timers.autoAdvance)
+  clearTimeout(round.timers.reveal)
+  round.timers.autoAdvance = undefined
+  round.timers.reveal = undefined
+}
+
+function startSong(roomCode: string, roomState: RoomState, songIndex: number): void {
+  const round = roomState.currentRound!
+
+  // P3: guard against out-of-bounds index (e.g. empty playlist)
+  if (songIndex < 0 || songIndex >= round.playlist.length) return
+
+  const track = round.playlist[songIndex]
+
+  clearRoundTimers(round)
+
+  // P1: only append to history when starting a new song, not when resuming the same one
+  if (round.currentSongIndex !== songIndex) {
+    const entry: SongHistoryEntry = {
+      trackId: track.id,
+      title: track.title,
+      artist: track.artist,
+      albumArtUrl: track.albumArtUrl,
+      songIndex,
+    }
+    round.songHistory.push(entry)
+  }
+  round.currentSongIndex = songIndex
+  round.paused = false
+
+  broadcast(roomCode, {
+    type: 'song:start',
+    trackId: track.id,
+    title: track.title,
+    artist: track.artist,
+    albumArtUrl: track.albumArtUrl,
+    seekPositionMs: SEEK_POSITION_MS,
+    clipDuration: round.config.clipDuration,
+    titleRevealDelay: round.config.titleRevealDelay,
+    songIndex,
+    roundNumber: round.roundNumber,
+  })
+
+  // P4: capture roundNumber so stale timers from a previous round don't fire against a new one
+  const capturedRoundNumber = round.roundNumber
+
+  if (round.config.titleRevealDelay && round.config.titleRevealDelay > 0) {
+    round.timers.reveal = setTimeout(() => {
+      if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
+      broadcast(roomCode, { type: 'song:reveal', trackId: track.id, songIndex })
+    }, round.config.titleRevealDelay * 1000)
+  }
+
+  if (round.config.clipDuration !== 'full') {
+    round.timers.autoAdvance = setTimeout(() => {
+      if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
+      advanceToNext(roomCode, roomState)
+    }, (round.config.clipDuration as number) * 1000)
+  }
+}
+
+// P2: returns true when playlist is exhausted so callers can reflect that in HTTP response
+function advanceToNext(roomCode: string, roomState: RoomState): boolean {
+  const round = roomState.currentRound
+  if (!round?.active) return false
+  clearRoundTimers(round)
+  const nextIndex = round.currentSongIndex + 1
+  if (nextIndex >= round.playlist.length) {
+    broadcast(roomCode, { type: 'songs:exhausted' })
+    return true
+  }
+  startSong(roomCode, roomState, nextIndex)
+  return false
+}
 
 // ── Room code generation ───────────────────────────────────────────────────
 
@@ -149,6 +229,10 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
       roundStartPayload,
       sessionPlayedIds: newSessionPlayed,
       active: true,
+      currentSongIndex: -1,
+      songHistory: [],
+      paused: false,
+      timers: {},
     }
     roomState.pendingRound = roundConfig
 
@@ -169,4 +253,66 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   recordPlayedSongs(code, dealtTrackIds)
 
   return ctx.json(roundConfig)
+})
+
+roomsRouter.post('/rooms/:code/round/play', requireAuth, (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  const round = roomState?.currentRound
+  if (!round?.active) return ctx.json({ message: 'No active round' }, 404)
+
+  if (round.currentSongIndex === -1) {
+    startSong(code, roomState!, 0)
+  } else if (round.paused) {
+    startSong(code, roomState!, round.currentSongIndex)
+  } else {
+    return ctx.json({ message: 'Round is already playing' }, 400)
+  }
+
+  return ctx.json({ songIndex: round.currentSongIndex })
+})
+
+roomsRouter.post('/rooms/:code/round/next', requireAuth, (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  const round = roomState?.currentRound
+  if (!round?.active) return ctx.json({ message: 'No active round' }, 404)
+
+  const exhausted = advanceToNext(code, roomState!)
+
+  return ctx.json({ songIndex: round.currentSongIndex, exhausted })
+})
+
+roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  const round = roomState?.currentRound
+  if (!round?.active) return ctx.json({ message: 'No active round' }, 404)
+
+  // P6: cannot pause before the first song has started
+  if (round.currentSongIndex === -1) return ctx.json({ message: 'Round not started' }, 400)
+
+  clearRoundTimers(round)
+  round.paused = true
+  broadcast(code, { type: 'song:pause', songIndex: round.currentSongIndex })
+
+  return ctx.json({})
 })

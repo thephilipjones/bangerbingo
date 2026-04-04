@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Hono } from 'hono'
 import WebSocket from 'ws'
 import { initDb, upsertHost, createRoom } from '../db.ts'
+import type { RoundState, ClipDuration, TitleRevealDelay } from '../ws.ts'
+import type { Track } from '../music/spotify.ts'
 
 // Must set env vars before importing config/auth/rooms
 vi.stubEnv('SPOTIFY_CLIENT_ID', 'test_client_id')
@@ -514,5 +516,488 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     expect(res2.status).toBe(200)
     const body = await res2.json() as { roundNumber: number }
     expect(body.roundNumber).toBe(2)
+  })
+
+  it('initialises new RoundState fields on round start', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+
+    const roomState = roomSockets.get('ABCD')!
+    expect(roomState.currentRound?.currentSongIndex).toBe(-1)
+    expect(roomState.currentRound?.songHistory).toEqual([])
+    expect(roomState.currentRound?.paused).toBe(false)
+    expect(roomState.currentRound?.timers).toEqual({})
+  })
+})
+
+// ── Song scheduling helpers ────────────────────────────────────────────────
+
+function makeTracksLocal(n: number): Track[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `track_${i}`,
+    title: `Song ${i}`,
+    artist: `Artist ${i}`,
+    albumArtUrl: `https://img/${i}`,
+  }))
+}
+
+function seedActiveRound(code = 'ABCD', clipDuration: ClipDuration = 30, titleRevealDelay: TitleRevealDelay = 5): RoundState {
+  const roomState = roomSockets.get(code)!
+  const round: RoundState = {
+    roundNumber: 1,
+    config: { playlistId: 'test_playlist', clipDuration, titleRevealDelay, roundNumber: 1 },
+    playlist: makeTracksLocal(10),
+    cards: new Map(),
+    roundStartPayload: {},
+    sessionPlayedIds: [],
+    active: true,
+    currentSongIndex: -1,
+    songHistory: [],
+    paused: false,
+    timers: {},
+  }
+  roomState.currentRound = round
+  return round
+}
+
+// ── POST /api/rooms/:code/round/play ──────────────────────────────────────
+
+describe('POST /api/rooms/:code/round/play', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('broadcasts song:start for first track when currentSongIndex is -1', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+
+    const sent: string[] = []
+    const mockWs = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+    roomState.host = mockWs
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(200)
+
+    expect(sent).toHaveLength(1)
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('song:start')
+    expect(msg.songIndex).toBe(0)
+    expect(msg.seekPositionMs).toBe(60_000)
+    expect(msg.trackId).toBe('track_0')
+    expect(msg.title).toBe('Song 0')
+    expect(msg.artist).toBe('Artist 0')
+    expect(msg.albumArtUrl).toBe('https://img/0')  // P5
+    expect(msg.roundNumber).toBe(1)
+    expect(msg.clipDuration).toBe(30)
+    expect(msg.titleRevealDelay).toBe(5)
+    expect(round.currentSongIndex).toBe(0)
+    expect(round.paused).toBe(false)
+  })
+
+  it('re-broadcasts same song:start when round is paused', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.currentSongIndex = 2
+    round.paused = true
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(200)
+
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('song:start')
+    expect(msg.songIndex).toBe(2)
+    expect(round.paused).toBe(false)
+    expect(round.songHistory).toHaveLength(0)  // P1: resume must not push to history (currentSongIndex already equals songIndex)
+  })
+
+  it('returns 400 when round is already playing', async () => {
+    seedHost()
+    await seedRoom()
+    const round = seedActiveRound()
+    round.currentSongIndex = 1
+    round.paused = false
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 403 for non-owner host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    seedActiveRound()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 404 when no active round', async () => {
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('appends entry to songHistory on play', async () => {
+    seedHost()
+    await seedRoom()
+    const round = seedActiveRound()
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(round.songHistory).toHaveLength(1)
+    expect(round.songHistory[0].trackId).toBe('track_0')
+    expect(round.songHistory[0].songIndex).toBe(0)
+  })
+
+  it('auto-advance fires after clipDuration and broadcasts second song:start', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound('ABCD', 20, 0)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(200)
+    expect(sent).toHaveLength(1)
+    expect(JSON.parse(sent[0]).songIndex).toBe(0)
+
+    vi.advanceTimersByTime(20_000)
+
+    expect(sent).toHaveLength(2)
+    const second = JSON.parse(sent[1])
+    expect(second.type).toBe('song:start')
+    expect(second.songIndex).toBe(1)
+    expect(round.currentSongIndex).toBe(1)
+  })
+
+  it('song:reveal timer fires after titleRevealDelay and broadcasts song:reveal', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    seedActiveRound('ABCD', 'full', 10)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+
+    expect(sent).toHaveLength(1)
+    expect(JSON.parse(sent[0]).type).toBe('song:start')
+
+    vi.advanceTimersByTime(10_000)
+
+    expect(sent).toHaveLength(2)
+    const reveal = JSON.parse(sent[1])
+    expect(reveal.type).toBe('song:reveal')
+    expect(reveal.trackId).toBe('track_0')
+    expect(reveal.songIndex).toBe(0)
+  })
+
+  it('does not schedule song:reveal when titleRevealDelay is 0', async () => {
+    // P7: titleRevealDelay=0 means no reveal; server must not fire song:reveal
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    seedActiveRound('ABCD', 'full', 0)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    vi.advanceTimersByTime(60_000)
+
+    expect(sent).toHaveLength(1)
+    expect(JSON.parse(sent[0]).type).toBe('song:start')
+  })
+})
+
+// ── POST /api/rooms/:code/round/next ──────────────────────────────────────
+
+describe('POST /api/rooms/:code/round/next', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('advances to next song and broadcasts song:start', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.currentSongIndex = 0
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(200)
+
+    expect(sent).toHaveLength(1)
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('song:start')
+    expect(msg.songIndex).toBe(1)
+    expect(round.currentSongIndex).toBe(1)
+  })
+
+  it('cancels previous auto-advance timer when /next is called', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound('ABCD', 30, 0)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    // Start song (sets auto-advance timer for 30s)
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(round.currentSongIndex).toBe(0)
+
+    // Manually advance before timer fires
+    await app.request('/api/rooms/ABCD/round/next', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(round.currentSongIndex).toBe(1)
+
+    const countBeforeTimer = sent.length
+
+    // Advance time — old timer should NOT fire again
+    vi.advanceTimersByTime(30_000)
+    // A new auto-advance from song index 1 fires, so we get one more broadcast
+    // but we should NOT get a duplicate from the cancelled timer
+    expect(sent.length).toBe(countBeforeTimer + 1)
+    expect(JSON.parse(sent[sent.length - 1]).songIndex).toBe(2)
+  })
+
+  it('broadcasts songs:exhausted on last track', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.currentSongIndex = 9  // last index in 10-track playlist
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(200)
+
+    expect(sent).toHaveLength(1)
+    expect(JSON.parse(sent[0]).type).toBe('songs:exhausted')
+  })
+
+  it('returns 403 for non-owner host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    seedActiveRound()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 404 when no active round', async () => {
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(404)
+  })
+})
+
+// ── POST /api/rooms/:code/round/pause ─────────────────────────────────────
+
+describe('POST /api/rooms/:code/round/pause', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('broadcasts song:pause and sets paused = true', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.currentSongIndex = 3
+    round.paused = false
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/pause', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(200)
+
+    expect(round.paused).toBe(true)
+    expect(sent).toHaveLength(1)
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('song:pause')
+    expect(msg.songIndex).toBe(3)
+  })
+
+  it('cancels timers on pause', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound('ABCD', 30, 5)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    // Start song — schedules both timers
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+
+    // Pause — should cancel both timers
+    await app.request('/api/rooms/ABCD/round/pause', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    const countAfterPause = sent.length
+
+    // Advance time — no timers should fire
+    vi.advanceTimersByTime(60_000)
+    expect(sent.length).toBe(countAfterPause)
+
+    expect(round.timers.autoAdvance).toBeUndefined()
+    expect(round.timers.reveal).toBeUndefined()
+  })
+
+  it('returns 403 for non-owner host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    seedActiveRound()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/pause', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 404 when no active round', async () => {
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/pause', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 400 when pausing before first song has started', async () => {
+    // P6: currentSongIndex === -1 means no song is playing yet
+    seedHost()
+    await seedRoom()
+    seedActiveRound()  // currentSongIndex starts at -1
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/pause', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(res.status).toBe(400)
   })
 })
