@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-04  # 4-3-card-generation-and-round-start → done
+last_updated: 2026-04-04  # 5-1-song-scheduling-and-host-playback-controls → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -70,7 +70,8 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Game Loop
-  epic-5: backlog
+  epic-5: in-progress
+  5-1-song-scheduling-and-host-playback-controls: done
   epic-5-retrospective: optional
 
   # Epic 6: Deploy & Harden
