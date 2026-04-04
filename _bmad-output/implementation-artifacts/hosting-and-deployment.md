@@ -4,58 +4,39 @@ _Living document — update as infrastructure evolves._
 
 ## Overview
 
-Personal-use app hosted on a home Proxmox hypervisor. Three environments: dev (laptop), staging (LXC), prod (LXC). Cloudflare Tunnel handles ingress — no router port-forwarding, home IP hidden, TLS automatic.
+Bangerbingo is a Node.js app (Hono + WebSockets + Svelte 5 static frontend + SQLite). It can be deployed on any Linux server with Docker. Cloudflare Tunnel is the recommended ingress — no port-forwarding required, TLS automatic.
 
 Domain: **bangerbingo.net**
 
 ---
 
-## Infrastructure
+## Server Requirements
 
-### Proxmox Setup
-- Existing VM: other Docker services via Traefik + Cloudflare DNS (philipjones.app) — **do not touch**
-- Bangerbingo: dedicated LXC container (isolated from existing stack)
-
-### LXC Specs
-```
-OS: Debian 12 (consistent with existing Ansible repo)
-CPU: 1 vCPU
-RAM: 1GB  (OS ~90MB + Docker daemon ~75MB + Node app ~150MB ≈ 350MB peak; 1GB gives safe headroom)
-Disk: 4GB (Node image ~160MB + app ~50MB + SQLite stays small)
-Packages: node 22, git, docker, cloudflared
-```
-
-### Ports (inside LXC)
-| Env | Port |
-|-----|------|
-| Prod | 3000 |
-| Staging | 3001 |
-
----
-
-## Domains (bangerbingo.net → Cloudflare)
-
-| Env | Hostname |
-|-----|----------|
-| Prod | `bangerbingo.net` |
-| Staging | `pre.bangerbingo.net` |
-
-Both routes defined in cloudflared tunnel config (YAML on the LXC, not in repo).
+Any Linux server (VPS, home server, LXC container) running:
+- Docker + Docker Compose
+- 1GB RAM minimum (Node app ~150MB + Docker daemon ~75MB + OS ~90MB ≈ 350MB peak; 1GB gives safe headroom)
+- 4GB disk (Docker image ~200MB + app ~50MB + SQLite stays small)
 
 ---
 
 ## Cloudflare Tunnel Setup
 
-### Install cloudflared (on the LXC)
+Cloudflare Tunnel (`cloudflared`) exposes the server publicly without opening firewall ports. Home IP is never exposed; TLS is provisioned automatically.
+
+### Install cloudflared
 ```bash
 curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
 echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bookworm main' | tee /etc/apt/sources.list.d/cloudflared.list
 apt update && apt install -y cloudflared
+```
+
+### Create tunnel (one-time)
+```bash
 cloudflared tunnel login
 cloudflared tunnel create bangerbingo
 ```
 
-### Tunnel config (`~/.cloudflared/config.yml` on LXC)
+### Tunnel config (`~/.cloudflared/config.yml`)
 ```yaml
 tunnel: <tunnel-id>
 credentials-file: /root/.cloudflared/<tunnel-id>.json
@@ -68,7 +49,7 @@ ingress:
   - service: http_status:404
 ```
 
-### DNS (run once to register routes)
+### Register DNS routes (one-time)
 ```bash
 cloudflared tunnel route dns bangerbingo bangerbingo.net
 cloudflared tunnel route dns bangerbingo pre.bangerbingo.net
@@ -81,7 +62,7 @@ systemctl enable cloudflared
 systemctl start cloudflared
 ```
 
-**WebSocket note**: Cloudflare Tunnel passes `Connection: Upgrade` headers natively. No extra proxy config needed for WebSockets.
+**WebSocket note**: Cloudflare Tunnel passes `Connection: Upgrade` headers natively. No extra config needed.
 
 ---
 
@@ -126,7 +107,7 @@ DATABASE_PATH=./bangerbingo.db
 | Staging | `https://pre.bangerbingo.net/auth/callback` | 3001 | production | `/app/data/bangerbingo.db` |
 | Prod | `https://bangerbingo.net/auth/callback` | 3000 | production | `/app/data/bangerbingo.db` |
 
-Actual `.env.staging` and `.env.prod` files live on the LXC only, never in the repo.
+Actual `.env.staging` and `.env.prod` files live on the server only, never in the repo.
 
 ---
 
@@ -185,22 +166,21 @@ npm run build
 # outputs: dist/client/ (static assets) + dist/server/ (node entrypoint)
 ```
 
-### Deploy staging (on LXC)
+### Deploy staging
 ```bash
 git pull
 npm run build
 docker compose -f docker-compose.staging.yml up -d --build
 ```
 
-### Deploy prod (on LXC)
+### Deploy prod
 ```bash
 git pull
 npm run build
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-### SQLite persistence
-`DATABASE_PATH` env var is read in `src/server/db.ts`. For staging/prod it points to `/app/data/bangerbingo.db` — inside the named Docker volume, so the database survives container rebuilds.
+`DATABASE_PATH` points to `/app/data/bangerbingo.db` in staging/prod — inside the named Docker volume, so the database survives container rebuilds.
 
 ---
 
@@ -223,49 +203,43 @@ cloudflared tunnel --url http://127.0.0.1:5173
 
 ---
 
-## Automation (Ansible)
+## Philip's Setup: Proxmox + Ansible
 
-Infrastructure setup is scripted via Ansible (separate repo). The process is phased — not all steps are automatable without manual prerequisites in the middle.
+_This is one way to run the above. Skip if deploying elsewhere._
 
-### Phase 1 — Ansible (initial provisioning)
+**Infrastructure**: Dedicated Debian 12 LXC container on a Proxmox hypervisor (1 vCPU, 1GB RAM, 4GB disk). Isolated from existing services on the host. cloudflared runs natively in the LXC; the app runs in Docker inside it.
+
+**Automation**: Infrastructure is managed via Ansible (separate repo). The process is phased because `cloudflared tunnel login/create` requires a one-time interactive browser step.
+
+### Phase 1 — Ansible (provision)
 - Create LXC on Proxmox (`community.general.proxmox`)
-- Install Node 22 + git + Docker + cloudflared
+- Install Docker + cloudflared
 
 ### Phase 2 — Manual (one-time, on the LXC)
-- `cloudflared tunnel login` — browser OAuth; produces a credentials JSON file
-- `cloudflared tunnel create bangerbingo` — produces the tunnel ID
-- Store credentials file in Ansible vault; record tunnel ID in Ansible vars
+- `cloudflared tunnel login` + `cloudflared tunnel create bangerbingo`
+- Store credentials JSON in Ansible vault; record tunnel ID in Ansible vars
 
 ### Phase 3 — Ansible (configure + deploy)
-- Template `~/.cloudflared/config.yml` from vault credentials + tunnel ID var
+- Template `~/.cloudflared/config.yml` from vault + vars
 - Enable + start cloudflared systemd service
 - Register DNS routes via Cloudflare API
-- Deploy app: git clone + build + docker compose up
-
-### What stays manual (not worth scripting)
-- Spotify redirect URIs — no Spotify API for Dev Mode app management
-- Cloudflare Access policy — configure once in Zero Trust dashboard
+- First app deploy via docker compose
 
 ---
 
 ## Epic 6 Pre-Deploy Checklist
 
-**Ansible phase 1 (provisioning)**
-- [ ] Run Ansible: create LXC, install Node 22 + git + Docker + cloudflared
+**Server provisioning**
+- [ ] Provision server (or: run Ansible phase 1 — create LXC, install Docker + cloudflared)
 
-**Manual (on the LXC)**
-- [ ] `cloudflared tunnel login` (browser OAuth)
-- [ ] `cloudflared tunnel create bangerbingo` — note the tunnel ID
-- [ ] Add credentials file to Ansible vault; set tunnel ID in Ansible vars
+**One-time manual steps**
+- [ ] `cloudflared tunnel login` + `cloudflared tunnel create bangerbingo`
 - [ ] Register Spotify redirect URIs in Spotify app dashboard (all three)
 
-**Ansible phase 2 (configure + deploy)**
-- [ ] Run Ansible: deploy cloudflared config, start service, register DNS routes
-- [ ] Run Ansible: first app deploy (docker compose up)
-
-**Manual (Cloudflare dashboard)**
+**Configure + deploy**
+- [ ] Deploy cloudflared config, start service, register DNS routes
 - [ ] Set up Cloudflare Access policy for `pre.bangerbingo.net`
-- [ ] Create `.env.staging` and `.env.prod` on LXC
+- [ ] Create `.env.staging` and `.env.prod` on server
 
 **Code changes (Epic 6 stories)**
 - [ ] Fix `getPlaylistTracks()` URL: `/tracks` → `/items` (src/server/music/spotify.ts:82)
