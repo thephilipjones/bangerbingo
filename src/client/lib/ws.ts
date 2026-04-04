@@ -1,7 +1,77 @@
+import type { MeResponse } from './api.ts'
+
+export type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'lobby' | 'roundconfig' | 'room'
+
+/** Pure routing function — determines which page to show on app load. */
+export function determineInitialPage(
+  me: MeResponse | null,
+  pathname: string
+): { page: Page; prefillCode?: string } {
+  const roomMatch = pathname.match(/^\/room\/([A-Za-z]{4})$/)
+  if (me) return { page: 'dashboard' }
+  if (roomMatch) return { page: 'join', prefillCode: sanitizeCode(roomMatch[1]) }
+  return { page: 'login' }
+}
+
+/** Applies a player:joined / player:left WS event to an existing player list. */
+export function applyPlayerEvent(
+  players: string[],
+  event: { type: string; name: string }
+): string[] {
+  if (event.type === 'player:joined') return [...players, event.name]
+  if (event.type === 'player:left') return players.filter((p) => p !== event.name)
+  return players
+}
+
+/** Writes the room code to the clipboard. */
+export async function copyRoomCode(code: string): Promise<void> {
+  await navigator.clipboard.writeText(code)
+}
+
+export interface HostHandlers {
+  onConnect(players: string[]): void
+  onPlayerJoined(name: string): void
+  onPlayerLeft(name: string): void
+  onAuthDegraded(): void
+  onDisconnected(): void
+}
+
+export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsUrl = `${wsProtocol}//${window.location.host}/ws?code=${encodeURIComponent(code)}`
+  const ws = new WebSocket(wsUrl)
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      if (data.type === 'session:connect') {
+        handlers.onConnect(data.players ?? [])
+      } else if (data.type === 'player:joined') {
+        handlers.onPlayerJoined(data.name)
+      } else if (data.type === 'player:left') {
+        handlers.onPlayerLeft(data.name)
+      } else if (data.type === 'auth:degraded') {
+        handlers.onAuthDegraded()
+      }
+    } catch {
+      // ignore unparseable messages
+    }
+  }
+
+  ws.onerror = () => handlers.onDisconnected()
+  ws.onclose = (event) => {
+    if (event.code !== 1000) handlers.onDisconnected()
+  }
+
+  return ws
+}
+
 export interface GuestHandlers {
   onConnect(role: string, players: string[]): void
   onError(message: string): void
   onMessage(event: { data: string }): void
+  onHostDisconnected?(): void
+  onHostReconnected?(): void
 }
 
 export function sanitizeCode(raw: string): string {
@@ -46,6 +116,10 @@ export function connectAsGuest(name: string, code: string, handlers: GuestHandle
       if (data.type === 'session:connect') {
         sessionConnected = true
         handlers.onConnect(data.role, data.players ?? [])
+      } else if (data.type === 'host:disconnected') {
+        handlers.onHostDisconnected?.()
+      } else if (data.type === 'host:reconnected') {
+        handlers.onHostReconnected?.()
       } else {
         handlers.onMessage(event)
       }

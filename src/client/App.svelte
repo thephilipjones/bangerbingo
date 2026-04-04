@@ -3,38 +3,42 @@
   import LoginPage from './pages/LoginPage.svelte'
   import JoinPage from './pages/JoinPage.svelte'
   import RoomPage from './pages/RoomPage.svelte'
+  import DashboardPage from './pages/DashboardPage.svelte'
+  import LobbyPage from './pages/LobbyPage.svelte'
+  import RoundConfigPage from './pages/RoundConfigPage.svelte'
   import { getMe } from './lib/api.ts'
-  import { sanitizeCode } from './lib/ws.ts'
-
-  type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'room'
+  import { determineInitialPage, type Page } from './lib/ws.ts'
 
   let page: Page = $state('loading')
   let prefillCode = $state('')
   let guestName = $state('')
+  let guestRoomCode = $state('')
+  let currentRoomCode = $state('')
 
   onMount(async () => {
-    const path = window.location.pathname
-    const roomMatch = path.match(/^\/room\/([A-Za-z]{4})$/)
-
     const me = await getMe().catch(() => null)
-
-    if (me) {
-      page = 'dashboard'
-    } else if (roomMatch) {
-      prefillCode = sanitizeCode(roomMatch[1])
-      page = 'join'
-    } else {
-      page = 'join'
-    }
+    const result = determineInitialPage(me, window.location.pathname)
+    prefillCode = result.prefillCode ?? ''
+    page = result.page
   })
 
   function handleAuthenticated() {
     page = 'dashboard'
   }
 
-  function handleJoined(name: string, _role: string, _players: string[]) {
+  function handleJoined(name: string, _role: string, _players: string[], code: string) {
     guestName = name
+    guestRoomCode = code
     page = 'room'
+  }
+
+  function handleEnterLobby(code: string) {
+    currentRoomCode = code
+    page = 'lobby'
+  }
+
+  function handleConfigureRound() {
+    page = 'roundconfig'
   }
 </script>
 
@@ -45,11 +49,13 @@
 {:else if page === 'join'}
   <JoinPage {prefillCode} onJoined={handleJoined} />
 {:else if page === 'dashboard'}
-  <div class="dashboard">
-    <h1>Dashboard (coming soon)</h1>
-  </div>
+  <DashboardPage onEnterLobby={handleEnterLobby} />
+{:else if page === 'lobby'}
+  <LobbyPage code={currentRoomCode} onConfigureRound={handleConfigureRound} />
+{:else if page === 'roundconfig'}
+  <RoundConfigPage code={currentRoomCode} />
 {:else if page === 'room'}
-  <RoomPage name={guestName} />
+  <RoomPage name={guestName} code={guestRoomCode} />
 {/if}
 
 <style>
@@ -62,13 +68,5 @@
   :global(body) {
     background: #121212;
     color: #fff;
-  }
-
-  .dashboard {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    font-family: sans-serif;
   }
 </style>

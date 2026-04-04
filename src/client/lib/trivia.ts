@@ -1,0 +1,61 @@
+export const TRIVIA_FACTS: string[] = [
+  'The Beatles have sold over 600 million records worldwide — more than any other artist.',
+  "Michael Jackson's 'Thriller' is the best-selling album of all time with over 70 million copies sold.",
+  "Queen's 'Bohemian Rhapsody' spent nine weeks at number one in the UK when first released in 1975.",
+  'The guitar has existed in some form for over 4,000 years, tracing back to ancient Mesopotamia.',
+  'Stevie Wonder was signed to Motown Records at age 11 and had his first top 40 hit at 12.',
+  "Beyoncé's 'Lemonade' (2016) became the fastest-selling album in iTunes history at the time.",
+  "The word 'jazz' first appeared in print in 1913 in the San Francisco Bulletin.",
+  "Led Zeppelin's 'Stairway to Heaven' is one of the most-requested songs in radio history despite never being released as a single.",
+  "Elton John has written a new song every day for over 50 years — he estimates he has thousands of unrecorded demos.",
+  "Whitney Houston's version of 'I Will Always Love You' spent 14 weeks at number one in the US.",
+  "Mariah Carey's 'All I Want for Christmas Is You' re-enters the charts every December and first hit number one on the Billboard Hot 100 in 2019 — 25 years after its release.",
+  "The London Symphony Orchestra has recorded the music for more Hollywood blockbusters than any other orchestra.",
+  "AC/DC's 'Back in Black' is the second best-selling album of all time, after 'Thriller'.",
+  "David Bowie created 27 studio albums spanning five decades, constantly reinventing his sound.",
+  'Jimi Hendrix was largely self-taught and could not read music.',
+  "The 'Happy Birthday to You' song was composed in 1893 and was in copyright until 2016.",
+  "Pink Floyd's 'Dark Side of the Moon' remained on the Billboard 200 chart for a record 937 weeks.",
+  "Adele's '21' is the best-selling album of the 21st century so far in the UK.",
+  'Elvis Presley never performed outside North America after his famous 1973 Aloha from Hawaii concert.',
+  "The Rolling Stones took their name from a Muddy Waters song: 'Rollin' Stone'.",
+  "Prince recorded and released 39 studio albums in his lifetime — but reportedly had hundreds more in his famous vault.",
+  "Daft Punk recorded 'Get Lucky' in just one take.",
+  "The theremin — played without being touched — was invented by Russian physicist Léon Theremin in 1920.",
+  "Celine Dion was the first Canadian artist to have a gold record in France.",
+  "ABBA turned down a $1 billion offer to reunite for a world tour in 2000.",
+  'The first music video to be played on MTV was "Video Killed the Radio Star" by The Buggles on 1 August 1981.',
+  "Eminem holds the Guinness World Record for most words in a hit single: 1,560 words in 'Rap God'.",
+  "The harmonica is the world's best-selling musical instrument.",
+  "Nirvana's 'Nevermind' knocked Michael Jackson's 'Dangerous' off the top of the Billboard chart in 1992.",
+  "Taylor Swift re-recorded her first six albums to reclaim ownership of her master recordings.",
+  "Freddie Mercury wrote 'Crazy Little Thing Called Love' in the bath — and recorded it the same day.",
+  'The steel drum was invented in Trinidad in the 1930s and is the only acoustic instrument invented in the 20th century.',
+  "Frank Sinatra's 'My Way' has been covered more than any other song in history.",
+  "Bruce Springsteen performed a four-hour concert in Helsinki in 2012 — one of the longest rock sets on record.",
+  "Radiohead made 'In Rainbows' available on a pay-what-you-want basis in 2007 — and made more money than from their previous album.",
+  "The first ever Grammy Award for Best Rap Album was given to DJ Jazzy Jeff & The Fresh Prince in 1989.",
+  "Dolly Parton wrote 'I Will Always Love You' and 'Jolene' on the same day.",
+  "Bob Dylan was the first musician to win the Nobel Prize in Literature, awarded in 2016.",
+  "The Grateful Dead performed over 2,300 live concerts — more than almost any other rock band.",
+  "Aretha Franklin was the first woman inducted into the Rock and Roll Hall of Fame in 1987.",
+  "The bass line of 'Under Pressure' by Queen and David Bowie was so recognizable that Vanilla Ice sampled it — and claimed it was different because he added a note.",
+  "The theremin was used to create the eerie sounds in the original 'Star Trek' theme.",
+  "Chuck Berry's 'Johnny B. Goode' was included on the Voyager Golden Record launched into space in 1977.",
+  "The record for the most number one singles in the UK belongs to Elvis Presley with 21.",
+  "Motown was founded by Berry Gordy Jr. with an $800 loan from his family in 1959.",
+  "Kate Bush was the first woman to debut at number one in the UK charts with her first single, 'Wuthering Heights' (1978).",
+  "Kendrick Lamar's 'DAMN.' became the first hip-hop album to win the Pulitzer Prize for Music in 2018.",
+  "The average pop song is 3 minutes 30 seconds — a standard set by the original 78 rpm vinyl format.",
+  "Amy Winehouse's 'Back to Black' is one of the best-selling albums in UK chart history.",
+  "The longest commercially released song is 'The Devil Glitch' by Chris Butler, clocking in at 69 minutes.",
+]
+
+/** Fisher-Yates in-place shuffle; returns the same array for chaining. */
+export function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
