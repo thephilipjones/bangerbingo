@@ -8,6 +8,14 @@ import { refreshWithRetry, isHostDegraded } from './refresh.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { buildPool, generateCards } from './game/cards.ts'
 
+// ── Win detection ─────────────────────────────────────────────────────────
+
+const WIN_LINES: number[][] = [
+  [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24], // rows
+  [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24], // cols
+  [0,6,12,18,24], [4,8,12,16,20], // diagonals
+]
+
 // ── Song scheduling constants and helpers ─────────────────────────────────
 
 const SEEK_POSITION_MS = 60_000  // Fixed chorus-position offset for MVP (validated in Epic 2 spike)
@@ -390,6 +398,69 @@ roomsRouter.post('/rooms/:code/round/end', requireAuth, (ctx) => {
   clearRoundTimers(round)
   roomState!.currentRound = undefined
   broadcast(code, { type: 'round:end' })
+
+  return ctx.json({})
+})
+
+roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+
+  const roomState = roomSockets.get(code)
+  const round = roomState?.currentRound
+  if (!roomState || !round) return ctx.json({ message: 'No active round' }, 404)
+
+  if (!round.active || round.ended) return ctx.json({ message: 'Round already ended' }, 409)
+
+  // Set ended optimistically before any await to close the race window
+  round.ended = true
+
+  const body = await ctx.req.json().catch(() => null)
+  if (!body || typeof body.playerName !== 'string' || !Array.isArray(body.claimedTileIds) ||
+      !body.claimedTileIds.every((id: unknown) => typeof id === 'string')) {
+    round.ended = false
+    return ctx.json({ message: 'Invalid request body' }, 400)
+  }
+
+  const { playerName, claimedTileIds } = body as { playerName: string; claimedTileIds: string[] }
+
+  const card = round.cards.get(playerName)
+  if (!card) { round.ended = false; return ctx.json({ message: 'Player card not found' }, 422) }
+
+  const effectiveId = (tile: { free?: boolean; trackId: string }) => tile.free ? 'FREE' : tile.trackId
+
+  // All claimed IDs must be present on the player's card
+  const allOnCard = claimedTileIds.every(id => card.some(t => effectiveId(t) === id))
+  if (!allOnCard) { round.ended = false; return ctx.json({ message: 'Claimed tile not on player card' }, 422) }
+
+  // Non-FREE claimed IDs must all be in song history (i.e. have been played)
+  const nonFree = claimedTileIds.filter(id => id !== 'FREE')
+  const allPlayed = nonFree.every(id => round.songHistory.some(e => e.trackId === id))
+  if (!allPlayed) { round.ended = false; return ctx.json({ message: 'Claimed tile has not been played' }, 422) }
+
+  // At least one complete WIN_LINE must exist in claimed set
+  const claimedSet = new Set(claimedTileIds)
+  let winningTileIds: string[] | null = null
+  for (const line of WIN_LINES) {
+    const lineIds = line.map(i => effectiveId(card[i]))
+    if (lineIds.every(id => claimedSet.has(id))) {
+      winningTileIds = lineIds
+      break
+    }
+  }
+  if (!winningTileIds) { round.ended = false; return ctx.json({ message: 'No complete winning line in claimed tiles' }, 422) }
+
+  clearRoundTimers(round)
+  round.active = false
+
+  broadcast(code, {
+    type: 'round:win',
+    winnerName: playerName,
+    winningTileIds,
+    songHistory: round.songHistory,
+  })
 
   return ctx.json({})
 })

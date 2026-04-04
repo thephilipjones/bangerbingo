@@ -3,6 +3,7 @@
   import BingoCard from '../components/BingoCard.svelte'
   import HostControlsPanel from '../components/HostControlsPanel.svelte'
   import SdkFailureBanner from '../components/SdkFailureBanner.svelte'
+  import WinOverlay from '../components/WinOverlay.svelte'
   import {
     initTiles,
     applyMask,
@@ -16,6 +17,12 @@
 
   let { code, onRoundEnded }: { code: string; onRoundEnded: () => void } = $props()
 
+  type WinData = {
+    winnerName: string
+    winningTileIds: string[]
+    songHistory: Array<{ trackId: string; title: string; artist: string; albumArtUrl: string; songIndex: number }>
+  }
+
   let tiles = $state<ClientTile[]>([])
   let statusLine = $state('Waiting for round to start…')
   let roundConfig = $state<{ titleRevealDelay: TitleRevealDelay } | null>(null)
@@ -27,6 +34,7 @@
   let sdkReady = $state(false)
   let sdkFailed = $state(false)
   let currentTrackId = $state<string | null>(null)
+  let winData = $state<WinData | null>(null)
   let revealTimer: ReturnType<typeof setTimeout> | undefined
   let ws: WebSocket
   let player: Spotify.Player | undefined
@@ -103,6 +111,7 @@
           roundConfig = { titleRevealDelay: data.titleRevealDelay }
           statusLine = 'Waiting for next song…'
           isPlaying = false
+          winData = null
         } else if (data.type === 'song:start') {
           if (roundConfig) {
             tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
@@ -122,6 +131,8 @@
           isPlaying = false
         } else if (data.type === 'round:win') {
           tiles = applyWinPath(tiles, data.winningTileIds)
+          isPlaying = false
+          winData = { winnerName: data.winnerName, winningTileIds: data.winningTileIds, songHistory: data.songHistory }
         } else if (data.type === 'round:end') {
           onRoundEnded()
         } else if (data.type === 'player:joined' || data.type === 'player:left') {
@@ -153,6 +164,16 @@
 
 {#if sdkFailed}
   <SdkFailureBanner trackId={currentTrackId} />
+{/if}
+
+{#if winData !== null}
+  <WinOverlay
+    winnerName={winData.winnerName}
+    winningSongs={winData.songHistory.filter(e => winData.winningTileIds.includes(e.trackId))}
+    isHost={true}
+    onStartNextRound={onRoundEnded}
+    onDismiss={() => { winData = null }}
+  />
 {/if}
 
 <div class="host-game">

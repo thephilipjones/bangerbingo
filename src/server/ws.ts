@@ -38,6 +38,7 @@ export interface RoundState {
   currentSongIndex: number        // -1 = round not yet started
   songHistory: SongHistoryEntry[] // append-only; used by 5-5 win validation + 5-6 drawer
   paused: boolean                 // true after /pause; cleared on /play
+  ended?: boolean                 // true after a valid win claim
   timers: {
     autoAdvance?: ReturnType<typeof setTimeout>
     reveal?: ReturnType<typeof setTimeout>

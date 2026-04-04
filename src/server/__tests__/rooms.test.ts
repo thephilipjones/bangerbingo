@@ -4,6 +4,7 @@ import WebSocket from 'ws'
 import { initDb, upsertHost, createRoom } from '../db.ts'
 import type { RoundState, ClipDuration, TitleRevealDelay } from '../ws.ts'
 import type { Track } from '../music/spotify.ts'
+import type { Tile } from '../game/cards.ts'
 
 // Must set env vars before importing config/auth/rooms
 vi.stubEnv('SPOTIFY_CLIENT_ID', 'test_client_id')
@@ -1148,5 +1149,160 @@ describe('POST /api/rooms/:code/sdk/device', () => {
       body: JSON.stringify({ deviceId: 'abc123' }),
     })
     expect(res.status).toBe(503)
+  })
+})
+
+// ── POST /api/rooms/:code/round/claim ─────────────────────────────────────
+
+function makeCard(winTracks: Track[]): Tile[] {
+  const card: Tile[] = winTracks.map(t => ({
+    trackId: t.id,
+    title: t.title,
+    artist: t.artist,
+    albumArtUrl: t.albumArtUrl,
+  }))
+  // Fill remaining 20 slots with non-win tiles
+  for (let i = 5; i < 25; i++) {
+    card.push({ trackId: `other${i}`, title: `Other${i}`, artist: 'A', albumArtUrl: '' })
+  }
+  // Override index 12 with free tile
+  card[12] = { trackId: '', title: '', artist: '', albumArtUrl: '', free: true }
+  return card
+}
+
+describe('POST /api/rooms/:code/round/claim', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+  })
+
+  it('200 — valid claim broadcasts round:win and ends round', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+
+    const winTracks = makeTracksLocal(5)
+    const card = makeCard(winTracks)
+    round.cards.set('Alice', card)
+    winTracks.forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i })
+    )
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice', claimedTileIds: winTracks.map(t => t.id) }),
+    })
+    expect(res.status).toBe(200)
+    expect(round.active).toBe(false)
+    expect(round.ended).toBe(true)
+    expect(sent).toHaveLength(1)
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('round:win')
+    expect(msg.winnerName).toBe('Alice')
+    expect(msg.winningTileIds).toHaveLength(5)
+  })
+
+  it('422 — claimed tile not on player card', async () => {
+    seedHost()
+    await seedRoom()
+    const round = seedActiveRound()
+
+    const winTracks = makeTracksLocal(5)
+    const card = makeCard(winTracks)
+    round.cards.set('Alice', card)
+    winTracks.forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i })
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice', claimedTileIds: ['not_on_card_id', ...winTracks.slice(1).map(t => t.id)] }),
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it('422 — claimed tile not in songHistory (not yet played)', async () => {
+    seedHost()
+    await seedRoom()
+    const round = seedActiveRound()
+
+    const winTracks = makeTracksLocal(5)
+    const card = makeCard(winTracks)
+    round.cards.set('Alice', card)
+    // Only add 4 of the 5 tracks to history
+    winTracks.slice(0, 4).forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i })
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice', claimedTileIds: winTracks.map(t => t.id) }),
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it('422 — no complete winning line in claimed set', async () => {
+    seedHost()
+    await seedRoom()
+    const round = seedActiveRound()
+
+    // Build card with positions 0-4, but only claim 4 of them (no complete line)
+    const winTracks = makeTracksLocal(5)
+    const card = makeCard(winTracks)
+    round.cards.set('Alice', card)
+    winTracks.forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i })
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Only 4 of the first row — no complete line
+      body: JSON.stringify({ playerName: 'Alice', claimedTileIds: winTracks.slice(0, 4).map(t => t.id) }),
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it('409 — second claim after round already won', async () => {
+    seedHost()
+    await seedRoom()
+    const round = seedActiveRound()
+
+    const winTracks = makeTracksLocal(5)
+    const card = makeCard(winTracks)
+    round.cards.set('Alice', card)
+    winTracks.forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i })
+    )
+
+    const sent: string[] = []
+    const roomState = roomSockets.get('ABCD')!
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const claimBody = JSON.stringify({ playerName: 'Alice', claimedTileIds: winTracks.map(t => t.id) })
+    const headers = { 'Content-Type': 'application/json' }
+
+    // First claim succeeds
+    const res1 = await app.request('/api/rooms/ABCD/round/claim', { method: 'POST', headers, body: claimBody })
+    expect(res1.status).toBe(200)
+
+    // Second claim returns 409
+    const res2 = await app.request('/api/rooms/ABCD/round/claim', { method: 'POST', headers, body: claimBody })
+    expect(res2.status).toBe(409)
+
+    // Only one round:win broadcast
+    expect(sent.filter(m => JSON.parse(m).type === 'round:win')).toHaveLength(1)
   })
 })

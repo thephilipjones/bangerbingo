@@ -66,7 +66,7 @@
 {:else if page === 'roundconfig'}
   <RoundConfigPage code={currentRoomCode} onRoundStarted={handleRoundStarted} />
 {:else if page === 'room'}
-  <RoomPage name={guestName} ws={guestWs!} />
+  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} />
 {:else if page === 'hostroom'}
   <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} />
 {/if}
