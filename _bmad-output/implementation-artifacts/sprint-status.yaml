@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-03  # 3-1-room-creation-api → done
+last_updated: 2026-04-03  # 3-2-websocket-room-session-and-player-presence → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -56,7 +56,7 @@ development_status:
   # Epic 3: Server Skeleton + Room Model
   epic-3: in-progress
   3-1-room-creation-api-and-code-generation: done
-  3-2-websocket-room-session-and-player-presence: ready-for-dev
+  3-2-websocket-room-session-and-player-presence: done
   3-3-guest-join-screen: ready-for-dev
   3-4-login-and-lobby-screens: ready-for-dev
   3-5-host-disconnect-and-reconnect: ready-for-dev
