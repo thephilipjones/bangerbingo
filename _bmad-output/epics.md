@@ -118,9 +118,12 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 *Depends on Epic 5.*
 
-- Railway or Hetzner VPS setup
-- Environment config (Spotify client ID/secret, session secret, allowed origins)
-- SQLite volume mount for persistence across deploys
+- Proxmox LXC + Docker setup (bangerbingo.net / pre.bangerbingo.net via Cloudflare Tunnel)
+- Environment config (.env.prod / .env.staging — Spotify Client ID/secret, redirect URI, session secret, DATABASE_PATH)
+- Fix `/playlists/{id}/items` Spotify endpoint rename in `getPlaylistTracks()` (src/server/music/spotify.ts:82)
+- Fix `SpotifySearchResponse` type: `tracks` → `items` field rename (src/server/music/spotify.ts:33)
+- Make SQLite path env-configurable in src/server/db.ts (DATABASE_PATH var)
+- SQLite Docker volume mount for persistence across deploys
 - Token refresh failure end-to-end test (force expiry, verify retry + degraded mode + re-auth popup)
 - Smoke test: host auth → create room → guest join → round → bingo → next round
 
