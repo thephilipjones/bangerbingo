@@ -5,6 +5,7 @@ import { config } from './config.ts'
 import { initDb } from './db.ts'
 import { authRouter, requireAuth, type AuthEnv } from './auth.ts'
 import { startRefreshScheduler, isHostDegraded } from './refresh.ts'
+import { roomsRouter } from './rooms.ts'
 
 // Init DB at startup (crash fast if it fails)
 initDb()
@@ -14,6 +15,9 @@ const app = new Hono<AuthEnv>()
 
 // Auth routes
 app.route('/auth', authRouter)
+
+// Room routes
+app.route('/api', roomsRouter)
 
 // Protected API routes
 app.get('/api/me', requireAuth, (ctx) => {

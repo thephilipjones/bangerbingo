@@ -9,10 +9,17 @@ export interface Host {
   token_expires_at: number
 }
 
+export interface Room {
+  code: string
+  host_user_id: string
+  created_at: number // Unix ms timestamp
+}
+
 let db: Database.Database
 
 export function initDb(dbPath = './bangerbingo.db'): void {
   db = new Database(dbPath)
+  db.pragma('foreign_keys = ON')
   db.exec(`
     CREATE TABLE IF NOT EXISTS hosts (
       user_id TEXT PRIMARY KEY,
@@ -21,6 +28,11 @@ export function initDb(dbPath = './bangerbingo.db'): void {
       access_token TEXT NOT NULL,
       refresh_token TEXT NOT NULL,
       token_expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS rooms (
+      code TEXT PRIMARY KEY,
+      host_user_id TEXT NOT NULL REFERENCES hosts(user_id),
+      created_at INTEGER NOT NULL
     )
   `)
 }
@@ -64,4 +76,18 @@ export function getAllHosts(): Host[] {
 
 export function getDb(): Database.Database {
   return db
+}
+
+export function createRoom(code: string, hostUserId: string): Room {
+  const created_at = Date.now()
+  db.prepare('INSERT INTO rooms (code, host_user_id, created_at) VALUES (?, ?, ?)').run(code, hostUserId, created_at)
+  return { code, host_user_id: hostUserId, created_at }
+}
+
+export function getRoomsByHost(hostUserId: string): Room[] {
+  return db.prepare('SELECT * FROM rooms WHERE host_user_id = ? ORDER BY created_at DESC').all(hostUserId) as Room[]
+}
+
+export function getRoomByCode(code: string): Room | undefined {
+  return db.prepare('SELECT * FROM rooms WHERE code = ?').get(code) as Room | undefined
 }
