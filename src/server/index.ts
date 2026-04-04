@@ -6,6 +6,7 @@ import { initDb } from './db.ts'
 import { authRouter, requireAuth, type AuthEnv } from './auth.ts'
 import { startRefreshScheduler, isHostDegraded } from './refresh.ts'
 import { roomsRouter } from './rooms.ts'
+import { musicRouter } from './music/router.ts'
 import { setupWebSocketServer } from './ws.ts'
 
 // Init DB at startup (crash fast if it fails)
@@ -19,6 +20,9 @@ app.route('/auth', authRouter)
 
 // Room routes
 app.route('/api', roomsRouter)
+
+// Music routes
+app.route('/api', musicRouter)
 
 // Protected API routes
 app.get('/api/me', requireAuth, (ctx) => {
