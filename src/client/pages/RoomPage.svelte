@@ -50,6 +50,10 @@
           statusLine = 'Waiting for next song…'
         } else if (data.type === 'round:win') {
           tiles = applyWinPath(tiles, data.winningTileIds)
+        } else if (data.type === 'round:end') {
+          tiles = []
+          statusLine = 'Waiting for the host to start a round...'
+          roundConfig = null
         }
       } catch {
         // ignore unparseable messages

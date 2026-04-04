@@ -6,6 +6,7 @@
   import DashboardPage from './pages/DashboardPage.svelte'
   import LobbyPage from './pages/LobbyPage.svelte'
   import RoundConfigPage from './pages/RoundConfigPage.svelte'
+  import HostRoomPage from './pages/HostRoomPage.svelte'
   import { getMe } from './lib/api.ts'
   import { determineInitialPage, type Page } from './lib/ws.ts'
 
@@ -44,6 +45,10 @@
   }
 
   function handleRoundStarted() {
+    page = 'hostroom'
+  }
+
+  function handleRoundEnded() {
     page = 'lobby'
   }
 </script>
@@ -62,6 +67,8 @@
   <RoundConfigPage code={currentRoomCode} onRoundStarted={handleRoundStarted} />
 {:else if page === 'room'}
   <RoomPage name={guestName} ws={guestWs!} />
+{:else if page === 'hostroom'}
+  <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} />
 {/if}
 
 <style>
