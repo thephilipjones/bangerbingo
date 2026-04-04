@@ -17,12 +17,14 @@
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "better-sqlite3": "^11.9.1",
-    "hono": "^4.7.5"
+    "hono": "^4.7.5",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.13.17",
+    "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
     "svelte": "^5.25.3",
     "tsx": "^4.19.3",

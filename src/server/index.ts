@@ -6,6 +6,7 @@ import { initDb } from './db.ts'
 import { authRouter, requireAuth, type AuthEnv } from './auth.ts'
 import { startRefreshScheduler, isHostDegraded } from './refresh.ts'
 import { roomsRouter } from './rooms.ts'
+import { setupWebSocketServer } from './ws.ts'
 
 // Init DB at startup (crash fast if it fails)
 initDb()
@@ -36,9 +37,10 @@ if (config.isProduction) {
 }
 
 if (config.nodeEnv !== 'test') {
-  serve({ fetch: app.fetch, port: config.port }, () => {
+  const httpServer = serve({ fetch: app.fetch, port: config.port }, () => {
     console.log(`bangerbingo server running on http://127.0.0.1:${config.port}`)
   })
+  setupWebSocketServer(httpServer)
 }
 
 export { app }
