@@ -1,9 +1,27 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import BingoCard from '../components/BingoCard.svelte'
+  import {
+    initTiles,
+    applyMask,
+    startReveal,
+    finishReveal,
+    toggleMark,
+    applyWinPath,
+  } from '../lib/bingo.ts'
+  import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
 
   let { name, ws }: { name: string; ws: WebSocket } = $props()
 
   let hostDisconnected = $state(false)
+  let tiles = $state<ClientTile[]>([])
+  let statusLine = $state('Waiting for the host to start a round...')
+  let roundConfig = $state<{ titleRevealDelay: TitleRevealDelay } | null>(null)
+  let revealTimer: ReturnType<typeof setTimeout> | undefined
+
+  function handleTileClick(index: number) {
+    tiles = toggleMark(tiles, index)
+  }
 
   onMount(() => {
     ws.onmessage = (event) => {
@@ -13,6 +31,25 @@
           hostDisconnected = true
         } else if (data.type === 'host:reconnected') {
           hostDisconnected = false
+        } else if (data.type === 'round:start') {
+          tiles = initTiles(data.card)
+          roundConfig = { titleRevealDelay: data.titleRevealDelay }
+          statusLine = 'Waiting for next song…'
+        } else if (data.type === 'song:start') {
+          if (roundConfig) {
+            tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
+          }
+          statusLine = `Song ${data.songIndex + 1} of this round`
+        } else if (data.type === 'song:reveal') {
+          tiles = startReveal(tiles, data.trackId)
+          clearTimeout(revealTimer)
+          revealTimer = setTimeout(() => {
+            tiles = finishReveal(tiles, data.trackId)
+          }, 300)
+        } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
+          statusLine = 'Waiting for next song…'
+        } else if (data.type === 'round:win') {
+          tiles = applyWinPath(tiles, data.winningTileIds)
         }
       } catch {
         // ignore unparseable messages
@@ -21,6 +58,7 @@
   })
 
   onDestroy(() => {
+    clearTimeout(revealTimer)
     ws.close()
   })
 </script>
@@ -31,7 +69,12 @@
   </div>
 {/if}
 <main class="room-page">
-  <p>Welcome, {name}! Waiting for the host to start a round...</p>
+  {#if tiles.length > 0}
+    <BingoCard {tiles} onTileClick={handleTileClick} />
+    <p class="status-line" role="status">{statusLine}</p>
+  {:else}
+    <p role="status">{statusLine}</p>
+  {/if}
 </main>
 
 <style>
@@ -51,9 +94,19 @@
 
   .room-page {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
     font-family: sans-serif;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+
+  .status-line {
+    margin-top: 12px;
+    font-size: 14px;
+    color: #aaa;
+    text-align: center;
   }
 </style>
