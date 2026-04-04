@@ -33,3 +33,29 @@ export async function createRoom(): Promise<CreateRoomResponse> {
   if (!res.ok) throw new Error(`POST /api/rooms failed: ${res.status}`)
   return res.json()
 }
+
+export interface StartRoundPayload {
+  playlistId: string
+  clipDuration: number | 'full'
+  titleRevealDelay: number | null
+}
+
+export interface StartRoundResponse {
+  roundNumber: number
+  playlistId: string
+  clipDuration: number | 'full'
+  titleRevealDelay: number | null
+}
+
+export async function startRound(code: string, payload: StartRoundPayload): Promise<StartRoundResponse> {
+  const res = await fetch(`/api/rooms/${code}/round`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: 'Request failed' }))
+    throw new Error(err.message ?? 'Request failed')
+  }
+  return res.json()
+}

@@ -4,6 +4,18 @@ import type { Socket } from 'node:net'
 import { authEvents } from './refresh.ts'
 import { getRoomByCode, getHostById } from './db.ts'
 
+// ── Round config types ─────────────────────────────────────────────────────
+
+export type ClipDuration = 20 | 30 | 45 | 60 | 'full'
+export type TitleRevealDelay = 0 | 5 | 10 | 15 | null // null = never
+
+export interface RoundConfig {
+  playlistId: string
+  clipDuration: ClipDuration
+  titleRevealDelay: TitleRevealDelay
+  roundNumber: number
+}
+
 // ── Room state ─────────────────────────────────────────────────────────────
 
 interface RoomState {
@@ -11,6 +23,7 @@ interface RoomState {
   hostUserId: string
   hostHasEverConnected: boolean
   guests: Map<string, WebSocket> // name → socket
+  pendingRound?: RoundConfig
 }
 
 export const roomSockets = new Map<string, RoomState>()

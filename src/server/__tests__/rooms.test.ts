@@ -11,6 +11,7 @@ vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
 const { generateRoomCode, createRoomWithRetry, roomsRouter } = await import('../rooms.ts')
+const { roomSockets } = await import('../ws.ts')
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,13 @@ function makeApp() {
   const app = new Hono()
   app.route('/api', roomsRouter)
   return app
+}
+
+async function seedRoom(hostUserId = 'host_1', code = 'ABCD') {
+  const { getDb } = await import('../db.ts')
+  const db = getDb()
+  db.prepare('INSERT OR IGNORE INTO rooms (code, host_user_id, created_at) VALUES (?, ?, ?)').run(code, hostUserId, Date.now())
+  roomSockets.set(code, { host: null, hostUserId, hostHasEverConnected: false, guests: new Map() })
 }
 
 // ── Code generation ────────────────────────────────────────────────────────
@@ -170,5 +178,137 @@ describe('GET /api/rooms', () => {
     })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual([])
+  })
+})
+
+// ── POST /api/rooms/:code/round ────────────────────────────────────────────
+
+describe('POST /api/rooms/:code/round', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+  })
+
+  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }
+
+  it('returns 401 without a session cookie', async () => {
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 404 when room does not exist', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ZZZZ/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 403 when room belongs to a different host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 400 when playlistId is missing', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 30, titleRevealDelay: 5 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when clipDuration is invalid', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 99, titleRevealDelay: 5 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when titleRevealDelay is invalid', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 99 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 200 with round config on valid payload', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { roundNumber: number; playlistId: string; clipDuration: number; titleRevealDelay: number }
+    expect(body.roundNumber).toBe(1)
+    expect(body.playlistId).toBe('pl_abc')
+    expect(body.clipDuration).toBe(30)
+    expect(body.titleRevealDelay).toBe(5)
+  })
+
+  it('increments roundNumber on second call', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    const res2 = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res2.status).toBe(200)
+    const body = await res2.json() as { roundNumber: number }
+    expect(body.roundNumber).toBe(2)
+  })
+
+  it('accepts clipDuration "full"', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: null }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { clipDuration: string; titleRevealDelay: null }
+    expect(body.clipDuration).toBe('full')
+    expect(body.titleRevealDelay).toBeNull()
   })
 })

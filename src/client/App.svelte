@@ -42,6 +42,10 @@
   function handleConfigureRound() {
     page = 'roundconfig'
   }
+
+  function handleRoundStarted() {
+    page = 'lobby'
+  }
 </script>
 
 {#if page === 'loading'}
@@ -55,7 +59,7 @@
 {:else if page === 'lobby'}
   <LobbyPage code={currentRoomCode} onConfigureRound={handleConfigureRound} />
 {:else if page === 'roundconfig'}
-  <RoundConfigPage code={currentRoomCode} />
+  <RoundConfigPage code={currentRoomCode} onRoundStarted={handleRoundStarted} />
 {:else if page === 'room'}
   <RoomPage name={guestName} ws={guestWs!} />
 {/if}
