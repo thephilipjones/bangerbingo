@@ -63,11 +63,11 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: Bingo Card Generation
-  epic-4: in-progress
+  epic-4: done
   4-1-track-pool-api: done
   4-2-round-configuration-screen: done
   4-3-card-generation-and-round-start: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # Epic 5: Game Loop
   epic-5: backlog
