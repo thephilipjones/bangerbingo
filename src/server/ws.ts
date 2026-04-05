@@ -155,7 +155,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     const activeRound = roomState.currentRound
     if (activeRound?.active) {
       const hostCard = activeRound.cards.get(sessionUserId) ?? []
-      ws.send(JSON.stringify({ ...activeRound.roundStartPayload, card: hostCard }))
+      ws.send(JSON.stringify({ ...activeRound.roundStartPayload, card: hostCard, songHistory: activeRound.songHistory }))
     }
 
     if (isReconnect) {
@@ -212,6 +212,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         ...round.roundStartPayload,
         card: blankCard,
         lateJoin: true,
+        songHistory: round.songHistory,
       }))
     }
 
@@ -234,6 +235,18 @@ authEvents.on('degraded', (userId: string) => {
   const code = getHostRoom(userId)
   if (code) {
     broadcast(code, { type: 'auth:degraded' })
+  }
+})
+
+// ── auth:restored wiring ───────────────────────────────────────────────────
+
+authEvents.on('restored', (userId: string) => {
+  const code = getHostRoom(userId)
+  if (code) {
+    const room = roomSockets.get(code)
+    if (room?.host?.readyState === WebSocket.OPEN) {
+      room.host.send(JSON.stringify({ type: 'auth:restored' }))
+    }
   }
 })
 

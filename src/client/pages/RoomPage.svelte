@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import BingoCard from '../components/BingoCard.svelte'
   import WinOverlay from '../components/WinOverlay.svelte'
+  import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
   import {
     initTiles,
     applyMask,
@@ -20,6 +21,14 @@
     songHistory: Array<{ trackId: string; title: string; artist: string; albumArtUrl: string; songIndex: number }>
   }
 
+  type HistoryEntry = {
+    trackId: string
+    title: string
+    artist: string
+    albumArtUrl: string
+    songIndex: number
+  }
+
   const WIN_LINES: number[][] = [
     [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
     [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
@@ -34,6 +43,8 @@
   let isClaiming = $state(false)
   let winData = $state<WinData | null>(null)
   let roundEnded = $state(false)
+  let songHistory = $state<HistoryEntry[]>([])
+  let showHistory = $state(false)
 
   const hasBingo = $derived(
     tiles.length > 0 &&
@@ -81,11 +92,13 @@
           statusLine = 'Waiting for next song…'
           roundEnded = false
           winData = null
+          songHistory = (data.songHistory ?? []).slice().reverse()
         } else if (data.type === 'song:start') {
           if (roundConfig) {
             tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
           }
           statusLine = `Song ${data.songIndex + 1} of this round`
+          songHistory = [{ trackId: data.trackId, title: data.title, artist: data.artist, albumArtUrl: data.albumArtUrl, songIndex: data.songIndex }, ...songHistory]
         } else if (data.type === 'song:reveal') {
           tiles = startReveal(tiles, data.trackId)
           clearTimeout(revealTimer)
@@ -136,8 +149,15 @@
   />
 {/if}
 
+{#if showHistory}
+  <SongHistoryDrawer entries={songHistory} onClose={() => { showHistory = false }} />
+{/if}
+
 <main class="room-page">
   {#if tiles.length > 0}
+    <div class="card-header">
+      <button class="history-btn" onclick={() => { showHistory = true }}>≡ History</button>
+    </div>
     <BingoCard {tiles} onTileClick={handleTileClick} />
     {#if hasBingo && !isClaiming}
       <button class="bingo-btn" onclick={handleBingoClick}>Bingo!</button>
@@ -203,5 +223,31 @@
     background: #555;
     color: #999;
     cursor: default;
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 8px;
+  }
+
+  .history-btn {
+    background: none;
+    border: 1px solid #444;
+    color: #aaa;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-family: sans-serif;
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .history-btn:hover {
+    color: #fff;
+    border-color: #666;
   }
 </style>

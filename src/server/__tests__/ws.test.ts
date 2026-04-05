@@ -471,6 +471,135 @@ describe('Late-join after round:start', () => {
   })
 })
 
+// ── Late-join songHistory (Story 5-6) ────────────────────────────────────
+
+describe('Late-join includes songHistory', () => {
+  it('guest late-join round:start includes songHistory from active round', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg` }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host.next('session:connect')
+
+    const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+    })
+    expect(roundRes.status).toBe(200)
+    await host.next('round:start')
+
+    // Play a song so songHistory is non-empty
+    const playRes = await honoApp.request('/api/rooms/AAAA/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(playRes.status).toBe(200)
+    await host.next('song:start')
+
+    // Late-joining guest
+    const lateGuest = await connect('/ws?code=AAAA&name=LateAlice')
+    await lateGuest.next('session:connect')
+    const roundMsg = await lateGuest.next('round:start')
+
+    expect(roundMsg.lateJoin).toBe(true)
+    expect(Array.isArray(roundMsg.songHistory)).toBe(true)
+    expect((roundMsg.songHistory as unknown[]).length).toBe(1)
+
+    vi.restoreAllMocks()
+    host.close()
+    lateGuest.close()
+  })
+
+  it('host reconnect mid-round round:start includes songHistory', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg` }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host1 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host1.next('session:connect')
+
+    const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+    })
+    expect(roundRes.status).toBe(200)
+    await host1.next('round:start')
+
+    // Play a song so songHistory is non-empty
+    const playRes = await honoApp.request('/api/rooms/AAAA/round/play', {
+      method: 'POST',
+      headers: { Cookie: 'session=host_1' },
+    })
+    expect(playRes.status).toBe(200)
+    await host1.next('song:start')
+
+    // Host disconnects
+    await new Promise<void>((resolve) => {
+      host1.ws.once('close', () => resolve())
+      host1.close()
+    })
+
+    // Host reconnects
+    const host2 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host2.next('session:connect')
+    const roundMsg = await host2.next('round:start')
+
+    expect(Array.isArray(roundMsg.songHistory)).toBe(true)
+    expect((roundMsg.songHistory as unknown[]).length).toBe(1)
+
+    vi.restoreAllMocks()
+    host2.close()
+  })
+})
+
+// ── auth:restored (Story 5-6) ─────────────────────────────────────────────
+
+describe('auth:restored direct send', () => {
+  it('authEvents restored sends auth:restored only to host (not guests)', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=AAAA&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    const hostRestored = host.next('auth:restored')
+
+    authEvents.emit('restored', 'host_1')
+
+    const msg = await hostRestored
+    expect(msg).toEqual({ type: 'auth:restored' })
+
+    // Alice should NOT receive auth:restored
+    let aliceReceived = false
+    const alicePromise = alice.next('auth:restored').then(() => { aliceReceived = true })
+    await delay(100)
+    expect(aliceReceived).toBe(false)
+    void alicePromise
+
+    host.close()
+    alice.close()
+  })
+})
+
 // ── auth:degraded broadcast (AC: 8) ───────────────────────────────────────
 
 describe('auth:degraded broadcast', () => {

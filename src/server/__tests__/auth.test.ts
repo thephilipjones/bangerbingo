@@ -11,6 +11,7 @@ vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
 const { authRouter, requireAuth } = await import('../auth.ts')
+const { authEvents } = await import('../refresh.ts')
 
 describe('PKCE OAuth routes', () => {
   beforeEach(() => {
@@ -124,6 +125,108 @@ describe('PKCE OAuth routes', () => {
       expect(host!.display_name).toBe('DJ Philip')
       expect(host!.access_token).toBe('acc_tok')
     })
+  })
+})
+
+describe('Popup reauth (Story 5-6)', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('GET /auth/login?popup=1 sets pkce_popup cookie', async () => {
+    const app = new Hono()
+    app.route('/auth', authRouter)
+
+    const res = await app.request('/auth/login?popup=1')
+    expect(res.status).toBe(302)
+
+    const setCookieHeader = res.headers.get('set-cookie') ?? ''
+    expect(setCookieHeader).toContain('pkce_popup=1')
+    expect(setCookieHeader).toContain('HttpOnly')
+  })
+
+  it('GET /auth/login (no popup) does NOT set pkce_popup cookie', async () => {
+    const app = new Hono()
+    app.route('/auth', authRouter)
+
+    const res = await app.request('/auth/login')
+    expect(res.status).toBe(302)
+
+    const setCookieHeader = res.headers.get('set-cookie') ?? ''
+    expect(setCookieHeader).not.toContain('pkce_popup')
+  })
+
+  it('GET /auth/callback in popup mode: emits auth:restored, returns close-popup HTML', async () => {
+    const app = new Hono()
+    app.route('/auth', authRouter)
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          access_token: 'acc_tok',
+          refresh_token: 'ref_tok',
+          expires_in: 3600,
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'spotify_popup_user',
+          display_name: 'Popup User',
+          email: 'popup@example.com',
+        }),
+      } as Response)
+
+    const restoredSpy = vi.fn()
+    authEvents.once('restored', restoredSpy)
+
+    const res = await app.request('/auth/callback?code=authcode', {
+      headers: {
+        Cookie: 'pkce_verifier=test_verifier; pkce_popup=1',
+      },
+    })
+
+    expect(res.status).toBe(200)
+    const body = await res.text()
+    expect(body).toContain('window.close()')
+    expect(restoredSpy).toHaveBeenCalledWith('spotify_popup_user')
+  })
+
+  it('GET /auth/callback in normal mode still redirects to /', async () => {
+    const app = new Hono()
+    app.route('/auth', authRouter)
+
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          access_token: 'acc_tok2',
+          refresh_token: 'ref_tok2',
+          expires_in: 3600,
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 'spotify_normal_user',
+          display_name: 'Normal User',
+          email: 'normal@example.com',
+        }),
+      } as Response)
+
+    const res = await app.request('/auth/callback?code=authcode', {
+      headers: {
+        Cookie: 'pkce_verifier=test_verifier',
+      },
+    })
+
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe('/')
   })
 })
 

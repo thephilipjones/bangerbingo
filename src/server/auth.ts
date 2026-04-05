@@ -4,6 +4,7 @@ import { createMiddleware } from 'hono/factory'
 import crypto from 'node:crypto'
 import { config } from './config.ts'
 import { upsertHost, getHostById, type Host } from './db.ts'
+import { authEvents, clearDegradedState } from './refresh.ts'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,16 @@ authRouter.get('/login', (ctx) => {
     maxAge: 300, // 5 minutes
     secure: config.isProduction,
   })
+
+  if (ctx.req.query('popup') === '1') {
+    setCookie(ctx, 'pkce_popup', '1', {
+      httpOnly: true,
+      sameSite: 'Lax',
+      path: '/auth/callback',
+      maxAge: 300,
+      secure: config.isProduction,
+    })
+  }
 
   const params = new URLSearchParams({
     client_id: config.spotifyClientId,
@@ -144,6 +155,14 @@ authRouter.get('/callback', async (ctx) => {
     maxAge: 60 * 60 * 24 * 30, // 30 days
     secure: config.isProduction,
   })
+
+  const isPopup = getCookie(ctx, 'pkce_popup') === '1'
+  if (isPopup) {
+    deleteCookie(ctx, 'pkce_popup', { path: '/auth/callback' })
+    clearDegradedState(me.id)
+    authEvents.emit('restored', me.id)
+    return ctx.html('<html><body><script>window.close()</script></body></html>')
+  }
 
   return ctx.redirect('/')
 })

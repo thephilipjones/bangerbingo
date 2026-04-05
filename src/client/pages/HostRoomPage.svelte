@@ -4,6 +4,8 @@
   import HostControlsPanel from '../components/HostControlsPanel.svelte'
   import SdkFailureBanner from '../components/SdkFailureBanner.svelte'
   import WinOverlay from '../components/WinOverlay.svelte'
+  import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
+  import AuthDegradedBanner from '../components/AuthDegradedBanner.svelte'
   import {
     initTiles,
     applyMask,
@@ -23,6 +25,14 @@
     songHistory: Array<{ trackId: string; title: string; artist: string; albumArtUrl: string; songIndex: number }>
   }
 
+  type HistoryEntry = {
+    trackId: string
+    title: string
+    artist: string
+    albumArtUrl: string
+    songIndex: number
+  }
+
   let tiles = $state<ClientTile[]>([])
   let statusLine = $state('Waiting for round to start…')
   let roundConfig = $state<{ titleRevealDelay: TitleRevealDelay } | null>(null)
@@ -36,10 +46,14 @@
   let currentTrackId = $state<string | null>(null)
   let winData = $state<WinData | null>(null)
   let revealTimer: ReturnType<typeof setTimeout> | undefined
+  let songHistory = $state<HistoryEntry[]>([])
+  let showHistory = $state(false)
+  let authDegraded = $state(false)
   let ws: WebSocket
   let player: Spotify.Player | undefined
   let sdkScript: HTMLScriptElement | undefined
   let sdkErrorFired = false
+  let sdkReinitializing = false
 
   function handleTileClick(index: number) {
     tiles = toggleMark(tiles, index)
@@ -56,6 +70,7 @@
       volume: 0.8,
     })
     player.addListener('ready', async ({ device_id }) => {
+      sdkReinitializing = false
       await fetch(`/api/rooms/${code}/sdk/device`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -85,6 +100,23 @@
     player.connect()
   }
 
+  function reinitSdk() {
+    if (sdkReinitializing) return
+    sdkReinitializing = true
+    player?.disconnect()
+    sdkReady = false
+    sdkFailed = false
+    sdkErrorFired = false
+    initSdkPlayer()
+  }
+
+  function handleReauth() {
+    const popup = window.open('/auth/login?popup=1', 'reauth', 'width=500,height=700,menubar=no,toolbar=no')
+    if (!popup) {
+      window.location.href = '/auth/login'
+    }
+  }
+
   onMount(() => {
     // SDK init — if already loaded (e.g. re-mount), init synchronously; otherwise inject script (AC 1)
     if ((window as any).Spotify) {
@@ -112,6 +144,7 @@
           statusLine = 'Waiting for next song…'
           isPlaying = false
           winData = null
+          songHistory = (data.songHistory ?? []).slice().reverse()
         } else if (data.type === 'song:start') {
           if (roundConfig) {
             tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
@@ -120,6 +153,7 @@
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
           isPlaying = true
+          songHistory = [{ trackId: data.trackId, title: data.title, artist: data.artist, albumArtUrl: data.albumArtUrl, songIndex: data.songIndex }, ...songHistory]
         } else if (data.type === 'song:reveal') {
           tiles = startReveal(tiles, data.trackId)
           clearTimeout(revealTimer)
@@ -135,6 +169,11 @@
           winData = { winnerName: data.winnerName, winningTileIds: data.winningTileIds, songHistory: data.songHistory }
         } else if (data.type === 'round:end') {
           onRoundEnded()
+        } else if (data.type === 'auth:degraded') {
+          authDegraded = true
+        } else if (data.type === 'auth:restored') {
+          authDegraded = false
+          reinitSdk()
         } else if (data.type === 'player:joined' || data.type === 'player:left') {
           players = applyPlayerEvent(players, { type: data.type, name: data.name })
         }
@@ -158,12 +197,20 @@
   })
 </script>
 
+{#if authDegraded}
+  <AuthDegradedBanner onReauth={handleReauth} />
+{/if}
+
 {#if wsError}
   <div class="error-banner" role="alert">Connection lost — please refresh the page.</div>
 {/if}
 
 {#if sdkFailed}
   <SdkFailureBanner trackId={currentTrackId} />
+{/if}
+
+{#if showHistory}
+  <SongHistoryDrawer entries={songHistory} onClose={() => { showHistory = false }} />
 {/if}
 
 {#if winData !== null}
@@ -179,6 +226,9 @@
 <div class="host-game">
   <div class="card-area">
     {#if tiles.length > 0}
+      <div class="card-header">
+        <button class="history-btn" onclick={() => { showHistory = true }}>≡ History</button>
+      </div>
       <BingoCard {tiles} onTileClick={handleTileClick} />
       <p class="status-line" role="status">{statusLine}</p>
     {:else}
@@ -262,6 +312,31 @@
     font-size: 13px;
     color: #888;
     text-align: center;
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .history-btn {
+    background: none;
+    border: 1px solid #444;
+    color: #aaa;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-family: sans-serif;
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .history-btn:hover {
+    color: #fff;
+    border-color: #666;
   }
 
   /* Desktop layout */
