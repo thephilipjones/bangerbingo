@@ -4,7 +4,7 @@ import { createMiddleware } from 'hono/factory'
 import crypto from 'node:crypto'
 import { config } from './config.ts'
 import { upsertHost, getHostById, type Host } from './db.ts'
-import { authEvents, clearDegradedState } from './refresh.ts'
+import { authEvents, clearDegradedState, refreshWithRetry, isHostDegraded } from './refresh.ts'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -12,6 +12,35 @@ export type AuthEnv = {
   Variables: {
     host: Host
   }
+}
+
+// ── Session signing ────────────────────────────────────────────────────────
+
+export function signUserId(id: string): string {
+  const sig = crypto.createHmac('sha256', config.sessionSecret).update(id).digest('hex')
+  return `${id}.${sig}`
+}
+
+export function verifySession(cookie: string): string | null {
+  const lastDot = cookie.lastIndexOf('.')
+  if (lastDot === -1) return null
+  const userId = cookie.slice(0, lastDot)
+  const sig = cookie.slice(lastDot + 1)
+  const expected = crypto.createHmac('sha256', config.sessionSecret).update(userId).digest('hex')
+  if (sig.length !== expected.length || !/^[0-9a-f]+$/.test(sig)) return null
+  const sigBuf = Buffer.from(sig, 'hex')
+  const expBuf = Buffer.from(expected, 'hex')
+  if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null
+  return userId
+}
+
+// ── Token refresh helper ───────────────────────────────────────────────────
+
+export async function withFreshToken(host: Host): Promise<Host | null> {
+  if (host.token_expires_at - Date.now() >= 60_000) return host
+  await refreshWithRetry(host.user_id)
+  if (isHostDegraded(host.user_id)) return null
+  return getHostById(host.user_id) ?? null
 }
 
 // ── PKCE helpers ───────────────────────────────────────────────────────────
@@ -29,7 +58,8 @@ function generateCodeChallenge(verifier: string): string {
 // ── Session middleware ─────────────────────────────────────────────────────
 
 export const requireAuth = createMiddleware<AuthEnv>(async (ctx, next) => {
-  const userId = getCookie(ctx, 'session')
+  const cookie = getCookie(ctx, 'session')
+  const userId = cookie ? verifySession(cookie) : null
   if (!userId) return ctx.json({ error: 'Unauthorized' }, 401)
 
   const host = getHostById(userId)
@@ -148,7 +178,7 @@ authRouter.get('/callback', async (ctx) => {
 
   // Clean up verifier cookie, set session cookie
   deleteCookie(ctx, 'pkce_verifier', { path: '/auth/callback' })
-  setCookie(ctx, 'session', me.id, {
+  setCookie(ctx, 'session', signUserId(me.id), {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',

@@ -16,6 +16,7 @@ vi.stubEnv('NODE_ENV', 'test')
 
 const { generateRoomCode, createRoomWithRetry, roomsRouter } = await import('../rooms.ts')
 const { roomSockets } = await import('../ws.ts')
+const { signUserId } = await import('../auth.ts')
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,10 @@ function makeApp() {
   const app = new Hono()
   app.route('/api', roomsRouter)
   return app
+}
+
+function sessionCookie(userId = 'host_1') {
+  return `session=${signUserId(userId)}`
 }
 
 async function seedRoom(hostUserId = 'host_1', code = 'ABCD') {
@@ -116,7 +121,7 @@ describe('POST /api/rooms', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     const body = await res.json() as { code: string; url: string; created_at: number }
@@ -145,7 +150,7 @@ describe('GET /api/rooms', () => {
     seedHost()
     const app = makeApp()
     const res = await app.request('/api/rooms', {
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual([])
@@ -161,7 +166,7 @@ describe('GET /api/rooms', () => {
 
     const app = makeApp()
     const res = await app.request('/api/rooms', {
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     const rooms = await res.json() as Array<{ code: string; created_at: number }>
@@ -178,7 +183,7 @@ describe('GET /api/rooms', () => {
 
     const app = makeApp()
     const res = await app.request('/api/rooms', {
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual([])
@@ -216,7 +221,7 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ZZZZ/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res.status).toBe(404)
@@ -229,7 +234,7 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res.status).toBe(403)
@@ -241,7 +246,7 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ clipDuration: 30, titleRevealDelay: 5 }),
     })
     expect(res.status).toBe(400)
@@ -253,7 +258,7 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 99, titleRevealDelay: 5 }),
     })
     expect(res.status).toBe(400)
@@ -265,7 +270,7 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 99 }),
     })
     expect(res.status).toBe(400)
@@ -277,7 +282,7 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res.status).toBe(200)
@@ -294,12 +299,12 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     const res2 = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res2.status).toBe(200)
@@ -313,7 +318,7 @@ describe('POST /api/rooms/:code/round', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: null }),
     })
     expect(res.status).toBe(200)
@@ -363,7 +368,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res.status).toBe(422)
@@ -388,7 +393,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res.status).toBe(200)
@@ -446,7 +451,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
 
@@ -466,7 +471,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
 
@@ -489,7 +494,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res.status).toBe(200)
@@ -506,12 +511,12 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     const res2 = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
     expect(res2.status).toBe(200)
@@ -529,7 +534,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify(validPayload),
     })
 
@@ -597,7 +602,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
 
@@ -631,7 +636,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
 
@@ -652,7 +657,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(400)
   })
@@ -666,7 +671,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(403)
   })
@@ -678,7 +683,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(404)
   })
@@ -691,7 +696,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(round.songHistory).toHaveLength(1)
     expect(round.songHistory[0].trackId).toBe('track_0')
@@ -710,7 +715,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     expect(sent).toHaveLength(1)
@@ -737,7 +742,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
 
     expect(sent).toHaveLength(1)
@@ -765,7 +770,7 @@ describe('POST /api/rooms/:code/round/play', () => {
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     vi.advanceTimersByTime(60_000)
 
@@ -800,7 +805,7 @@ describe('POST /api/rooms/:code/round/next', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/next', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
 
@@ -824,14 +829,14 @@ describe('POST /api/rooms/:code/round/next', () => {
     // Start song (sets auto-advance timer for 30s)
     await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(round.currentSongIndex).toBe(0)
 
     // Manually advance before timer fires
     await app.request('/api/rooms/ABCD/round/next', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(round.currentSongIndex).toBe(1)
 
@@ -858,7 +863,7 @@ describe('POST /api/rooms/:code/round/next', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/next', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
 
@@ -875,7 +880,7 @@ describe('POST /api/rooms/:code/round/next', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/next', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(403)
   })
@@ -887,7 +892,7 @@ describe('POST /api/rooms/:code/round/next', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/next', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(404)
   })
@@ -920,7 +925,7 @@ describe('POST /api/rooms/:code/round/pause', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/pause', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
 
@@ -944,13 +949,13 @@ describe('POST /api/rooms/:code/round/pause', () => {
     // Start song — schedules both timers
     await app.request('/api/rooms/ABCD/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
 
     // Pause — should cancel both timers
     await app.request('/api/rooms/ABCD/round/pause', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     const countAfterPause = sent.length
 
@@ -971,7 +976,7 @@ describe('POST /api/rooms/:code/round/pause', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/pause', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(403)
   })
@@ -983,7 +988,7 @@ describe('POST /api/rooms/:code/round/pause', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/pause', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(404)
   })
@@ -997,7 +1002,7 @@ describe('POST /api/rooms/:code/round/pause', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/pause', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(400)
   })
@@ -1023,7 +1028,7 @@ describe('POST /api/rooms/:code/round/end', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/end', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
 
@@ -1042,7 +1047,7 @@ describe('POST /api/rooms/:code/round/end', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/end', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(403)
   })
@@ -1053,7 +1058,7 @@ describe('POST /api/rooms/:code/round/end', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ZZZZ/round/end', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(404)
   })
@@ -1065,7 +1070,7 @@ describe('POST /api/rooms/:code/round/end', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/round/end', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(404)
   })
@@ -1086,7 +1091,7 @@ describe('POST /api/rooms/:code/sdk/device', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/sdk/device', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: 'abc123' }),
     })
     expect(res.status).toBe(200)
@@ -1104,7 +1109,7 @@ describe('POST /api/rooms/:code/sdk/device', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/sdk/device', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: 'new-device' }),
     })
     expect(res.status).toBe(200)
@@ -1119,7 +1124,7 @@ describe('POST /api/rooms/:code/sdk/device', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/sdk/device', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: 'abc123' }),
     })
     expect(res.status).toBe(403)
@@ -1131,7 +1136,7 @@ describe('POST /api/rooms/:code/sdk/device', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ZZZZ/sdk/device', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: 'abc123' }),
     })
     expect(res.status).toBe(404)
@@ -1145,7 +1150,7 @@ describe('POST /api/rooms/:code/sdk/device', () => {
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/sdk/device', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: 'abc123' }),
     })
     expect(res.status).toBe(503)

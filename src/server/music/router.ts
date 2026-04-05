@@ -1,7 +1,5 @@
 import { Hono } from 'hono'
-import { requireAuth, type AuthEnv } from '../auth.ts'
-import { refreshWithRetry, isHostDegraded } from '../refresh.ts'
-import { getHostById } from '../db.ts'
+import { requireAuth, withFreshToken, type AuthEnv } from '../auth.ts'
 import { PRESETS } from './presets.ts'
 import { searchPlaylists, getPlaylistTracks, SpotifyApiError, InsufficientTracksError } from './spotify.ts'
 
@@ -9,15 +7,8 @@ export const musicRouter = new Hono<AuthEnv>()
 
 // GET /api/music/presets
 musicRouter.get('/music/presets', requireAuth, async (ctx) => {
-  let host = ctx.var.host
-
-  if (host.token_expires_at - Date.now() < 60_000) {
-    await refreshWithRetry(host.user_id)
-    if (isHostDegraded(host.user_id)) return ctx.json({ message: 'Spotify authentication failed' }, 401)
-    const refreshed = getHostById(host.user_id)
-    if (!refreshed) return ctx.json({ message: 'Unauthorized' }, 401)
-    host = refreshed
-  }
+  const freshHost = await withFreshToken(ctx.var.host)
+  if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
 
   return ctx.json(PRESETS)
 })
@@ -27,18 +18,11 @@ musicRouter.get('/music/search', requireAuth, async (ctx) => {
   const query = ctx.req.query('q')
   if (!query) return ctx.json({ message: 'Missing query parameter q' }, 400)
 
-  let host = ctx.var.host
-
-  if (host.token_expires_at - Date.now() < 60_000) {
-    await refreshWithRetry(host.user_id)
-    if (isHostDegraded(host.user_id)) return ctx.json({ message: 'Spotify authentication failed' }, 401)
-    const refreshed = getHostById(host.user_id)
-    if (!refreshed) return ctx.json({ message: 'Unauthorized' }, 401)
-    host = refreshed
-  }
+  const freshHost = await withFreshToken(ctx.var.host)
+  if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
 
   try {
-    const results = await searchPlaylists(query, host.access_token)
+    const results = await searchPlaylists(query, freshHost.access_token)
     return ctx.json(results)
   } catch (err) {
     if (err instanceof SpotifyApiError) {
@@ -51,19 +35,15 @@ musicRouter.get('/music/search', requireAuth, async (ctx) => {
 // GET /api/music/tracks/:playlistId
 musicRouter.get('/music/tracks/:playlistId', requireAuth, async (ctx) => {
   const playlistId = ctx.req.param('playlistId')
-
-  let host = ctx.var.host
-
-  if (host.token_expires_at - Date.now() < 60_000) {
-    await refreshWithRetry(host.user_id)
-    if (isHostDegraded(host.user_id)) return ctx.json({ message: 'Spotify authentication failed' }, 401)
-    const refreshed = getHostById(host.user_id)
-    if (!refreshed) return ctx.json({ message: 'Unauthorized' }, 401)
-    host = refreshed
+  if (!/^[A-Za-z0-9]{20,30}$/.test(playlistId)) {
+    return ctx.json({ message: 'Invalid playlist ID' }, 400)
   }
 
+  const freshHost = await withFreshToken(ctx.var.host)
+  if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
+
   try {
-    const tracks = await getPlaylistTracks(playlistId, host.access_token)
+    const tracks = await getPlaylistTracks(playlistId, freshHost.access_token)
     return ctx.json(tracks)
   } catch (err) {
     if (err instanceof InsufficientTracksError) {

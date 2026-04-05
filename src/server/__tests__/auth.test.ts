@@ -10,7 +10,7 @@ vi.stubEnv('SESSION_SECRET', 'test_session_secret')
 vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
-const { authRouter, requireAuth } = await import('../auth.ts')
+const { authRouter, requireAuth, signUserId } = await import('../auth.ts')
 const { authEvents } = await import('../refresh.ts')
 
 describe('PKCE OAuth routes', () => {
@@ -115,7 +115,7 @@ describe('PKCE OAuth routes', () => {
       expect(res.headers.get('location')).toBe('/')
 
       const setCookieHeader = res.headers.get('set-cookie') ?? ''
-      expect(setCookieHeader).toContain('session=spotify_user_1')
+      expect(setCookieHeader).toContain(`session=${signUserId('spotify_user_1')}`)
       expect(setCookieHeader).toContain('HttpOnly')
 
       // Host should be persisted in DB
@@ -248,7 +248,38 @@ describe('requireAuth middleware', () => {
     app.get('/protected', requireAuth, (ctx) => ctx.json({ ok: true }))
 
     const res = await app.request('/protected', {
-      headers: { Cookie: 'session=unknown_user' },
+      headers: { Cookie: `session=${signUserId('unknown_user')}` },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 when session cookie has invalid signature', async () => {
+    const app = new Hono()
+    app.get('/protected', requireAuth, (ctx) => ctx.json({ ok: true }))
+
+    const res = await app.request('/protected', {
+      headers: { Cookie: 'session=real_user.badsignature' },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 when session cookie is unsigned (raw user ID)', async () => {
+    const app = new Hono()
+    app.get('/protected', requireAuth, (ctx) => ctx.json({ ok: true }))
+
+    const res = await app.request('/protected', {
+      headers: { Cookie: 'session=real_user' },
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 401 when session signature contains non-hex characters', async () => {
+    const app = new Hono()
+    app.get('/protected', requireAuth, (ctx) => ctx.json({ ok: true }))
+
+    // 64-char sig with non-hex chars — previously crashed timingSafeEqual
+    const res = await app.request('/protected', {
+      headers: { Cookie: `session=real_user.${'z'.repeat(64)}` },
     })
     expect(res.status).toBe(401)
   })
@@ -267,7 +298,7 @@ describe('requireAuth middleware', () => {
     app.get('/protected', requireAuth, (ctx) => ctx.json(ctx.var.host))
 
     const res = await app.request('/protected', {
-      headers: { Cookie: 'session=real_user' },
+      headers: { Cookie: `session=${signUserId('real_user')}` },
     })
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -295,7 +326,7 @@ describe('GET /auth/token', () => {
     app.route('/auth', authRouter)
 
     const res = await app.request('/auth/token', {
-      headers: { Cookie: 'session=tok_user' },
+      headers: { Cookie: `session=${signUserId('tok_user')}` },
     })
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -334,7 +365,7 @@ describe('/api/me endpoint', () => {
 
     const { app } = await import('../index.ts')
     const res = await app.request('/api/me', {
-      headers: { Cookie: 'session=me_user' },
+      headers: { Cookie: `session=${signUserId('me_user')}` },
     })
     expect(res.status).toBe(200)
     const body = await res.json()

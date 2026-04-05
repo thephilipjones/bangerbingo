@@ -2,6 +2,7 @@ import WebSocket, { WebSocketServer } from 'ws'
 import type { IncomingMessage, Server } from 'node:http'
 import type { Socket } from 'node:net'
 import { authEvents } from './refresh.ts'
+import { verifySession } from './auth.ts'
 import { getRoomByCode, getHostById } from './db.ts'
 import type { Track } from './music/spotify.ts'
 import type { Tile } from './game/cards.ts'
@@ -110,7 +111,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
   const guestName = url.searchParams.get('name')
 
   const cookies = parseCookies(req.headers.cookie)
-  const sessionUserId = cookies['session']
+  const sessionUserId = cookies['session'] ? verifySession(cookies['session']) : null
 
   // A request with a session cookie is always the host path, regardless of ?name=
   if (sessionUserId) {

@@ -11,6 +11,7 @@ vi.stubEnv('NODE_ENV', 'test')
 
 const { app } = await import('../index.ts')
 const { clearDegradedState, refreshWithRetry } = await import('../refresh.ts')
+const { signUserId } = await import('../auth.ts')
 
 const EXPIRES_AT = Date.now() + 3600_000
 
@@ -46,7 +47,7 @@ describe('GET /api/auth/status', () => {
     seedHost()
 
     const res = await app.request('/api/auth/status', {
-      headers: { Cookie: 'session=status_test_user' },
+      headers: { Cookie: `session=${signUserId('status_test_user')}` },
     })
     expect(res.status).toBe(200)
     const body = await res.json() as { degraded: boolean; tokenExpiresAt: number }
@@ -68,7 +69,7 @@ describe('GET /api/auth/status', () => {
     await promise
 
     const res = await app.request('/api/auth/status', {
-      headers: { Cookie: 'session=status_test_user' },
+      headers: { Cookie: `session=${signUserId('status_test_user')}` },
     })
     expect(res.status).toBe(200)
     const body = await res.json() as { degraded: boolean; tokenExpiresAt: number }

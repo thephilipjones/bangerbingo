@@ -11,6 +11,7 @@ vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
 const { musicRouter } = await import('../music/router.ts')
+const { signUserId } = await import('../auth.ts')
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,10 @@ function seedHost(userId = 'host_1', tokenExpiresAt = Date.now() + 3_600_000) {
     refresh_token: 'ref_token',
     token_expires_at: tokenExpiresAt,
   })
+}
+
+function sessionCookie(userId = 'host_1') {
+  return `session=${signUserId(userId)}`
 }
 
 function makeApp() {
@@ -48,7 +53,7 @@ describe('GET /api/music/presets', () => {
     seedHost()
     const app = makeApp()
     const res = await app.request('/api/music/presets', {
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     const presets = await res.json() as Array<{ name: string; description: string; playlistId: string }>
@@ -91,7 +96,7 @@ describe('GET /api/music/search', () => {
     seedHost()
     const app = makeApp()
     const res = await app.request('/api/music/search?q=chill', {
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     const results = await res.json() as Array<{
@@ -121,7 +126,7 @@ describe('GET /api/music/search', () => {
 
     const app = makeApp()
     const res = await app.request('/api/music/search?q=test', {
-      headers: { Cookie: 'session=host_refresh' },
+      headers: { Cookie: `session=${signUserId('host_refresh')}` },
     })
     expect(res.status).toBe(200)
     expect(refreshSpy).toHaveBeenCalledWith('host_refresh')
@@ -143,6 +148,17 @@ describe('GET /api/music/tracks/:playlistId', () => {
     expect(res.status).toBe(401)
   })
 
+  it('returns 400 for invalid playlistId format (contains underscore / too short)', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/music/tracks/bad_id', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toContain('Invalid playlist ID')
+  })
+
   it('returns mapped tracks for a playlist with >= 25 tracks', async () => {
     seedHost()
 
@@ -162,8 +178,8 @@ describe('GET /api/music/tracks/:playlistId', () => {
     } as Response)
 
     const app = makeApp()
-    const res = await app.request('/api/music/tracks/test_playlist', {
-      headers: { Cookie: 'session=host_1' },
+    const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
     const tracks = await res.json() as Array<{
@@ -196,8 +212,8 @@ describe('GET /api/music/tracks/:playlistId', () => {
     } as Response)
 
     const app = makeApp()
-    const res = await app.request('/api/music/tracks/short_playlist', {
-      headers: { Cookie: 'session=host_1' },
+    const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(422)
     const body = await res.json() as { message: string }
@@ -226,8 +242,8 @@ describe('GET /api/music/tracks/:playlistId', () => {
     } as Response)
 
     const app = makeApp()
-    const res = await app.request('/api/music/tracks/mixed_playlist', {
-      headers: { Cookie: 'session=host_1' },
+    const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(422)
   })
@@ -242,8 +258,8 @@ describe('GET /api/music/tracks/:playlistId', () => {
     } as Response)
 
     const app = makeApp()
-    const res = await app.request('/api/music/tracks/bad_playlist', {
-      headers: { Cookie: 'session=host_1' },
+    const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
+      headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(502)
     const body = await res.json() as { message: string }

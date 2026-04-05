@@ -2,9 +2,8 @@ import { Hono } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
 import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, type Room } from './db.ts'
-import { requireAuth, type AuthEnv } from './auth.ts'
+import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
-import { refreshWithRetry, isHostDegraded } from './refresh.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { buildPool, generateCards } from './game/cards.ts'
 
@@ -82,7 +81,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
             position_ms: SEEK_POSITION_MS,
           }),
         }
-      ).catch(() => {})
+      ).catch((err) => console.error('[spotify:play]', err))
     }
   }
 
@@ -203,16 +202,9 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
 
   const roundConfig: RoundConfig = { playlistId, clipDuration, titleRevealDelay, roundNumber }
 
-  // Inline token refresh before Spotify call
-  if (host.token_expires_at - Date.now() < 60_000) {
-    await refreshWithRetry(host.user_id)
-    if (isHostDegraded(host.user_id)) {
-      return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
-    }
-    const refreshed = getHostById(host.user_id)
-    if (!refreshed) return ctx.json({ message: 'Unauthorized' }, 401)
-    host = refreshed
-  }
+  const freshHost = await withFreshToken(host)
+  if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
+  host = freshHost
 
   // Fetch tracks — returns 422 if fewer than 25 (InsufficientTracksError thrown by getPlaylistTracks)
   let playlist
@@ -358,7 +350,7 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
           method: 'PUT',
           headers: { Authorization: `Bearer ${sdkHost.access_token}` },
         }
-      ).catch(() => {})
+      ).catch((err) => console.error('[spotify:pause]', err))
     }
   }
 

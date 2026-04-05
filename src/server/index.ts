@@ -11,7 +11,6 @@ import { setupWebSocketServer } from './ws.ts'
 
 // Init DB at startup (crash fast if it fails)
 initDb()
-const _refreshInterval = startRefreshScheduler()
 
 const app = new Hono<AuthEnv>()
 
@@ -41,6 +40,7 @@ if (config.isProduction) {
 }
 
 if (config.nodeEnv !== 'test') {
+  startRefreshScheduler()
   const httpServer = serve({ fetch: app.fetch, port: config.port }, () => {
     console.log(`bangerbingo server running on http://127.0.0.1:${config.port}`)
   })

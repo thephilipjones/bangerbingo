@@ -14,6 +14,7 @@ vi.stubEnv('NODE_ENV', 'test')
 const { app } = await import('../index.ts')
 const { setupWebSocketServer, roomSockets, getPlayerList } = await import('../ws.ts')
 const { authEvents } = await import('../refresh.ts')
+const { signUserId } = await import('../auth.ts')
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+function sessionCookie(userId = 'host_1') {
+  return `session=${signUserId(userId)}`
+}
+
 // ── Server lifecycle ───────────────────────────────────────────────────────
 
 let server: ReturnType<typeof createAdaptorServer>
@@ -149,7 +154,7 @@ describe('Host connect', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const c = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const c = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     const msg = await c.next()
 
     expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [] })
@@ -159,7 +164,7 @@ describe('Host connect', () => {
   it("room not found → WS closes with 4004 'room not found'", async () => {
     seedHost('host_1')
 
-    const ws = rawConnect('/ws?code=ZZZZ', { cookie: 'session=host_1' })
+    const ws = rawConnect('/ws?code=ZZZZ', { cookie: sessionCookie() })
     const closed = await waitClose(ws)
 
     expect(closed.code).toBe(4004)
@@ -187,7 +192,7 @@ describe('Guest connect', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     const alice = await connect('/ws?code=AAAA&name=Alice')
@@ -232,7 +237,7 @@ describe('Guest disconnect', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     const alice = await connect('/ws?code=AAAA&name=Alice')
@@ -304,7 +309,7 @@ describe('Host player list accuracy', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     const alice = await connect('/ws?code=AAAA&name=Alice')
@@ -332,7 +337,7 @@ describe('Host disconnect → host:disconnected broadcast', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     const alice = await connect('/ws?code=AAAA&name=Alice')
@@ -358,7 +363,7 @@ describe('Host reconnect → host:reconnected broadcast', () => {
     createRoom('AAAA', 'host_1')
 
     // Initial connect
-    const host1 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host1 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host1.next('session:connect')
 
     const alice = await connect('/ws?code=AAAA&name=Alice')
@@ -373,7 +378,7 @@ describe('Host reconnect → host:reconnected broadcast', () => {
     await alice.next('host:disconnected')
 
     // Host reconnects
-    const host2 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host2 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     const reconnectAck = await host2.next('session:connect')
 
     expect(reconnectAck.role).toBe('host')
@@ -393,7 +398,7 @@ describe('Host ownership enforcement (AC: 6)', () => {
     seedHost('host_2')
     createRoom('AAAA', 'host_1')
 
-    const ws = rawConnect('/ws?code=AAAA', { cookie: 'session=host_2' })
+    const ws = rawConnect('/ws?code=AAAA', { cookie: sessionCookie('host_2') })
     const closed = await waitClose(ws)
 
     expect(closed.code).toBe(4003)
@@ -404,11 +409,11 @@ describe('Host ownership enforcement (AC: 6)', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const host1 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host1 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host1.next('session:connect')
 
     // Same owner tries to open a second connection while first is active
-    const ws2 = rawConnect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const ws2 = rawConnect('/ws?code=AAAA', { cookie: sessionCookie() })
     const closed = await waitClose(ws2)
 
     expect(closed.code).toBe(4003)
@@ -434,13 +439,13 @@ describe('Late-join after round:start', () => {
     const { app: honoApp } = await import('../index.ts')
 
     // Connect host via WS
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     // Start a round via HTTP
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
     })
     expect(roundRes.status).toBe(200)
@@ -485,12 +490,12 @@ describe('Late-join includes songHistory', () => {
 
     const { app: honoApp } = await import('../index.ts')
 
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
     })
     expect(roundRes.status).toBe(200)
@@ -499,7 +504,7 @@ describe('Late-join includes songHistory', () => {
     // Play a song so songHistory is non-empty
     const playRes = await honoApp.request('/api/rooms/AAAA/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(playRes.status).toBe(200)
     await host.next('song:start')
@@ -529,12 +534,12 @@ describe('Late-join includes songHistory', () => {
 
     const { app: honoApp } = await import('../index.ts')
 
-    const host1 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host1 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host1.next('session:connect')
 
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1', 'Content-Type': 'application/json' },
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
     })
     expect(roundRes.status).toBe(200)
@@ -543,7 +548,7 @@ describe('Late-join includes songHistory', () => {
     // Play a song so songHistory is non-empty
     const playRes = await honoApp.request('/api/rooms/AAAA/round/play', {
       method: 'POST',
-      headers: { Cookie: 'session=host_1' },
+      headers: { Cookie: sessionCookie() },
     })
     expect(playRes.status).toBe(200)
     await host1.next('song:start')
@@ -555,7 +560,7 @@ describe('Late-join includes songHistory', () => {
     })
 
     // Host reconnects
-    const host2 = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host2 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host2.next('session:connect')
     const roundMsg = await host2.next('round:start')
 
@@ -574,7 +579,7 @@ describe('auth:restored direct send', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     const alice = await connect('/ws?code=AAAA&name=Alice')
@@ -607,7 +612,7 @@ describe('auth:degraded broadcast', () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
-    const host = await connect('/ws?code=AAAA', { cookie: 'session=host_1' })
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     await host.next('session:connect')
 
     const alice = await connect('/ws?code=AAAA&name=Alice')
