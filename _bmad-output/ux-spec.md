@@ -861,11 +861,13 @@ This payload drives the role-aware rendering split. Host gets host view; guest g
 ```ts
 {
   event: "session:end",
-  reason: "host_ended" | "host_deleted" | "host_timeout"
+  reason: "host_ended" | "host_deleted"
 }
 ```
 
-Fired when a host ends a session in-game (Host Controls Overlay → End Session, reason: `host_ended`), deletes a session from Host Management (trash icon, reason: `host_deleted`), or the server times out an abandoned session (reason: `host_timeout`). All connected clients disconnect; guests redirect to `/` with a banner *"Session ended by host."* (dismissible after 5s). Host returns to `/host`.
+Fired when a host ends a session in-game (Host Controls Overlay → End Session, reason: `host_ended`) or deletes a session from Host Management (trash icon, reason: `host_deleted`). All connected clients disconnect; guests redirect to `/` with a banner *"Session ended by host."* (dismissible after 5s). Host returns to `/host`.
+
+> **Deferred:** `host_timeout` (server-initiated expiry of abandoned sessions) is not in MVP scope for Epic 7. No timeout threshold or server-side sweeper is specified yet. Revisit post-Epic-7 if stale-session buildup becomes a real problem.
 
 ---
 
@@ -928,3 +930,7 @@ States are composable: a tile can be `marked` + `revealed`, or `marked` + `win-p
 | End Session dual entry | Available in-game (Host Controls Overlay) and as trash icon in Host Management | In-game for natural end, admin for housekeeping — same server behaviour |
 | End Round naming | "End Round" instead of "Configure" | Changing playlist always clears the round; honest naming |
 | Host session cookie lifetime | Extended to 14 days (previously session-only) | Host re-auth friction; refresh token continues as long as cookie valid |
+| Guest localStorage fallback | If no stored name, field is blank + autofocused (no first-visit hint) | Simplest correct behaviour; Safari ITP / private-mode eviction handled implicitly |
+| Single active session per host | A host has at most one live session; "Start New Session" from a second tab resumes the existing live session rather than creating a parallel one | One audio stream per host; eliminates ambiguous "which room am I in?" state |
+| `songNumber` on `session:connect` | Payload includes current song ordinal so `[Nth Song]` button label renders correctly on reconnect mid-round | Without it, reconnecting clients would show wrong label until the next `song:start` |
+| `host_timeout` deferred | Session expiry of abandoned rooms is not MVP; no server sweeper specified | Stale-session cleanup only matters at scale; handled manually via trash icon for now |

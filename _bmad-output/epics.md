@@ -150,8 +150,12 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 - End Session confirmation → `session:end` broadcast → guest redirect with banner
 
 **Server:**
-- `session:connect` payload: add `hostName`
-- `session:end { reason }` broadcast on end-session (in-game or admin delete); room destruction
+- `session:connect` payload: add `hostName` + `songNumber?` (for `[Nth Song]` label on reconnect)
+- `session:end { reason: "host_ended" | "host_deleted" }` broadcast on end-session (in-game or admin delete); room destruction
 - Session cookie `Max-Age` extended to 14 days
+- Single-active-session-per-host: second "Start New Session" from a live host resumes the existing session rather than creating a parallel one
+
+**Test hygiene:**
+- Retire or update tests targeting removed/repurposed pages (`DashboardPage`, `LobbyPage`, `RoundConfigPage`)
 
 **Acceptance bar:** Host logs in, lands on Host Management (Spotify status + sessions + New Session), taps New Session → Configure overlay (enter name + playlist) → Start Round. Guests join via root URL with name prefilled from prior visit, see waiting room with all named players (host with `[host]` tag) and room code in URL. Game page header shows status-indicator buttons (`N Players`, `Nth Song`) flanking a muted room code. Host Mini-Player (fixed bottom) is play/pause + next + gear. Gear opens Host Controls Overlay with End Round, End Session, and Host Management link. Host can delete any session from Host Management; connected guests are redirected with a banner. Host stays logged in for 14 days.

@@ -97,5 +97,6 @@ development_status:
   7-2-host-management-session-list-and-delete: backlog
   7-3-round-config-overlay-and-host-name: backlog
   7-4-guest-waiting-room-and-host-as-player: backlog
-  7-5-game-page-chrome-and-host-controls-overlay: backlog
+  7-5-game-page-header-and-players-overlay: backlog
+  7-6-host-mini-player-and-controls-overlay: backlog
   epic-7-retrospective: optional
