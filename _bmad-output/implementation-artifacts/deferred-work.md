@@ -154,3 +154,14 @@
 - `data.role` unguarded in `session:connect` message parse — benign today since `handleJoined` discards `role`; becomes a silent contract violation when room view is built.
 - `roomSockets` server-side accumulation — pre-existing issue logged in story 3-2 deferred work; rooms are never evicted when vacated.
 - `handleJoined` in `App.svelte` discards `role` and `players` from the WS handshake — intentional stub; RoomPage will need both when the game loop is built in Epic 5.
+
+## Deferred from: project review vs directional docs (2026-04-05)
+
+- **FR5 not implemented** — no "Disconnect Spotify / Reconnect" flow in a host settings screen. Epic 5 retro defers as post-launch for friends-use MVP.
+- **FR11 not implemented** — no way to close a room session entirely (`DELETE /api/rooms/:code` + host UI); rooms persist in SQLite and `roomSockets` indefinitely. Ties into the `roomSockets` eviction debt already logged.
+- **FR40 not implemented** — no guest-side settings overlay for personal preferences during a session; PRD lists in MVP scope but no story covered it. Low priority for MVP.
+- **NFR13 unmet** — server restart loses in-progress round state (`roomSockets`, `currentRound`, `songHistory` are in-memory only). Acceptable for friends-use MVP; either downgrade NFR13 or plan a persistence story post-Epic 6.
+- **NFR1–NFR5 performance targets unverified** — 500ms control response, 200ms WS broadcast, 2s card-load, 2-hour session stability have no measurement harness. Add lightweight timing asserts to the Epic 6 smoke-test script.
+- **Masked-title blur animation visual verification pending** — UX spec requires 300ms blur-out + label fade on reveal; verify `BingoCard.svelte` / `bingo.ts` implement the transition before Epic 6 sign-off.
+- **Desktop host split-view breakpoint verification pending** — UX spec requires card-60% / controls-40% inline layout at ≥768px; confirm `HostRoomPage.svelte` renders the split, not a scaled-up mobile layout.
+- **NFR15 ("~200 lines of server core") overshot** — realistic for delivered scope, but the maintainability bar in the PRD is no longer accurate. Update NFR15 wording post-Epic-6 or acknowledge the new line-count target.
