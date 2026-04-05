@@ -340,9 +340,9 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
   broadcast(code, { type: 'song:pause', songIndex: round.currentSongIndex })
 
   // Fire-and-forget Spotify pause via Web API (AC 6)
-  const sdkDevice = roomState.sdkDeviceId
+  const sdkDevice = roomState!.sdkDeviceId
   if (sdkDevice) {
-    const sdkHost = getHostById(roomState.hostUserId)
+    const sdkHost = getHostById(roomState!.hostUserId)
     if (sdkHost?.access_token) {
       fetch(
         `https://api.spotify.com/v1/me/player/pause?device_id=${encodeURIComponent(sdkDevice)}`,

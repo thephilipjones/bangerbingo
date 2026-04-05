@@ -339,7 +339,7 @@ function makeTracks(n: number) {
   }))
 }
 
-function makeMockWs(readyState = WebSocket.OPEN) {
+function makeMockWs(readyState: number = WebSocket.OPEN) {
   const sent: string[] = []
   return {
     readyState,

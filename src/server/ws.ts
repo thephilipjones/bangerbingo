@@ -1,6 +1,7 @@
 import WebSocket, { WebSocketServer } from 'ws'
-import type { IncomingMessage, Server } from 'node:http'
+import type { IncomingMessage } from 'node:http'
 import type { Socket } from 'node:net'
+import type { ServerType } from '@hono/node-server'
 import { authEvents } from './refresh.ts'
 import { verifySession } from './auth.ts'
 import { getRoomByCode, getHostById } from './db.ts'
@@ -253,7 +254,7 @@ authEvents.on('restored', (userId: string) => {
 
 // ── WebSocket server setup ─────────────────────────────────────────────────
 
-export function setupWebSocketServer(httpServer: Server): WebSocketServer {
+export function setupWebSocketServer(httpServer: ServerType): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
 
   httpServer.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {

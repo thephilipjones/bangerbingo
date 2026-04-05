@@ -30,7 +30,7 @@ interface SpotifySearchResponse {
     items: Array<{
       id: string
       name: string
-      owner: { display_name: string }
+      owner: { display_name: string; id: string }
       tracks: { total: number }
     }>
   }
