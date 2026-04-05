@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createAdaptorServer } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
-import { initDb, upsertHost, createRoom, getDb } from '../db.ts'
+import { initDb, upsertHost, createRoom, getDb, getRoomByCode, getPlayedSongs, recordPlayedSongs } from '../db.ts'
 
 vi.stubEnv('SPOTIFY_CLIENT_ID', 'test_client_id')
 vi.stubEnv('SPOTIFY_CLIENT_SECRET', 'test_secret')
@@ -630,5 +630,106 @@ describe('auth:degraded broadcast', () => {
 
     host.close()
     alice.close()
+  })
+})
+
+// ── DELETE /api/rooms/:code (Story 7-2) ───────────────────────────────────
+
+describe('DELETE /api/rooms/:code', () => {
+  it('broadcasts session:end, force-closes all sockets, clears state, returns 204', async () => {
+    seedHost('host_1')
+    createRoom('DLTA', 'host_1')
+    recordPlayedSongs('DLTA', ['trk1', 'trk2'])
+
+    const host = await connect('/ws?code=DLTA', { cookie: sessionCookie() })
+    await host.next('session:connect')
+    const alice = await connect('/ws?code=DLTA&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    // Arm listeners for session:end BEFORE the request
+    const hostEnd = host.next('session:end')
+    const aliceEnd = alice.next('session:end')
+    const hostClosed = waitClose(host.ws)
+    const aliceClosed = waitClose(alice.ws)
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/rooms/DLTA`, {
+      method: 'DELETE',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(204)
+
+    const [h, a] = await Promise.all([hostEnd, aliceEnd])
+    expect(h).toEqual({ type: 'session:end', reason: 'host_deleted' })
+    expect(a).toEqual({ type: 'session:end', reason: 'host_deleted' })
+
+    const [hc, ac] = await Promise.all([hostClosed, aliceClosed])
+    expect(hc.code).toBe(1000)
+    expect(ac.code).toBe(1000)
+
+    expect(roomSockets.get('DLTA')).toBeUndefined()
+    expect(getRoomByCode('DLTA')).toBeUndefined()
+    expect(getPlayedSongs('DLTA')).toEqual([])
+  })
+
+  it('returns 403 when the caller is not the room host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    createRoom('DLTB', 'host_1')
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/rooms/DLTB`, {
+      method: 'DELETE',
+      headers: { Cookie: sessionCookie('host_2') },
+    })
+    expect(res.status).toBe(403)
+    expect(getRoomByCode('DLTB')).toBeDefined()
+  })
+
+  it('returns 404 when the room does not exist', async () => {
+    seedHost('host_1')
+    const res = await fetch(`http://127.0.0.1:${port}/api/rooms/ZZZZ`, {
+      method: 'DELETE',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 401 without a session cookie', async () => {
+    seedHost('host_1')
+    createRoom('DLTC', 'host_1')
+    const res = await fetch(`http://127.0.0.1:${port}/api/rooms/DLTC`, {
+      method: 'DELETE',
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('succeeds even when no live room sockets exist (DB-only delete)', async () => {
+    seedHost('host_1')
+    createRoom('DLTD', 'host_1')
+    // no WS connections — roomSockets.get(code) is undefined
+    const res = await fetch(`http://127.0.0.1:${port}/api/rooms/DLTD`, {
+      method: 'DELETE',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(204)
+    expect(getRoomByCode('DLTD')).toBeUndefined()
+  })
+})
+
+// ── POST /auth/logout (Story 7-2) ─────────────────────────────────────────
+
+describe('POST /auth/logout', () => {
+  it('returns 204 and clears the session cookie', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/auth/logout`, {
+      method: 'POST',
+    })
+    expect(res.status).toBe(204)
+    const setCookie = res.headers.get('set-cookie') ?? ''
+    expect(setCookie).toContain('session=')
+    // Cleared cookie: Max-Age=0 or an Expires in the past
+    const maxAgeZero = /Max-Age=0\b/.test(setCookie)
+    const expiresMatch = setCookie.match(/Expires=([^;]+)/i)
+    const expiresInPast = expiresMatch ? Date.parse(expiresMatch[1]) <= Date.now() : false
+    expect(maxAgeZero || expiresInPast).toBe(true)
   })
 })

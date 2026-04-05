@@ -197,6 +197,12 @@ authRouter.get('/callback', async (ctx) => {
   return ctx.redirect('/')
 })
 
+// POST /auth/logout — clears session cookie (no Spotify token revocation)
+authRouter.post('/logout', (ctx) => {
+  deleteCookie(ctx, 'session', { path: '/' })
+  return ctx.body(null, 204)
+})
+
 // GET /auth/token
 authRouter.get('/token', requireAuth, (ctx) => {
   return ctx.json({ accessToken: ctx.var.host.access_token })

@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
-import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, type Room } from './db.ts'
+import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, type Room } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
-import { roomSockets, broadcast, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
+import { roomSockets, broadcast, destroyRoom, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { buildPool, generateCards } from './game/cards.ts'
 
@@ -166,6 +166,22 @@ roomsRouter.get('/rooms', requireAuth, (ctx) => {
   const host = ctx.var.host
   const rooms = getRoomsByHost(host.user_id)
   return ctx.json(rooms)
+})
+
+roomsRouter.delete('/rooms/:code', requireAuth, (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  // Broadcast + close sockets + clear roomSockets BEFORE the DB delete so
+  // in-flight reads of the room during teardown still see a valid row.
+  destroyRoom(code)
+  deleteRoom(code)
+
+  return ctx.body(null, 204)
 })
 
 // ── Round config ───────────────────────────────────────────────────────────

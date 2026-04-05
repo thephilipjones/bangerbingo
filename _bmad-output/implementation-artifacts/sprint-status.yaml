@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-05 # story 7-1 done (code review)
+last_updated: 2026-04-05 # story 7-2 code review
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -94,7 +94,7 @@ development_status:
   # Epic 7: UX Flow Restructure
   epic-7: in-progress
   7-1-root-cleanup-host-login-cookie-localstorage: done
-  7-2-host-management-session-list-and-delete: backlog
+  7-2-host-management-session-list-and-delete: in-progress
   7-3-round-config-overlay-and-host-name: backlog
   7-4-guest-waiting-room-and-host-as-player: backlog
   7-5-game-page-header-and-players-overlay: backlog

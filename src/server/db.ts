@@ -103,6 +103,13 @@ export function getPlayedSongs(roomId: string): string[] {
     .map(r => r.track_id)
 }
 
+export function deleteRoom(code: string): void {
+  db.transaction(() => {
+    db.prepare('DELETE FROM played_songs WHERE room_id = ?').run(code)
+    db.prepare('DELETE FROM rooms WHERE code = ?').run(code)
+  })()
+}
+
 export function recordPlayedSongs(roomId: string, trackIds: string[]): void {
   const stmt = db.prepare(
     'INSERT OR IGNORE INTO played_songs (room_id, track_id, played_at) VALUES (?, ?, ?)'

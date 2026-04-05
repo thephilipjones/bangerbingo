@@ -34,6 +34,27 @@ export async function createRoom(): Promise<CreateRoomResponse> {
   return res.json()
 }
 
+export async function deleteRoom(code: string): Promise<void> {
+  const res = await fetch(`/api/rooms/${code}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`DELETE /api/rooms/${code} failed: ${res.status}`)
+}
+
+export async function logout(): Promise<void> {
+  const res = await fetch('/auth/logout', { method: 'POST' })
+  if (!res.ok) throw new Error(`POST /auth/logout failed: ${res.status}`)
+}
+
+export interface AuthStatusResponse {
+  degraded: boolean
+  tokenExpiresAt: number
+}
+
+export async function getAuthStatus(): Promise<AuthStatusResponse> {
+  const res = await fetch('/api/auth/status')
+  if (!res.ok) throw new Error(`/api/auth/status failed: ${res.status}`)
+  return res.json()
+}
+
 export interface StartRoundPayload {
   playlistId: string
   clipDuration: number | 'full'

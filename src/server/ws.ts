@@ -77,6 +77,51 @@ export function broadcast(roomCode: string, payload: object, exclude?: WebSocket
   }
 }
 
+/**
+ * Tear down a live room session: clear round timers, broadcast session:end
+ * to all connected clients, force-close every socket with code 1000, and
+ * drop the roomSockets entry. Safe no-op if the room has no live state.
+ *
+ * Broadcast BEFORE socket close so clients receive the payload, and BEFORE
+ * the DB delete (the DB call happens in the router) so any race reading
+ * the room during teardown still sees a valid row.
+ *
+ * WS event contract: { type: 'session:end', reason: 'host_deleted' }
+ * (Story 7-2; future reason values e.g. 'host_timeout' out of scope.)
+ */
+export function destroyRoom(roomCode: string): void {
+  const room = roomSockets.get(roomCode)
+  if (!room) return
+
+  // 1. clear any active round timers
+  const round = room.currentRound
+  if (round) {
+    clearTimeout(round.timers.autoAdvance)
+    clearTimeout(round.timers.reveal)
+    round.timers.autoAdvance = undefined
+    round.timers.reveal = undefined
+  }
+
+  // 2. broadcast session:end
+  broadcast(roomCode, { type: 'session:end', reason: 'host_deleted' })
+
+  // 3. close all sockets (host + guests) with clean 1000.
+  // Close OPEN and CONNECTING sockets alike — a still-connecting socket must
+  // not be allowed to finish attaching to a room that's being torn down.
+  // CLOSING/CLOSED sockets throw from .close() (caught and ignored).
+  if (room.host && room.host.readyState !== WebSocket.CLOSING && room.host.readyState !== WebSocket.CLOSED) {
+    try { room.host.close(1000, 'session_ended') } catch { /* ignore */ }
+  }
+  for (const [, sock] of room.guests) {
+    if (sock.readyState !== WebSocket.CLOSING && sock.readyState !== WebSocket.CLOSED) {
+      try { sock.close(1000, 'session_ended') } catch { /* ignore */ }
+    }
+  }
+
+  // 4. drop the entry
+  roomSockets.delete(roomCode)
+}
+
 export function getPlayerList(roomCode: string): string[] {
   const room = roomSockets.get(roomCode)
   if (!room) return []

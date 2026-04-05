@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of 7-2-host-management-session-list-and-delete (2026-04-05)
+
+- 403/404 enumeration leak on `DELETE /api/rooms/:code` (src/server/rooms.ts:175-177) — pre-existing cross-route convention; same pattern in every other room route.
+- No CSRF token on `POST /auth/logout` (src/server/auth.ts:200-203) — SameSite=Lax mitigates; logout-CSRF is nuisance-only, not privilege escalation.
+- Narrow race: new WS connect can occur between `destroyRoom()` and `deleteRoom()` (src/server/ws.ts:92-120, src/server/rooms.ts:181-182) — single-request window; full fix requires a "room being destroyed" flag.
+- No rate limiting on `DELETE /api/rooms/:code` (src/server/rooms.ts:171) — app-wide concern across all mutating routes.
+- Client `session:end` handler is a no-op; no proactive `ws.close()` (src/client/lib/ws.ts:55-59, 127-130) — deferred by spec (Story 7-4 owns guest banner + redirect UX).
+
 ## Deferred from: code review of 7-1-root-cleanup-host-login-cookie-localstorage (2026-04-05)
 
 - Rapid repeated clicks on Host Login fire handler multiple times — minor, no orphaning risk once mid-connect guard lands, page transition is idempotent.
