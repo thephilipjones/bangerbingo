@@ -22,11 +22,13 @@
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@testing-library/svelte": "^5.3.1",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.13.17",
     "@types/spotify-web-playback-sdk": "^0.1.19",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
+    "jsdom": "^29.0.1",
     "svelte": "^5.25.3",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",

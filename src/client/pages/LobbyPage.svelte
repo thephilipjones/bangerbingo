@@ -2,14 +2,21 @@
   import { onMount, onDestroy } from 'svelte'
   import { TRIVIA_FACTS, shuffle } from '../lib/trivia.ts'
   import { connectAsHost, applyPlayerEvent, copyRoomCode } from '../lib/ws.ts'
+  import { getRooms } from '../lib/api.ts'
+  import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
 
   let {
     code,
-    onConfigureRound,
+    onRoundStarted,
   }: {
     code: string
-    onConfigureRound: () => void
+    onRoundStarted: () => void
   } = $props()
+
+  // ── Round Config Overlay ────────────────────────────────────────────────────
+  let isConfigOpen = $state(false)
+  let roomHostName = $state<string | null>(null)
+  let hasEverOpenedConfig = $state(false)
 
   // ── Vinyl / header ──────────────────────────────────────────────────────────
   let copied = $state(false)
@@ -53,9 +60,28 @@
 
   // ── WebSocket ───────────────────────────────────────────────────────────────
   let ws: WebSocket | null = null
+  let cancelled = false
 
   onMount(() => {
     triviaInterval = setInterval(advanceFact, 12000)
+
+    // Fetch host_name for this row; if unset and never opened, auto-open overlay.
+    // Only auto-open when the row was actually found — treat missing row as no-op
+    // (could be stale/deleted; don't erroneously pop the overlay).
+    getRooms()
+      .then((rooms) => {
+        if (cancelled) return
+        const row = rooms.find((r) => r.code === code)
+        if (!row) return
+        roomHostName = row.host_name ?? null
+        if (roomHostName === null && !hasEverOpenedConfig) {
+          isConfigOpen = true
+          hasEverOpenedConfig = true
+        }
+      })
+      .catch(() => {
+        // fall-through safe default: leave roomHostName === null
+      })
 
     ws = connectAsHost(code, {
       onConnect(initialPlayers) {
@@ -77,6 +103,7 @@
   })
 
   onDestroy(() => {
+    cancelled = true
     clearInterval(triviaInterval)
     clearTimeout(triviaTimeout)
     ws?.close()
@@ -121,8 +148,22 @@
   <p class="fact" class:visible>{facts[factIndex]}</p>
 
   <!-- Configure Round CTA -->
-  <button class="configure-btn" onclick={onConfigureRound}>Configure Round →</button>
+  <button class="configure-btn" onclick={() => { isConfigOpen = true; hasEverOpenedConfig = true }}>Configure Round →</button>
 </div>
+
+{#if isConfigOpen}
+  <RoundConfigOverlay
+    {code}
+    initialHostName={roomHostName}
+    onClose={() => (isConfigOpen = false)}
+    onStarted={(name) => {
+      if (name) roomHostName = name
+      isConfigOpen = false
+      onRoundStarted()
+    }}
+    onHostNameMaybeSaved={(name) => (roomHostName = name)}
+  />
+{/if}
 
 <style>
   .lobby {

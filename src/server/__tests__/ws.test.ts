@@ -446,7 +446,7 @@ describe('Late-join after round:start', () => {
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
 
@@ -496,7 +496,7 @@ describe('Late-join includes songHistory', () => {
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
     await host.next('round:start')
@@ -540,7 +540,7 @@ describe('Late-join includes songHistory', () => {
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
     await host1.next('round:start')

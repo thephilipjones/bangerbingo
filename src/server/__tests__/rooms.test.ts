@@ -204,7 +204,7 @@ describe('POST /api/rooms/:code/round', () => {
     )
   })
 
-  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }
+  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
 
   it('returns 401 without a session cookie', async () => {
     const app = makeApp()
@@ -312,6 +312,106 @@ describe('POST /api/rooms/:code/round', () => {
     expect(body.roundNumber).toBe(2)
   })
 
+  it('writes host_name to the rooms row on first-round POST with valid hostName', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: '  Sarah  ' }),
+    })
+    expect(res.status).toBe(200)
+    const { getDb } = await import('../db.ts')
+    const row = getDb().prepare('SELECT host_name FROM rooms WHERE code = ?').get('ABCD') as { host_name: string | null }
+    expect(row.host_name).toBe('Sarah')
+  })
+
+  it('returns 400 when first-round POST is missing hostName and room.host_name IS NULL', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('hostName required')
+  })
+
+  it('accepts second-round POST without hostName when host_name already set', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    // First round sets the host_name
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Sarah' }),
+    })
+    // Second round omits hostName — should still be 200, and roundNumber must be 2
+    // (confirms the code path actually exercised the room.host_name !== null branch
+    // rather than silently re-running round 1).
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { roundNumber: number }
+    expect(body.roundNumber).toBe(2)
+    // And the stored name is unchanged
+    const { getDb } = await import('../db.ts')
+    const row = getDb().prepare('SELECT host_name FROM rooms WHERE code = ?').get('ABCD') as { host_name: string | null }
+    expect(row.host_name).toBe('Sarah')
+  })
+
+  it('returns 400 when hostName trims to empty', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: '   ' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('hostName must be 1–30 characters')
+  })
+
+  it('returns 400 when hostName trimmed length exceeds 30', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'X'.repeat(31) }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('hostName must be 1–30 characters')
+  })
+
+  it('GET /api/rooms returns host_name on row after it is set', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Sarah' }),
+    })
+    const res = await app.request('/api/rooms', { headers: { Cookie: sessionCookie() } })
+    expect(res.status).toBe(200)
+    const rooms = await res.json() as Array<{ code: string; host_name: string | null }>
+    const row = rooms.find(r => r.code === 'ABCD')
+    expect(row?.host_name).toBe('Sarah')
+  })
+
   it('accepts clipDuration "full"', async () => {
     seedHost()
     await seedRoom()
@@ -319,7 +419,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: null }),
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: null, hostName: 'Host' }),
     })
     expect(res.status).toBe(200)
     const body = await res.json() as { clipDuration: string; titleRevealDelay: null }
@@ -355,7 +455,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     vi.restoreAllMocks()
   })
 
-  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }
+  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
 
   it('returns 422 when playlist has fewer than 25 tracks', async () => {
     const spotifyModule = await import('../music/spotify.ts')

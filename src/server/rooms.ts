@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
-import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, type Room } from './db.ts'
+import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, type Room } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
@@ -156,7 +156,7 @@ roomsRouter.post('/rooms', requireAuth, (ctx) => {
   const host = ctx.var.host
   try {
     const room = createRoomWithRetry(host.user_id)
-    return ctx.json({ code: room.code, url: `/room/${room.code}`, created_at: room.created_at })
+    return ctx.json({ code: room.code, url: `/room/${room.code}`, created_at: room.created_at, host_name: room.host_name })
   } catch (err) {
     return ctx.json({ error: 'Failed to generate unique room code' }, 500)
   }
@@ -200,7 +200,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   const body = await ctx.req.json().catch(() => null)
   if (!body) return ctx.json({ message: 'Invalid request body' }, 400)
 
-  const { playlistId, clipDuration, titleRevealDelay } = body
+  const { playlistId, clipDuration, titleRevealDelay, hostName } = body
 
   if (!playlistId || typeof playlistId !== 'string' || !playlistId.trim())
     return ctx.json({ message: 'playlistId is required' }, 400)
@@ -208,6 +208,19 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
     return ctx.json({ message: 'Invalid clipDuration' }, 400)
   if (!VALID_TITLE_REVEAL_DELAYS.includes(titleRevealDelay))
     return ctx.json({ message: 'Invalid titleRevealDelay' }, 400)
+
+  // hostName: capture-once per room.
+  // If room.host_name is already set, ignore the field entirely (no validation, no overwrite).
+  // On first round (room.host_name IS NULL), hostName is required + validated + persisted
+  // BEFORE the Spotify fetch so a Spotify failure still preserves the name.
+  if (room.host_name === null) {
+    if (hostName === undefined) return ctx.json({ message: 'hostName required' }, 400)
+    if (typeof hostName !== 'string') return ctx.json({ message: 'hostName must be a string' }, 400)
+    const trimmed = hostName.trim()
+    if (trimmed.length < 1 || trimmed.length > 30)
+      return ctx.json({ message: 'hostName must be 1–30 characters' }, 400)
+    setRoomHostName(code, trimmed)
+  }
 
   const roomState = roomSockets.get(code)
   const roundNumber = roomState?.currentRound

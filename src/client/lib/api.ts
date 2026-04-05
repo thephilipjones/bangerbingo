@@ -7,12 +7,14 @@ export interface RoomSummary {
   code: string
   host_user_id: string
   created_at: number
+  host_name: string | null
 }
 
 export interface CreateRoomResponse {
   code: string
   url: string
   created_at: number
+  host_name: string | null
 }
 
 export async function getMe(): Promise<MeResponse | null> {
@@ -59,6 +61,7 @@ export interface StartRoundPayload {
   playlistId: string
   clipDuration: number | 'full'
   titleRevealDelay: number | null
+  hostName?: string
 }
 
 export interface StartRoundResponse {

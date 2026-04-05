@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { initDb, upsertHost, getHostById } from '../db.ts'
+import Database from 'better-sqlite3'
+import { initDb, upsertHost, getHostById, getDb, createRoom, setRoomHostName } from '../db.ts'
 
 describe('db', () => {
   beforeEach(() => {
@@ -47,5 +48,84 @@ describe('db', () => {
     it('returns undefined for unknown user', () => {
       expect(getHostById('nonexistent')).toBeUndefined()
     })
+  })
+
+  describe('rooms.host_name', () => {
+    it('includes host_name column on fresh db (NULL at creation)', () => {
+      upsertHost({
+        user_id: 'h1',
+        display_name: 'H',
+        email: 'h@e.com',
+        access_token: 'a',
+        refresh_token: 'r',
+        token_expires_at: Date.now() + 3600_000,
+      })
+      const room = createRoom('ABCD', 'h1')
+      expect(room.host_name).toBeNull()
+
+      const row = getDb().prepare('SELECT * FROM rooms WHERE code = ?').get('ABCD') as { host_name: string | null }
+      expect(row.host_name).toBeNull()
+    })
+
+    it('setRoomHostName persists value', () => {
+      upsertHost({
+        user_id: 'h1',
+        display_name: 'H',
+        email: 'h@e.com',
+        access_token: 'a',
+        refresh_token: 'r',
+        token_expires_at: Date.now() + 3600_000,
+      })
+      createRoom('ABCD', 'h1')
+      setRoomHostName('ABCD', 'Sarah')
+      const row = getDb().prepare('SELECT host_name FROM rooms WHERE code = ?').get('ABCD') as { host_name: string | null }
+      expect(row.host_name).toBe('Sarah')
+    })
+  })
+})
+
+describe('initDb migration for host_name column', () => {
+  it('adds host_name column to a pre-existing rooms table missing the column', async () => {
+    // Simulate a pre-migration database: open a file-backed sqlite, create the old-shape
+    // rooms table (without host_name), then invoke initDb() against the same path.
+    const fs = await import('node:fs')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const tmpPath = path.join(os.tmpdir(), `bb-migration-test-${Date.now()}-${Math.random()}.db`)
+    try {
+      const seedDb = new Database(tmpPath)
+      seedDb.exec(`
+        CREATE TABLE hosts (
+          user_id TEXT PRIMARY KEY,
+          display_name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          access_token TEXT NOT NULL,
+          refresh_token TEXT NOT NULL,
+          token_expires_at INTEGER NOT NULL
+        );
+        CREATE TABLE rooms (
+          code TEXT PRIMARY KEY,
+          host_user_id TEXT NOT NULL REFERENCES hosts(user_id),
+          created_at INTEGER NOT NULL
+        );
+      `)
+      const preCols = seedDb.prepare('PRAGMA table_info(rooms)').all() as Array<{ name: string }>
+      expect(preCols.some(c => c.name === 'host_name')).toBe(false)
+      seedDb.close()
+
+      // Should not throw
+      expect(() => initDb(tmpPath)).not.toThrow()
+
+      const postCols = getDb().prepare('PRAGMA table_info(rooms)').all() as Array<{ name: string }>
+      expect(postCols.some(c => c.name === 'host_name')).toBe(true)
+    } finally {
+      // Close the handle the migration opened before unlinking the file, then restore
+      // the in-memory DB so sibling test suites in this worker don't see the tmp handle.
+      try { getDb()?.close() } catch { /* ignore */ }
+      try { fs.unlinkSync(tmpPath) } catch { /* ignore */ }
+      try { fs.unlinkSync(tmpPath + '-wal') } catch { /* ignore */ }
+      try { fs.unlinkSync(tmpPath + '-shm') } catch { /* ignore */ }
+      initDb(':memory:')
+    }
   })
 })

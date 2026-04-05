@@ -1,6 +1,6 @@
 import type { MeResponse } from './api.ts'
 
-export type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'lobby' | 'roundconfig' | 'room' | 'hostroom'
+export type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'lobby' | 'room' | 'hostroom'
 
 /** Pure routing function — determines which page to show on app load. */
 export function determineInitialPage(

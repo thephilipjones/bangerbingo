@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of 7-3-round-config-overlay-and-host-name (2026-04-05)
+
+- Concurrent first-round POSTs can both pass `host_name IS NULL` check (src/server/rooms.ts round route) — pre-existing race shape; low risk for 5-user personal app. Fix would be `UPDATE ... WHERE host_name IS NULL` + rows-affected check.
+- Unicode/emoji length handling: `.length` counts UTF-16 surrogates, no grapheme count, no zero-width/control-char normalization (src/client/lib/roundConfig.ts, src/server/rooms.ts validation) — personal/friends context, aligns with existing guest-name validation.
+- `getRooms()` fetches the entire host's room list just to read one `host_name` field (src/client/pages/LobbyPage.svelte onMount) — no `GET /api/rooms/:code` endpoint exists; pre-existing API shape.
+- a11y gaps in overlay: no focus trap, svelte-ignore comments suppress real warnings, no keyboard equivalent for backdrop dismiss, focus not moved into modal on open (src/client/components/RoundConfigOverlay.svelte) — Dev Notes explicitly deferred focus trap as MVP-out-of-scope.
+- No CSRF protection on `POST /api/rooms/:code/round` (src/server/rooms.ts) — pre-existing architectural concern; cookie SameSite mitigates.
+- Search tab out-of-order response race + `selectedPlaylistId` inconsistency across tab switches (src/client/components/RoundConfigOverlay.svelte) — ported verbatim from RoundConfigPage.svelte, pre-existing behavior.
+
 ## Deferred from: code review of 7-2-host-management-session-list-and-delete (2026-04-05)
 
 - 403/404 enumeration leak on `DELETE /api/rooms/:code` (src/server/rooms.ts:175-177) — pre-existing cross-route convention; same pattern in every other room route.

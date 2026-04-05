@@ -13,6 +13,7 @@ export interface Room {
   code: string
   host_user_id: string
   created_at: number // Unix ms timestamp
+  host_name: string | null
 }
 
 let db: Database.Database
@@ -32,7 +33,8 @@ export function initDb(dbPath = './bangerbingo.db'): void {
     CREATE TABLE IF NOT EXISTS rooms (
       code TEXT PRIMARY KEY,
       host_user_id TEXT NOT NULL REFERENCES hosts(user_id),
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      host_name TEXT
     );
     CREATE TABLE IF NOT EXISTS played_songs (
       room_id TEXT NOT NULL,
@@ -41,6 +43,12 @@ export function initDb(dbPath = './bangerbingo.db'): void {
       PRIMARY KEY (room_id, track_id)
     )
   `)
+  // Idempotent migration: ensure `host_name` column exists on pre-existing databases
+  // where the `rooms` table was created before the column was added.
+  const cols = db.prepare("PRAGMA table_info(rooms)").all() as Array<{ name: string }>
+  if (!cols.some(c => c.name === 'host_name')) {
+    db.exec('ALTER TABLE rooms ADD COLUMN host_name TEXT')
+  }
 }
 
 export function upsertHost(host: Host): void {
@@ -87,7 +95,11 @@ export function getDb(): Database.Database {
 export function createRoom(code: string, hostUserId: string): Room {
   const created_at = Date.now()
   db.prepare('INSERT INTO rooms (code, host_user_id, created_at) VALUES (?, ?, ?)').run(code, hostUserId, created_at)
-  return { code, host_user_id: hostUserId, created_at }
+  return { code, host_user_id: hostUserId, created_at, host_name: null }
+}
+
+export function setRoomHostName(code: string, hostName: string): void {
+  db.prepare('UPDATE rooms SET host_name = ? WHERE code = ?').run(hostName, code)
 }
 
 export function getRoomsByHost(hostUserId: string): Room[] {
