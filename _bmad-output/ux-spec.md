@@ -629,7 +629,7 @@ Muted advisory below the session list: *"Use desktop Chrome or Firefox for audio
 
 ### Session cookie persistence
 
-On OAuth success: server stores access + refresh tokens server-side (keyed to Spotify `user_id`), sets an httpOnly session cookie with `Max-Age: 14 days`. Returning hosts with a valid session cookie skip the OAuth redirect and land directly on `/host`.
+On OAuth success: server stores access + refresh tokens server-side (keyed to Spotify `user_id`), sets an httpOnly session cookie with `Max-Age: 30 days` (shipped in Epic 1). Returning hosts with a valid session cookie skip the OAuth redirect and land directly on `/host`.
 
 ---
 
@@ -929,7 +929,7 @@ States are composable: a tile can be `marked` + `revealed`, or `marked` + `win-p
 | Header status-indicator buttons | Players button shows "N Players", History button shows "Nth Song" | Buttons carry live status + afford their overlays; doubles up UI work |
 | End Session dual entry | Available in-game (Host Controls Overlay) and as trash icon in Host Management | In-game for natural end, admin for housekeeping — same server behaviour |
 | End Round naming | "End Round" instead of "Configure" | Changing playlist always clears the round; honest naming |
-| Host session cookie lifetime | Extended to 14 days (previously session-only) | Host re-auth friction; refresh token continues as long as cookie valid |
+| Host session cookie lifetime | 30 days (already shipped in Epic 1; kept as-is) | Host re-auth friction; refresh token continues as long as cookie valid. Original Epic 7 proposal said 14 days but was based on the wrong assumption that the cookie was session-only |
 | Guest localStorage fallback | If no stored name, field is blank + autofocused (no first-visit hint) | Simplest correct behaviour; Safari ITP / private-mode eviction handled implicitly |
 | Single active session per host | A host has at most one live session; "Start New Session" from a second tab resumes the existing live session rather than creating a parallel one | One audio stream per host; eliminates ambiguous "which room am I in?" state |
 | `songNumber` on `session:connect` | Payload includes current song ordinal so `[Nth Song]` button label renders correctly on reconnect mid-round | Without it, reconnecting clients would show wrong label until the next `song:start` |

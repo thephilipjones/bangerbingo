@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-05 # epic-7 added via correct-course; story 6-1 in review
+last_updated: 2026-04-05 # story 6-1 done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -83,7 +83,7 @@ development_status:
   # Epic 6: Deploy & Harden
   # NOTE (2026-04-05): 6-2+ hold until Epic 7 (UX Flow Restructure) ships
   epic-6: in-progress
-  6-1-local-dev-and-tailscale-multi-device-testing: review
+  6-1-local-dev-and-tailscale-multi-device-testing: done
   6-2-production-dockerfile-and-docker-compose: backlog
   6-3-https-wss-via-caddy-reverse-proxy: backlog
   6-4-server-restart-state-recovery: backlog
@@ -92,8 +92,8 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: UX Flow Restructure
-  epic-7: backlog
-  7-1-root-cleanup-host-login-cookie-localstorage: backlog
+  epic-7: in-progress
+  7-1-root-cleanup-host-login-cookie-localstorage: ready-for-dev
   7-2-host-management-session-list-and-delete: backlog
   7-3-round-config-overlay-and-host-name: backlog
   7-4-guest-waiting-room-and-host-as-player: backlog
