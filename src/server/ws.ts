@@ -196,7 +196,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     roomState.hostUserId = sessionUserId
     roomState.hostHasEverConnected = true
 
-    ws.send(JSON.stringify({ type: 'session:connect', role: 'host', players: getPlayerList(code) }))
+    ws.send(JSON.stringify({ type: 'session:connect', role: 'host', players: getPlayerList(code), hostName: room.host_name }))
 
     // Send round:start if there is an active round (needed for HostRoomPage initial load)
     const activeRound = roomState.currentRound
@@ -245,7 +245,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     // Add/overwrite slot (handles reconnect)
     roomState.guests.set(name, ws)
 
-    ws.send(JSON.stringify({ type: 'session:connect', role: 'guest', players: getPlayerList(code) }))
+    ws.send(JSON.stringify({ type: 'session:connect', role: 'guest', players: getPlayerList(code), hostName: room.host_name }))
 
     // If a round is in progress, send round:start with a blank card
     const round = roomState.currentRound

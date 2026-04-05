@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createAdaptorServer } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
-import { initDb, upsertHost, createRoom, getDb, getRoomByCode, getPlayedSongs, recordPlayedSongs } from '../db.ts'
+import { initDb, upsertHost, createRoom, getDb, getRoomByCode, getPlayedSongs, recordPlayedSongs, setRoomHostName } from '../db.ts'
 
 vi.stubEnv('SPOTIFY_CLIENT_ID', 'test_client_id')
 vi.stubEnv('SPOTIFY_CLIENT_SECRET', 'test_secret')
@@ -157,7 +157,7 @@ describe('Host connect', () => {
     const c = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     const msg = await c.next()
 
-    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [] })
+    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: null })
     c.close()
   })
 
@@ -185,6 +185,7 @@ describe('Guest connect', () => {
     expect(msg.type).toBe('session:connect')
     expect(msg.role).toBe('guest')
     expect(msg.players).toEqual(['Alice'])
+    expect(msg.hostName).toBeNull()
     c.close()
   })
 
@@ -227,6 +228,37 @@ describe('Guest connect', () => {
 
     expect(closed.code).toBe(4004)
     expect(closed.reason).toBe('room not found')
+  })
+})
+
+// ── session:connect with hostName (AC: 12) ────────────────────────────────────
+
+describe('session:connect with hostName set', () => {
+  it('host connects with hostName set → session:connect includes hostName', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+    setRoomHostName('AAAA', 'Sarah')
+
+    const c = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    const msg = await c.next()
+
+    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: 'Sarah' })
+    c.close()
+  })
+
+  it('guest connects with hostName set → session:connect includes hostName', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+    setRoomHostName('AAAA', 'Sarah')
+
+    const c = await connect('/ws?code=AAAA&name=Philip')
+    const msg = await c.next()
+
+    expect(msg.type).toBe('session:connect')
+    expect(msg.role).toBe('guest')
+    expect(msg.players).toEqual(['Philip'])
+    expect(msg.hostName).toBe('Sarah')
+    c.close()
   })
 })
 

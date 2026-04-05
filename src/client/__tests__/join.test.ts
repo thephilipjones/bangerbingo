@@ -167,7 +167,7 @@ describe('connectAsGuest', () => {
   it('does not call onError on clean close after session:connect', () => {
     const onError = vi.fn()
     connectAsGuest('Philip', 'ABCD', { onConnect: vi.fn(), onError, onMessage: vi.fn() })
-    mockInstance.onmessage!({ data: JSON.stringify({ type: 'session:connect', role: 'guest', players: [] }) })
+    mockInstance.onmessage!({ data: JSON.stringify({ type: 'session:connect', role: 'guest', players: [], hostName: null }) })
     mockInstance.onclose!({ code: 1000 })
     expect(onError).not.toHaveBeenCalled()
   })
@@ -182,15 +182,15 @@ describe('connectAsGuest', () => {
   it('calls onConnect with role and players on session:connect message', () => {
     const onConnect = vi.fn()
     connectAsGuest('Philip', 'ABCD', { onConnect, onError: vi.fn(), onMessage: vi.fn() })
-    mockInstance.onmessage!({ data: JSON.stringify({ type: 'session:connect', role: 'guest', players: ['Philip', 'Alice'] }) })
-    expect(onConnect).toHaveBeenCalledWith('guest', ['Philip', 'Alice'])
+    mockInstance.onmessage!({ data: JSON.stringify({ type: 'session:connect', role: 'guest', players: ['Philip', 'Alice'], hostName: 'Sarah' }) })
+    expect(onConnect).toHaveBeenCalledWith('guest', ['Philip', 'Alice'], 'Sarah')
   })
 
   it('calls onConnect with empty players array if players missing', () => {
     const onConnect = vi.fn()
     connectAsGuest('Philip', 'ABCD', { onConnect, onError: vi.fn(), onMessage: vi.fn() })
     mockInstance.onmessage!({ data: JSON.stringify({ type: 'session:connect', role: 'guest' }) })
-    expect(onConnect).toHaveBeenCalledWith('guest', [])
+    expect(onConnect).toHaveBeenCalledWith('guest', [], null)
   })
 
   it('calls onMessage for non-session:connect messages', () => {

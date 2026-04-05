@@ -29,7 +29,7 @@ export async function copyRoomCode(code: string): Promise<void> {
 }
 
 export interface HostHandlers {
-  onConnect(players: string[]): void
+  onConnect(players: string[], hostName: string | null): void
   onPlayerJoined(name: string): void
   onPlayerLeft(name: string): void
   onAuthDegraded(): void
@@ -45,7 +45,7 @@ export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
     try {
       const data = JSON.parse(event.data)
       if (data.type === 'session:connect') {
-        handlers.onConnect(data.players ?? [])
+        handlers.onConnect(data.players ?? [], data.hostName ?? null)
       } else if (data.type === 'player:joined') {
         handlers.onPlayerJoined(data.name)
       } else if (data.type === 'player:left') {
@@ -53,7 +53,7 @@ export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
       } else if (data.type === 'auth:degraded') {
         handlers.onAuthDegraded()
       } else if (data.type === 'session:end') {
-        // Recognised in 7-2; full UX (banner, redirect) lives in Story 7-4.
+        // Recognised in 7-2; full UX (banner, redirect) lives in Story 7-5.
         // The server force-closes the socket immediately after broadcasting,
         // so the existing onclose path still fires for disconnect handling.
       }
@@ -71,7 +71,7 @@ export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
 }
 
 export interface GuestHandlers {
-  onConnect(role: string, players: string[]): void
+  onConnect(role: string, players: string[], hostName: string | null): void
   onError(message: string): void
   onMessage(event: { data: string }): void
   onHostDisconnected?(): void
@@ -119,13 +119,13 @@ export function connectAsGuest(name: string, code: string, handlers: GuestHandle
       const data = JSON.parse(event.data)
       if (data.type === 'session:connect') {
         sessionConnected = true
-        handlers.onConnect(data.role, data.players ?? [])
+        handlers.onConnect(data.role, data.players ?? [], data.hostName ?? null)
       } else if (data.type === 'host:disconnected') {
         handlers.onHostDisconnected?.()
       } else if (data.type === 'host:reconnected') {
         handlers.onHostReconnected?.()
       } else if (data.type === 'session:end') {
-        // Recognised in 7-2; full guest UX (banner, redirect) lives in Story 7-4.
+        // Recognised in 7-2; full guest UX (banner, redirect) lives in Story 7-5.
         // Server force-closes the socket next — existing onclose path fires.
       } else {
         handlers.onMessage(event)
