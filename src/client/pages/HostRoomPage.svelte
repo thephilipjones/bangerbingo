@@ -63,7 +63,7 @@
     player = new Spotify.Player({
       name: 'Bangerbingo',
       getOAuthToken: async (callback) => {
-        const res = await fetch('/api/auth/token')
+        const res = await fetch('/auth/token')
         const data = await res.json()
         callback(data.accessToken)
       },
