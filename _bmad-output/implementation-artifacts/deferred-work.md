@@ -2,6 +2,13 @@
 
 ## Deferred from: code review of 7-3-round-config-overlay-and-host-name (2026-04-05)
 
+## Deferred from: code review of 7-4-guest-waiting-room-and-host-as-player (2026-04-05)
+
+- `isSelfRow` case-sensitivity: if stored guest name casing ever diverges from server echo, the `(you)` tag silently breaks. Pre-existing naming convention; fix upstream in join validation if normalisation is added.
+- `applyPlayerEvent` on `player:joined` does not deduplicate — reconnecting guest can appear twice in the client list. Pre-existing helper behaviour; not introduced by 7-4.
+- Guest `session:connect` server test uses partial field assertions rather than full `toEqual` — functionally correct but weaker than host-path style. Quality improvement only.
+- `initialPlayers` frozen at RoomPage mount; WS messages arriving in the gap between JoinPage handoff and `onMount` could be missed. Pre-existing architecture concern; mitigated by Svelte 5 synchronous rerender.
+
 - Concurrent first-round POSTs can both pass `host_name IS NULL` check (src/server/rooms.ts round route) — pre-existing race shape; low risk for 5-user personal app. Fix would be `UPDATE ... WHERE host_name IS NULL` + rows-affected check.
 - Unicode/emoji length handling: `.length` counts UTF-16 surrogates, no grapheme count, no zero-width/control-char normalization (src/client/lib/roundConfig.ts, src/server/rooms.ts validation) — personal/friends context, aligns with existing guest-name validation.
 - `getRooms()` fetches the entire host's room list just to read one `host_name` field (src/client/pages/LobbyPage.svelte onMount) — no `GET /api/rooms/:code` endpoint exists; pre-existing API shape.
