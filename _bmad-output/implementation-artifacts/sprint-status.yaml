@@ -70,14 +70,17 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Game Loop
-  epic-5: in-progress
+  epic-5: done
   5-1-song-scheduling-and-host-playback-controls: done
   5-2-bingo-card-ui-and-tile-marking: done
   5-3-host-card-view-and-controls-panel: done
   5-4-spotify-web-playback-sdk-integration: done
   5-5-win-detection-and-win-overlay: done
   5-6-song-history-late-join-sync-and-auth-reauth: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
+
+  # Epic 5 (post): Pre-deploy cleanup
+  5-7-pre-deploy-cleanup-and-hardening: done
 
   # Epic 6: Deploy & Harden
   epic-6: backlog
