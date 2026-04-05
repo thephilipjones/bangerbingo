@@ -1,6 +1,6 @@
 # Story 7.2: Host Management — Spotify Panel, Session List with Timestamps, Delete Session
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -200,7 +200,7 @@ claude-opus-4-6
 - [x] [Review][Patch] Logout test assertion too loose — any `Expires=` attribute passes [src/server/__tests__/ws.test.ts:475-480] — Regex `/Expires=/.test(setCookie)` would match a future `Expires=2099-...` date. Tighten to require `Max-Age=0` OR an `Expires=` that resolves to the past. **Fixed 2026-04-05**: test parses `Expires` value and asserts it resolves to a past timestamp OR `Max-Age=0\b`.
 - [x] [Review][Patch] CONNECTING sockets not torn down in `destroyRoom` [src/server/ws.ts:109-115] — `readyState === WebSocket.OPEN` guard skips CONNECTING sockets, which linger past DB delete. **Fixed 2026-04-05**: guard inverted to skip only CLOSING/CLOSED states, so CONNECTING sockets are also closed during teardown.
 - [x] [Review][Patch] Failed DELETE leaves stale row but shows generic error [src/client/pages/DashboardPage.svelte:72-78] — On `deleteRoom` rejection the row stays in `rooms` with only an error banner; if the server actually deleted, the UI is now out of sync. **Fixed 2026-04-05**: delete-failure catch now refetches `getRooms()` to resync list state with server.
-- [ ] [Review][Patch] Nested interactive: `<button class="trash-btn">` inside `<div role="button">` [src/client/pages/DashboardPage.svelte:124-138] — Invalid ARIA (interactive-within-interactive). Click propagation is handled via `e.stopPropagation()`, but keyboard Enter on the trash button inside a role="button" parent is ambiguous to AT. Minor a11y; consider promoting the row to a `<button>` with a sibling action button laid out via flex, or using an `<a>`/`<button>` pair rather than nesting. **Left open 2026-04-05** — requires layout/markup restructuring beyond a safe batch patch.
+- [x] [Review][Defer] Nested interactive: `<button class="trash-btn">` inside `<div role="button">` [src/client/pages/DashboardPage.svelte:124-138] — Invalid ARIA (interactive-within-interactive). Minor a11y; deferred 2026-04-05 — requires layout/markup restructuring (promote row to `<button>` with sibling trash button via flex) beyond a safe batch patch.
 - [x] [Review][Patch] `.trash-btn` has no `:focus-visible` style [src/client/pages/DashboardPage.svelte:280-290] — Emoji button is keyboard-focusable but has no focus ring; matches row's `:focus-visible` pattern at line 263. **Fixed 2026-04-05**: added `.trash-btn:focus-visible` rule mirroring `.room-item:focus-visible`.
 - [x] [Review][Defer] 403/404 enumeration leak on DELETE /api/rooms/:code [src/server/rooms.ts:175-177] — deferred, pre-existing cross-route convention (same pattern in every other room route).
 - [x] [Review][Defer] No CSRF token on POST /auth/logout [src/server/auth.ts:200-203] — deferred, pre-existing — SameSite=Lax on session cookie mitigates; unauthenticated cross-site POST is a logout-CSRF nuisance only, not privilege escalation.
@@ -214,3 +214,4 @@ claude-opus-4-6
 
 - 2026-04-05: Story 7-2 implemented — Host Management DashboardPage rewrite, DELETE /api/rooms/:code + session:end broadcast, POST /auth/logout, formatSessionTimestamp helper, session:end WS contract recognition in client handlers. All ACs satisfied; lint + 251 tests pass.
 - 2026-04-05: Code review complete — 0 decision-needed, 6 patch, 5 defer, 17 dismissed. See Review Findings.
+- 2026-04-05: 5 patches applied; nested-interactive a11y patch reclassified to defer. Status → done.
