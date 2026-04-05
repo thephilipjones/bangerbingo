@@ -165,3 +165,7 @@
 - **Masked-title blur animation visual verification pending** — UX spec requires 300ms blur-out + label fade on reveal; verify `BingoCard.svelte` / `bingo.ts` implement the transition before Epic 6 sign-off.
 - **Desktop host split-view breakpoint verification pending** — UX spec requires card-60% / controls-40% inline layout at ≥768px; confirm `HostRoomPage.svelte` renders the split, not a scaled-up mobile layout.
 - **NFR15 ("~200 lines of server core") overshot** — realistic for delivered scope, but the maintainability bar in the PRD is no longer accurate. Update NFR15 wording post-Epic-6 or acknowledge the new line-count target.
+
+## Deferred from: code review of 6-1-local-dev-and-tailscale-multi-device-testing (2026-04-05)
+
+- **Session cookie `Secure=false` in dev silently breaks if `NODE_ENV=production` is set over plain-HTTP tailnet** (src/server/auth.ts:87,96,186) — cookies would be rejected by browsers over HTTP when `secure: true`, leading to empty session with no warning. Pre-existing; relevant to Epic 6-2/6-3 deploy hardening when TLS + prod env layering is finalized.

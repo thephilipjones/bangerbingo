@@ -98,6 +98,43 @@ npm run dev
 
 Open `http://127.0.0.1:5173` and click **Connect Spotify**.
 
+## Local Development
+
+After the one-time Getting Started above, day-to-day dev is just `npm run dev`. This starts Vite on 5173 and Hono on 3000 concurrently. Vite binds to all interfaces and Hono binds to `0.0.0.0`, so LAN and Tailscale peers can reach the dev server.
+
+### Multi-browser host + guest testing on one Macbook
+
+You can run a full session against your local dev server from a single machine:
+
+- Host: open `http://127.0.0.1:5173/` in **Chrome**, click **Connect Spotify**, create a room.
+- Guests: open `http://127.0.0.1:5173/room/<room-code>` in **Firefox** and **Safari** (different browsers, not tabs — each browser gets its own session cookie and WS connection).
+
+This exercises host playback + guest card marking + real-time WS events end-to-end without any deploy.
+
+### Testing from your phone over Tailscale
+
+With your Macbook and phone on the same Tailscale tailnet, you can join a room from your phone against your local dev server:
+
+1. From your Macbook, grab your tailnet hostname (e.g. `my-macbook.tail1234.ts.net`) via `tailscale status`.
+2. On your phone, open `http://<macbook-tailnet-hostname>:5173/room/<room-code>`.
+3. Join with a name, receive a card, tap tiles — events should roundtrip via WS to the host's browser in real time.
+
+No extra tunnel/proxy setup is required — Vite (`server.host: true`) and Hono (`hostname: '0.0.0.0'`) already listen on all interfaces.
+
+### Spotify auth from a Tailscale peer
+
+Spotify requires the OAuth redirect URI to match a URI registered on the Spotify app exactly, and will reject anything else with `400 INVALID_CLIENT` / `redirect_uri_mismatch`. Your options:
+
+- **(a) Register a second redirect URI** on your Spotify app matching your tailnet hostname, e.g. `http://<macbook-tailnet-hostname>:5173/auth/callback`, and set `SPOTIFY_REDIRECT_URI` to that when hosting from a tailnet peer; **or**
+- **(b) Keep `http://127.0.0.1:5173/auth/callback`** and always host (click **Connect Spotify**) from the Macbook, using the phone/other tailnet peers as guests only. Guests don't touch Spotify, so this is the simplest path.
+
+### Troubleshooting
+
+- **Spotify login bounces back with `?error=missing_verifier`.** You opened the app at `http://localhost:5173` but `SPOTIFY_REDIRECT_URI` points at `http://127.0.0.1:5173/auth/callback`. The PKCE cookie is bound to the origin that set it, so `localhost` and `127.0.0.1` don't share cookies. Always open the app at `http://127.0.0.1:5173/` (Vite's terminal output now shows both `localhost` and `127.0.0.1` URLs since the dev server binds all interfaces — use the `127.0.0.1` one).
+- **Port already in use (3000 or 5173).** Something else (old `npm run dev`, another app) is holding the port. Find and kill it: `lsof -i :3000` / `lsof -i :5173`, then `kill <pid>`. Or change `PORT` in `.env` (server) — Vite's 5173 is hardcoded in [vite.config.ts](vite.config.ts).
+- **Phone browser warns about an insecure connection.** Expected. Dev has no TLS — you're hitting plain HTTP over Tailscale. Proceed through the warning. HTTPS lands in Epic 6 deploy stories.
+- **Spotify returns `400 INVALID_CLIENT` / `redirect_uri_mismatch`.** The redirect URI you're using isn't registered on the Spotify app. Either register the tailnet URL as a second Redirect URI, or connect Spotify from the Macbook at `127.0.0.1:5173` (see Spotify auth section above).
+
 ## Scripts
 
 | Command | What it does |

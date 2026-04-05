@@ -41,8 +41,10 @@ if (config.isProduction) {
 
 if (config.nodeEnv !== 'test') {
   startRefreshScheduler()
-  const httpServer = serve({ fetch: app.fetch, port: config.port }, () => {
-    console.log(`bangerbingo server running on http://127.0.0.1:${config.port}`)
+  const httpServer = serve({ fetch: app.fetch, port: config.port, hostname: '0.0.0.0' }, () => {
+    console.log(
+      `bangerbingo server listening on port ${config.port} (reachable on all LAN/tailnet interfaces)`,
+    )
   })
   setupWebSocketServer(httpServer)
 }
