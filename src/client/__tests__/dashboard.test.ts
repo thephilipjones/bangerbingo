@@ -7,14 +7,15 @@ import { TRIVIA_FACTS, shuffle } from '../lib/trivia.ts'
 describe('determineInitialPage', () => {
   const user = { user_id: 'u1', display_name: 'Philip' }
 
-  it('routes to login when getMe() returns null at root path (login screen shows Connect Spotify)', () => {
+  it('routes to join when getMe() returns null at root path (guest-first landing)', () => {
     const result = determineInitialPage(null, '/')
-    expect(result.page).toBe('login')
+    expect(result.page).toBe('join')
+    expect(result.prefillCode).toBeUndefined()
   })
 
-  it('routes to login when getMe() returns null at unknown path', () => {
+  it('routes to join when getMe() returns null at unknown path (fallback)', () => {
     const result = determineInitialPage(null, '/about')
-    expect(result.page).toBe('login')
+    expect(result.page).toBe('join')
   })
 
   it('routes to dashboard when getMe() returns a user (skips login screen)', () => {

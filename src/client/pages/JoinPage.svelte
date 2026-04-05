@@ -1,13 +1,15 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte'
   import { connectAsGuest, sanitizeCode, validateJoin } from '../lib/ws.ts'
+  import { getStoredGuestName, setStoredGuestName } from '../lib/guestName.ts'
 
-  let { prefillCode = '', onJoined }: {
+  let { prefillCode = '', onJoined, onHostLogin }: {
     prefillCode?: string
     onJoined: (name: string, role: string, players: string[], code: string, ws: WebSocket) => void
+    onHostLogin: () => void
   } = $props()
 
-  let name = $state('')
+  let name = $state(untrack(() => getStoredGuestName()))
   let code = $state(untrack(() => prefillCode))
   let nameError = $state('')
   let codeError = $state('')
@@ -52,6 +54,7 @@
         connecting = false
         const handedOff = activeWs!
         activeWs = undefined // prevent onDestroy from closing the handed-off socket
+        setStoredGuestName(name)
         onJoined(name, role, players, code, handedOff)
       },
       onError(message) {
@@ -70,6 +73,7 @@
 </script>
 
 <div class="join-page">
+  <button type="button" class="host-login-btn" onclick={onHostLogin} disabled={connecting}>Host Login</button>
   <h1>BangerBingo</h1>
   <form onsubmit={handleSubmit}>
     <div class="field">
@@ -125,6 +129,7 @@
 
 <style>
   .join-page {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -209,5 +214,36 @@
 
   .lock {
     font-size: 0.75rem;
+  }
+
+  .host-login-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: 1px solid #444;
+    border-radius: 1.25rem;
+    color: #888;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 1rem;
+  }
+
+  .host-login-btn:hover:not(:disabled) {
+    color: #ccc;
+    border-color: #666;
+  }
+
+  .host-login-btn:focus-visible {
+    outline: 2px solid #1db954;
+    outline-offset: 2px;
+  }
+
+  .host-login-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

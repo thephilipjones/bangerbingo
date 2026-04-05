@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review of 7-1-root-cleanup-host-login-cookie-localstorage (2026-04-05)
+
+- Rapid repeated clicks on Host Login fire handler multiple times — minor, no orphaning risk once mid-connect guard lands, page transition is idempotent.
+- Host Login button may overlap `<h1>BangerBingo</h1>` on narrow viewports — cosmetic, no verified overlap at current breakpoints, revisit if reported.
+- No test for `determineInitialPage` priority ordering (authenticated + /room/:code path) — pre-existing coverage gap, function's `if (me)` early-return is obvious on inspection.
+
 ## Deferred from: code review of 5-6-song-history-late-join-sync-and-auth-reauth (2026-04-04)
 
 - `SongHistoryDrawer` missing keyboard trap and Escape key handler — `role="dialog"` without focus management; WCAG 2.1 SC 2.1.2 gap; acceptable for mobile-first MVP.

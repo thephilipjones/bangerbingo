@@ -10,7 +10,7 @@ export function determineInitialPage(
   const roomMatch = pathname.match(/^\/room\/([A-Za-z]{4})$/)
   if (me) return { page: 'dashboard' }
   if (roomMatch) return { page: 'join', prefillCode: sanitizeCode(roomMatch[1]) }
-  return { page: 'login' }
+  return { page: 'join' }
 }
 
 /** Applies a player:joined / player:left WS event to an existing player list. */

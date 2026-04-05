@@ -1,6 +1,6 @@
 # Story 7.1: Root `/` Cleanup — Host Login Button, Session Cookie, Guest Name LocalStorage
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -25,35 +25,48 @@ So that I can reach Host Management without cluttering the guest flow.
 
 ## Tasks / Subtasks
 
-- [ ] Update routing (AC: #1)
-  - [ ] In [src/client/lib/ws.ts:13](src/client/lib/ws.ts#L13), change `determineInitialPage`'s unauthenticated root fallback from `{ page: 'login' }` to `{ page: 'join' }` (guest-first root URL).
-  - [ ] Leave the `me` → `'dashboard'` branch and the `/room/:code` → `'join'` branch unchanged.
-  - [ ] Update the unit tests for `determineInitialPage` to reflect the new root behaviour.
+- [x] Update routing (AC: #1)
+  - [x] In [src/client/lib/ws.ts:13](src/client/lib/ws.ts#L13), change `determineInitialPage`'s unauthenticated root fallback from `{ page: 'login' }` to `{ page: 'join' }` (guest-first root URL).
+  - [x] Leave the `me` → `'dashboard'` branch and the `/room/:code` → `'join'` branch unchanged.
+  - [x] Update the unit tests for `determineInitialPage` to reflect the new root behaviour.
 
-- [ ] Add Host Login button to JoinPage (AC: #2)
-  - [ ] In [src/client/pages/JoinPage.svelte](src/client/pages/JoinPage.svelte), add a small ghost-style button positioned top-right of the viewport (outside the form container, e.g. in a header row or via absolute positioning).
-  - [ ] Label: `Host Login`. Button triggers the same OAuth flow as [LoginPage.svelte](src/client/pages/LoginPage.svelte) — simplest path is a page-level navigation callback that switches to the `'login'` page, preserving existing LoginPage behaviour.
-  - [ ] Add an `onHostLogin` prop to JoinPage callable on tap; wire it in [App.svelte:61](src/client/App.svelte#L61) to set `page = 'login'`.
-  - [ ] Styling: ghost button (transparent bg, muted border or text-only), noticeably lower visual weight than the primary green Join CTA. Respect existing min-height: 44px for hit target.
+- [x] Add Host Login button to JoinPage (AC: #2)
+  - [x] In [src/client/pages/JoinPage.svelte](src/client/pages/JoinPage.svelte), add a small ghost-style button positioned top-right of the viewport (outside the form container, e.g. in a header row or via absolute positioning).
+  - [x] Label: `Host Login`. Button triggers the same OAuth flow as [LoginPage.svelte](src/client/pages/LoginPage.svelte) — simplest path is a page-level navigation callback that switches to the `'login'` page, preserving existing LoginPage behaviour.
+  - [x] Add an `onHostLogin` prop to JoinPage callable on tap; wire it in [App.svelte:61](src/client/App.svelte#L61) to set `page = 'login'`.
+  - [x] Styling: ghost button (transparent bg, muted border or text-only), noticeably lower visual weight than the primary green Join CTA. Respect existing min-height: 44px for hit target.
 
-- [ ] Guest name localStorage prefill (AC: #3, #4, #5)
-  - [ ] Create a tiny helper module (or co-locate in JoinPage script): `getStoredGuestName(): string` and `setStoredGuestName(name: string): void`. Both wrap `localStorage` access in try/catch and return/swallow silently on failure.
-  - [ ] Use a stable key: `bangerbingo.guestName`.
-  - [ ] On JoinPage mount (`onMount`), initialise `name = getStoredGuestName()` BEFORE focusing the input. If the stored name is present, autofocus behaviour still applies (user may edit it).
-  - [ ] On successful Join (inside `onConnect` in `handleSubmit`), call `setStoredGuestName(name)` before the onJoined hand-off.
-  - [ ] Never read/write anything for the room code.
+- [x] Guest name localStorage prefill (AC: #3, #4, #5)
+  - [x] Create a tiny helper module (or co-locate in JoinPage script): `getStoredGuestName(): string` and `setStoredGuestName(name: string): void`. Both wrap `localStorage` access in try/catch and return/swallow silently on failure.
+  - [x] Use a stable key: `bangerbingo.guestName`.
+  - [x] On JoinPage mount (`onMount`), initialise `name = getStoredGuestName()` BEFORE focusing the input. If the stored name is present, autofocus behaviour still applies (user may edit it).
+  - [x] On successful Join (inside `onConnect` in `handleSubmit`), call `setStoredGuestName(name)` before the onJoined hand-off.
+  - [x] Never read/write anything for the room code.
 
 - [x] Session cookie Max-Age: **no change** (AC: #6) — resolved 2026-04-05, keep 30 days per existing code; UX Spec updated to match.
 
-- [ ] Unit tests (AC: #8)
-  - [ ] `determineInitialPage`: add case for `pathname: '/'` + `me: null` → `{ page: 'join' }`. Keep existing `/room/:code` and authenticated cases.
-  - [ ] Guest-name localStorage helper: round-trip test + simulated throw on `setItem` to verify silent fallback. Mock localStorage in test setup (typical vitest/jsdom pattern already in use).
+- [x] Unit tests (AC: #8)
+  - [x] `determineInitialPage`: add case for `pathname: '/'` + `me: null` → `{ page: 'join' }`. Keep existing `/room/:code` and authenticated cases.
+  - [x] Guest-name localStorage helper: round-trip test + simulated throw on `setItem` to verify silent fallback. Mock localStorage in test setup (typical vitest/jsdom pattern already in use).
 
-- [ ] Manual verification
-  - [ ] Open root `/` unauthenticated in Chrome incognito → JoinPage visible, Host Login button top-right, name field empty + focused.
-  - [ ] Submit a name + valid code (use a running session). Close tab, reopen root `/` → name prefilled, focus still on name field (or button, acceptable).
-  - [ ] Tap Host Login → existing LoginPage / Spotify OAuth flow unchanged.
-  - [ ] Open root `/` in Safari Private mode → no error, Join still works, localStorage writes fail silently.
+- [x] Manual verification (user-confirmed 2026-04-05)
+  - [x] Open root `/` unauthenticated in Chrome incognito → JoinPage visible, Host Login button top-right, name field empty + focused.
+  - [x] Submit a name + valid code (use a running session). Close tab, reopen root `/` → name prefilled, focus still on name field (or button, acceptable).
+  - [x] Tap Host Login → existing LoginPage / Spotify OAuth flow unchanged.
+  - [x] Open root `/` in Safari Private mode → no error, Join still works, localStorage writes fail silently.
+
+### Review Findings
+
+_Code review 2026-04-05 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Acceptance Auditor: all 8 ACs satisfied._
+
+- [x] [Review][Patch] `.join-page` missing `position: relative` — Host Login button uses `position: absolute` but parent has no positioned ancestor; button will anchor to viewport/body instead of the page container [src/client/pages/JoinPage.svelte:131]
+- [x] [Review][Patch] Stored guest name not trimmed on read/write — whitespace-padded values silently fail `validateJoin` [src/client/lib/guestName.ts:5, src/client/pages/JoinPage.svelte:57]
+- [x] [Review][Patch] Host Login button lacks `:focus`/`:focus-visible` style — keyboard users get no focus indicator [src/client/pages/JoinPage.svelte:234]
+- [x] [Review][Patch] Host Login click during guest connect orphans the WebSocket — clicking while `connecting === true` unmounts JoinPage mid-handshake; button disabled while connecting [src/client/pages/JoinPage.svelte:76]
+- [x] [Review][Patch] `clear()` in guestName.test.ts reassigns local `store` binding but stubbed closures hold the original reference — latent bug fixed by mutating in place [src/client/__tests__/guestName.test.ts:16]
+- [x] [Review][Defer] Rapid repeated clicks on Host Login fire handler multiple times [src/client/pages/JoinPage.svelte:76] — deferred, minor: no orphaning risk once mid-connect guard lands, and page transition is idempotent
+- [x] [Review][Defer] Host Login button may overlap `<h1>` on narrow viewports [src/client/pages/JoinPage.svelte:215] — deferred, cosmetic: no verified overlap at current breakpoints, revisit if reported
+- [x] [Review][Defer] No test for `determineInitialPage` priority ordering (authenticated + /room/:code) [src/client/__tests__/dashboard.test.ts] — deferred, pre-existing coverage gap
 
 ## Dev Notes
 
@@ -116,16 +129,34 @@ Keep 30 days (existing value at [src/server/auth.ts:185](src/server/auth.ts#L185
 
 ### Agent Model Used
 
-_TBD_
+claude-opus-4-6 (Claude Code / bmad-dev-story)
 
 ### Debug Log References
 
-_TBD_
+- `npm run lint` → clean (tsc --noEmit, no errors)
+- `npm test` → 13 files, 241 tests passed (6 new in `guestName.test.ts`)
 
 ### Completion Notes List
 
-_TBD_
+- **AC1 — routing:** Unauthenticated fallback in `determineInitialPage` flipped from `login` to `join`. `/room/:code` prefill path and authenticated `dashboard` branch untouched. Existing tests in [src/client/__tests__/dashboard.test.ts](src/client/__tests__/dashboard.test.ts) updated — the "unknown path" test now also expects `join` (the fallback is a catch-all; there are no other route branches).
+- **AC2 — Host Login button:** Added a ghost-style `<button>` (transparent bg, muted grey border/text) positioned absolutely top-right of the `.join-page` container. Tapping calls `onHostLogin` prop → `App.svelte` sets `page = 'login'`, reusing the existing `LoginPage` "Connect Spotify" flow (approach A per Dev Notes). 44px min hit target preserved.
+- **AC3/4/5 — guest name persistence:** New helper [src/client/lib/guestName.ts](src/client/lib/guestName.ts) with `getStoredGuestName()` / `setStoredGuestName()`, both wrapped in try/catch. Stable key `bangerbingo.guestName`. JoinPage initialises `name` state from the helper (via `$state(untrack(() => getStoredGuestName()))`) before the `onMount` autofocus, so users see their previous name pre-populated and focused. Write happens inside `onConnect` (i.e. only after the server confirms a successful Join). Room code is never touched by the helper.
+- **AC6 — cookie maxAge:** unchanged per 2026-04-05 decision.
+- **AC8 — tests:** Added [src/client/__tests__/guestName.test.ts](src/client/__tests__/guestName.test.ts) with 6 cases covering round-trip, overwrite, getItem/setItem throws, and `localStorage` undefined. Updated the two `determineInitialPage` cases at [src/client/__tests__/dashboard.test.ts:10](src/client/__tests__/dashboard.test.ts#L10) to expect `'join'`.
+- Manual verification steps remain for the user (require a running dev server + real browsers).
 
 ### File List
 
-_TBD_
+- Modified: [src/client/lib/ws.ts](src/client/lib/ws.ts)
+- Modified: [src/client/pages/JoinPage.svelte](src/client/pages/JoinPage.svelte)
+- Modified: [src/client/App.svelte](src/client/App.svelte)
+- Modified: [src/client/__tests__/dashboard.test.ts](src/client/__tests__/dashboard.test.ts)
+- Added: [src/client/lib/guestName.ts](src/client/lib/guestName.ts)
+- Added: [src/client/__tests__/guestName.test.ts](src/client/__tests__/guestName.test.ts)
+- Modified: [_bmad-output/implementation-artifacts/sprint-status.yaml](_bmad-output/implementation-artifacts/sprint-status.yaml)
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-04-05 | Story 7-1 implemented: root `/` now lands on JoinPage, Host Login ghost button added, guest name persists in localStorage with silent fallback. |

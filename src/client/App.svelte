@@ -28,6 +28,10 @@
     page = 'dashboard'
   }
 
+  function handleHostLogin() {
+    page = 'login'
+  }
+
   function handleJoined(name: string, _role: string, _players: string[], code: string, ws: WebSocket) {
     guestName = name
     guestRoomCode = code
@@ -58,7 +62,7 @@
 {:else if page === 'login'}
   <LoginPage onAuthenticated={handleAuthenticated} />
 {:else if page === 'join'}
-  <JoinPage {prefillCode} onJoined={handleJoined} />
+  <JoinPage {prefillCode} onJoined={handleJoined} onHostLogin={handleHostLogin} />
 {:else if page === 'dashboard'}
   <DashboardPage onEnterLobby={handleEnterLobby} />
 {:else if page === 'lobby'}
