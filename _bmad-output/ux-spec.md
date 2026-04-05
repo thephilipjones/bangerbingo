@@ -13,16 +13,19 @@
 3. [Screen: Join (`/`)](#screen-join)
 4. [Screen: Guest Card View (`/room/:code`)](#screen-guest-card-view)
 5. [Screen: Host Card View (`/room/:code` — host session)](#screen-host-card-view)
-6. [Screen: Lobby / Between Rounds](#screen-lobby--between-rounds)
-7. [Screen: Round Config (Host)](#screen-round-config-host)
-8. [Screen: Win Moment](#screen-win-moment)
-9. [Screen: Login / Setup (`/login`, `/setup`)](#screen-login--setup)
-10. [Component: Song History Drawer](#component-song-history-drawer)
-11. [Component: Host Controls Panel (Mobile)](#component-host-controls-panel-mobile)
-12. [Component: SDK Failure Banner](#component-sdk-failure-banner)
-13. [WebSocket Event Contracts](#websocket-event-contracts)
-14. [Tile State Reference](#tile-state-reference)
-15. [Decision Log](#decision-log)
+6. [Screen: Guest Waiting Room](#screen-guest-waiting-room)
+7. [Component: Between-Rounds State (in-game)](#component-between-rounds-state-in-game)
+8. [Overlay: Round Config (Host)](#overlay-round-config-host)
+9. [Screen: Win Moment](#screen-win-moment)
+10. [Screen: Host Management (`/host`)](#screen-host-management)
+11. [Component: Song History Drawer](#component-song-history-drawer)
+12. [Component: Players Overlay](#component-players-overlay)
+13. [Component: Host Mini-Player](#component-host-mini-player)
+14. [Component: Host Controls Overlay](#component-host-controls-overlay)
+15. [Component: SDK Failure Banner](#component-sdk-failure-banner)
+16. [WebSocket Event Contracts](#websocket-event-contracts)
+17. [Tile State Reference](#tile-state-reference)
+18. [Decision Log](#decision-log)
 
 ---
 
@@ -88,46 +91,47 @@ When `titleRevealAt` is set and not yet reached:
 ### Layout
 
 ```
-┌─────────────────────────┐
+┌─[Host Login]─────────────┐  ← small ghost button, top-right, low contrast
 │                         │
 │     🎵 Bangerbingo      │  ← wordmark, centred
 │                         │
 │   Your name             │
 │   ┌─────────────────┐   │
-│   │                 │   │  ← autofocus on mount
+│   │  Marcus         │   │  ← prefilled from localStorage if present; autofocus
 │   └─────────────────┘   │
 │                         │
 │   Room code             │
 │   ┌─────────────────┐   │
-│   │  KXJM7          │   │  ← monospace, ALL-CAPS auto-transform
+│   │  KXJM           │   │  ← monospace, ALL-CAPS auto-transform; never persisted
 │   └─────────────────┘   │
 │                         │
 │   ┌─────────────────┐   │
 │   │      Join       │   │  ← primary CTA
 │   └─────────────────┘   │
 │                         │
-│   Hosting? Log in →     │  ← small, low-prominence link
-│                         │
 └─────────────────────────┘
 ```
+
+**Host Login button** is visually recessive (text-only or ghost style), top-right, positioned away from the primary Join CTA to prevent mis-taps. Routes to `/host` (Host Management). No additional auth gate beyond Spotify OAuth.
+
+**Guest name persistence:** on successful join, the guest's name is saved to `localStorage` under key `bangerbingo.guestName`. On subsequent visits to `/`, the name field is prefilled from localStorage (user can edit/overwrite). Room code is **never** persisted.
 
 ### Behaviour
 
 **URL variant (pre-filled from `/room/:code`):**
 - Room code field populated from URL param
 - Field is `readonly` (not `disabled`) — styled with a subtle lock icon or distinct bg
-- Name field still autofocuses — it's the only thing they need to fill in
-- "Hosting? Log in →" link still present
+- Name field prefilled from localStorage (if present), otherwise autofocuses — it's the only thing they need to fill in
+- Host Login button still present
 
 **Root URL variant:**
-- Both fields empty
-- Name field autofocuses
-- Room code field: monospace input, auto-uppercases on input, strips spaces
+- Name field prefilled from localStorage (if present), otherwise empty + autofocused
+- Room code field: empty, monospace input, auto-uppercases on input, strips spaces
 
 **Submission:**
 - Validates name (non-empty, ≤ 30 chars) and code (4–6 chars, alphanumeric)
-- On success: redirect to `/room/:code` as guest (WebSocket handshake with `role: guest, name`)
-- Host arriving at root URL: they use "Log in →" — not this form
+- On success: name written to localStorage (`bangerbingo.guestName`); redirect to `/room/:code` as guest (WebSocket handshake with `role: guest, name`)
+- Host arriving at root URL: they use the Host Login button — not this form
 
 ### Error states
 
@@ -154,7 +158,7 @@ Room codes are **uppercase letters only, A–Z, excluding O and I** (visually am
 
 ```
 ┌─────────────────────────┐
-│ Bangerbingo  [≡ History]│  ← minimal header; history button right
+│ [4 Players]  KXJM  [3rd Song] │  ← status-indicator header
 ├─────────────────────────┤
 │                         │
 │  ┌───┬───┬───┬───┬───┐  │
@@ -167,9 +171,22 @@ Room codes are **uppercase letters only, A–Z, excluding O and I** (visually am
 │  │   │   │   │   │   │  │
 │  └───┴───┴───┴───┴───┘  │
 │                         │
-│  Song 3 of this round   │  ← status line, below card
 └─────────────────────────┘
 ```
+
+### Status-indicator header
+
+The header replaces the wordmark with two live status-carrying buttons and a muted room code:
+
+| Element | Content | Behaviour |
+|---|---|---|
+| Left button | `[N Players]` (live count + label) | Opens Players Overlay; updates on `player:joined`/`player:left` |
+| Center | Room code (monospace, muted/lower-contrast) | Tap-to-copy; persistent throughout session |
+| Right button | `[Nth Song]` (ordinal for current song in round) | Opens History drawer; updates on each `song:start`. Pre-round fallback: `History` |
+
+Same header applies to Host Card View and Guest Waiting Room (Waiting Room omits the History button — no songs played yet).
+
+The in-card status line (`"Song 3 of this round"`) is removed — the header now carries that information.
 
 ### Tile interaction
 
@@ -216,22 +233,22 @@ Below the card grid — one line, small, muted:
 
 ### Mobile layout
 
-Identical to guest card view **plus** a persistent control handle at the bottom:
+Identical to guest card view **plus** a persistent Host Mini-Player fixed to the bottom:
 
 ```
 ┌─────────────────────────┐
-│ Bangerbingo  [≡ History]│
+│ [4 Players] KXJM [3rd Song] │  ← status-indicator header
 ├─────────────────────────┤
 │                         │
 │     [5×5 bingo card]    │
 │                         │
-│  Song 3 of this round   │
 ├─────────────────────────┤
-│  ── Controls ▲ ──       │  ← persistent handle — always visible
+│ Don't Stop — Journey    │  ← Host Mini-Player
+│ [▶/‖]   [⏭ Next]    [⚙] │  ← fixed to bottom
 └─────────────────────────┘
 ```
 
-The handle label reads "Controls ▲" — explicit affordance, no hidden gesture discovery required. Tap or swipe up to open panel.
+The gear icon (⚙) opens the Host Controls Overlay. See Component: Host Mini-Player and Component: Host Controls Overlay.
 
 ### Desktop layout (≥768px)
 
@@ -239,97 +256,146 @@ Split view — no overlay needed:
 
 ```
 ┌───────────────┬──────────────────┐
+│ [4 Players] KXJM [3rd Song]      │  ← shared header
+├───────────────┼──────────────────┤
 │               │  Now playing     │
-│  [5×5 card]   │  [Track info]    │
+│  [5×5 card]   │  Don't Stop —…   │
 │               │                  │
-│               │  [⏮] [▶/‖] [⏭]  │
+│               │  [▶/‖]  [⏭ Next] │
 │               │                  │
-│               │  Players (4)     │
-│               │  • Marcus        │
-│               │  • Priya         │
-│               │  • Tom           │
-│               │  • [you]         │
-│               │                  │
-│               │  [End Round]     │
+│               │  [⚙ Host Controls]│
 └───────────────┴──────────────────┘
 ```
 
-Card takes ~60% width, controls take ~40%. Both always visible — host never has to context-switch.
+Card takes ~60% width, controls take ~40%. Players list accessed via header `[N Players]` button (same on desktop). On desktop the Host Controls Overlay can render as an inline panel section rather than a bottom sheet.
 
 ---
 
-## Component: Host Controls Panel (Mobile)
+## Component: Host Mini-Player
 
-**Trigger:** Tap "Controls ▲" handle or swipe up from bottom edge  
-**Behaviour:** Partial bottom sheet — card remains partially visible behind (~40% peek)
+**Placement:** Fixed to bottom of viewport on the host Game page. Not a sheet, not dismissable, always visible.
+
+```
+┌─────────────────────────────────────┐
+│ Don't Stop Believin' — Journey      │  ← now-playing, single line
+│ [▶/‖]       [⏭ Next]           [⚙] │  ← three buttons only
+└─────────────────────────────────────┘
+```
+
+### Buttons
+
+| Button | Behaviour |
+|---|---|
+| **▶/‖ Play/Pause** | Toggle (single button, icon reflects state) |
+| **⏭ Next** | Advances to next song (broadcasts `song:start`) |
+| **⚙ Gear** | Opens Host Controls Overlay |
+
+**Prev button removed** — low-use; reverting songs mid-party isn't a needed affordance.
+**Players list removed from this component** — now in the header Players Overlay.
+**Round and session management actions removed** — they live in the Host Controls Overlay.
+
+### Auto-advance behaviour
+
+When a clip duration is set (not "Full song"), the server auto-advances to the next song when the clip ends — no host action required. The host's role during an auto-advance round is passive.
+
+In **Full song** mode, the host advances manually using the Next button.
+
+The Play/Pause button is present in both modes but primarily useful in Full song mode (e.g. pausing for a winner announcement). In clip mode, Play/Pause is a convenience override.
+
+### SDK failure state
+
+When `sdkFailed === true`, the mini-player replaces Play/Pause with a deep-link:
+
+```
+┌─────────────────────────────────────┐
+│ ⚠ Audio via Spotify app — Journey   │
+│ [Open in Spotify →]  [⏭ Next]  [⚙] │
+└─────────────────────────────────────┘
+```
+
+Next Song still advances the server game state and broadcasts `song:start`. Gear still opens Host Controls Overlay. Host manually navigates in Spotify. The game is not blocked.
+
+---
+
+## Component: Host Controls Overlay
+
+**Trigger:** Host taps ⚙ gear in Host Mini-Player
+**Behaviour:** Bottom sheet, ~40% screen height; same pattern as Players/History drawers
 
 ```
 ┌─────────────────────────┐
 │  ── drag handle ──      │
+│  Host Controls          │
+├─────────────────────────┤
 │                         │
-│  Now playing            │
-│  Don't Stop Believin'   │  ← track name, 16px
-│  Journey                │  ← artist, 14px muted
+│  ↻ End Round            │  ← opens Round Config overlay (new playlist + cards)
 │                         │
-│  ┌───┐  ┌──────┐ ┌───┐ │
-│  │ ⏮ │  │  ▶   │ │ ⏭ │ │  ← Prev / Play/Pause / Next
-│  └───┘  └──────┘ └───┘ │  ← Next is largest (most used)
+│  ⏻ End Session          │  ← confirm → session:end broadcast
 │                         │
-│  Players online: 4      │
-│  ● Marcus  ● Priya      │
-│  ● Tom     ● [you]      │
+│  ───────────────        │
 │                         │
-│  [End Round]            │  ← small, low-prominence, right-aligned
+│  →  Host Management     │  ← navigate out of game to admin
 │                         │
 └─────────────────────────┘
 ```
 
-### Auto-advance behaviour
+### Actions
 
-When a clip duration is set (not "Full song"), the server auto-advances to the next song when the clip ends — no host action required. The host's role during an auto-advance round is passive; they can monitor but need not interact.
-
-In **Full song** mode, the host advances manually using the Next button at their discretion.
-
-The Play/Pause button is present in both modes but primarily useful in Full song mode (e.g. pausing for a winner announcement). In clip mode, Play/Pause is a convenience override.
-
-### Control hierarchy (size = frequency)
-
-1. **Next song** — largest button, most prominent (manual advance / Full song mode)
-2. **Play / Pause** — medium (primarily Full song mode)
-3. **Previous** — small (rare use)
-4. **End Round** — small, bottom, requires confirmation
+- **End Round** — closes the overlay, opens Round Config overlay (mid-session variant; confirmation required, cards will clear on confirm)
+- **End Session** — confirmation dialog *"End this session for everyone? All players will be disconnected and the room will close."* → server broadcasts `session:end { reason: "host_ended" }` → host redirects to `/host` (Host Management)
+- **Host Management link** — navigates host to `/host`. The active session continues running server-side; guests remain connected; host can re-enter via session row tap in Host Management.
 
 ### End Round flow
 
-1. Host taps "End Round" (small button, not easily mis-tapped)
-2. Confirmation dialog: **"End this round?"** → [Cancel] [End Round]
-3. If confirmed: toast appears at top of screen — *"Ending round in 2s… [Cancel]"*
-4. 2-second countdown; if not cancelled, server broadcasts `round:end`
-5. All clients transition to lobby / waiting state
-
-### SDK failure state (in panel)
-
-When `sdkFailed === true`, playback controls are replaced with:
-
-```
-│  ⚠ Audio playing via Spotify app   │
-│  Don't Stop Believin' — Journey     │
-│  [Open in Spotify →]                │  ← spotify:track:ID deep link
-│                                     │
-│  [⏭ Next Song]                     │  ← still works; advances game state
-```
-
-Next Song still functions — it advances the server game state and broadcasts `song:start` to all clients. Host manually navigates in Spotify. The game is not blocked.
+1. Host taps ⚙ gear → Host Controls Overlay opens
+2. Host taps "End Round"
+3. Round Config overlay opens with mid-session variant (host name hidden, warning banner visible)
+4. Host picks new playlist + settings → taps Start Round
+5. Confirmation dialog: *"End current round and start new? [Cancel] [Start New Round]"*
+6. On confirm: server broadcasts `round:end` then `song:start` for the first song of the new round; all clients render new cards
 
 ---
 
-## Screen: Lobby / Between Rounds
+## Screen: Guest Waiting Room
 
-**Users:** All players between rounds, or guests waiting for host to start first round
+**Route:** `/room/:code` (guest WebSocket session, pre-round)
+**Users:** Guests after joining but before the first round starts
 
 ```
 ┌─────────────────────────┐
-│ Bangerbingo             │
+│ [N Players]   KXJM      │  ← same status-indicator header, no History button yet
+├─────────────────────────┤
+│                         │
+│  You're in!             │
+│                         │
+│  Players here (3)       │
+│  • Sarah [host]         │  ← host always shown with host tag
+│  • Marcus               │
+│  • Priya                │
+│  • (you)                │
+│                         │
+│  Waiting for host to    │
+│  start the round…       │
+│                         │
+└─────────────────────────┘
+```
+
+- **Player names visible** — resolves the "am I alone here?" question
+- **Host always listed** with `[host]` pill (small, muted brand colour)
+- **Live updates** on `player:joined` / `player:left`
+- **Room code** shown in header for reshare
+- Host does NOT see this screen (they're on Host Management or in Configure Round overlay until Start Round fires)
+
+On first `song:start`, all clients transition to the Game page.
+
+---
+
+## Component: Between-Rounds State (in-game)
+
+**Context:** Rendered in place of the bingo card on the Game page between rounds (after `round:end`, before next `song:start`). The Game page frame (status-indicator header, Host Mini-Player) stays visible.
+
+```
+│ [N Players]   KXJM   [History] │  ← header remains
 ├─────────────────────────┤
 │                         │
 │        🎵               │  ← spinning vinyl SVG, ~80px
@@ -344,18 +410,11 @@ Next Song still functions — it advances the server game state and broadcasts `
 │  Waiting for host to    │  ← status line
 │  start the next round…  │
 │                         │
-│  Players here (4)       │  ← live count, no names needed
-│                         │
-└─────────────────────────┘
+├─────────────────────────┤
+│ [mini-player stays]     │  ← host sees their mini-player throughout
 ```
 
-**Host sees additionally** (below player count):
-
-```
-│  ┌──────────────────┐   │
-│  │  Configure Round │   │  ← CTA to open round config
-│  └──────────────────┘   │
-```
+The host's gear → Host Controls Overlay → "End Round" is how they start the next round from this state.
 
 ### Trivia facts
 
@@ -366,31 +425,39 @@ Next Song still functions — it advances the server game state and broadcasts `
 
 ---
 
-## Screen: Round Config (Host)
+## Overlay: Round Config (Host)
 
-**Trigger:** Host taps "Configure Round" from lobby, or after starting a new room  
-**Layout:** Full-screen or large bottom sheet (host only — guests see waiting state)
+**Triggers:**
+1. From Host Management via "Start New Session" (first round of a new room — name field visible)
+2. From the Host Controls Overlay → "End Round" action (new round within existing session — name field hidden, confirmation required)
+
+**Layout:** Modal overlay (full-screen on mobile, centered modal on desktop). Host only — guests see Waiting Room or Between-Rounds state in-game.
 
 ```
 ┌─────────────────────────┐
-│ ← Back    Round 2       │
+│ ✕ Close   Round 1       │
 ├─────────────────────────┤
+│  Your name              │  ← FIRST USE ONLY (new session)
+│  ┌─────────────────┐    │
+│  │ Sarah           │    │  ← required, ≤ 30 chars
+│  └─────────────────┘    │
+│                         │
 │  Song source            │
 │  ┌──────┐ ┌──────────┐  │
 │  │Genre │ │ Search…  │  │  ← segmented control
 │  └──────┘ └──────────┘  │
 │                         │
 │  [90s Pop]  [2000s R&B] │  ← genre presets as visual cards
-│  [Classic Rock] [Dance] │     not a dropdown
+│  [Classic Rock] [Dance] │
 │  [Hip-Hop]  [Indie]     │
 │                         │
 │  Clip length            │
 │  [20s][30s][45s][60s]   │
-│  [Full song]            │  ← pill toggles
+│  [Full song]            │
 │                         │
 │  Song title reveal      │
 │  [Immediately]          │
-│  [After 5s]             │  ← radio group
+│  [After 5s]             │
 │  [After 10s]            │
 │  [After 15s]            │
 │  [Never]                │
@@ -400,6 +467,23 @@ Next Song still functions — it advances the server game state and broadcasts `
 │  └─────────────────┘    │
 └─────────────────────────┘
 ```
+
+### Host name field
+
+- **First use per session only** (when opened via "Start New Session")
+- Required, ≤ 30 chars
+- Persisted server-side in room state; `session:connect` payload includes `hostName` so all clients (including guests in Waiting Room) see the host listed
+- On subsequent opens via End Round within the same session, the name field is hidden
+- Pre-filled from host's prior session via an httpOnly cookie (`bangerbingo.hostName`) if present
+
+### Mid-session variant (opened via End Round)
+
+When opened from the Host Controls Overlay's "End Round":
+- Name field hidden (already set)
+- Warning banner at top: *"Starting a new round will clear everyone's cards."*
+- Start Round CTA requires a confirmation dialog: *"End current round and start new? [Cancel] [Start New Round]"*
+
+On confirm: server clears card state for all players, generates new cards from the selected playlist, broadcasts `song:start` for the first song of the new round.
 
 ### Genre presets
 
@@ -431,7 +515,7 @@ Search calls the Spotify playlist search endpoint (`/search?type=playlist`), not
 
 ### Room code persistence
 
-Displayed in header or accessible via info icon throughout the session — host may need to reshare it. Never buried.
+Displayed in the center of the status-indicator header on every Game page view (host and guest), muted/lower-contrast so it doesn't compete with the status-indicator buttons. Tap-to-copy. Always visible — never buried.
 
 ---
 
@@ -489,42 +573,63 @@ These are sourced from `winPattern` (tile indices) cross-referenced with `songHi
 
 ---
 
-## Screen: Login / Setup
+## Screen: Host Management
 
-**Routes:** `/login` (returning host), `/setup` (first-run registration)
+**Route:** `/host` (post-OAuth landing; guarded by session cookie)
 
 ### Host auth: Spotify OAuth only
 
-There is no separate username/password system. Spotify OAuth is the host identity. The `/login` and `/setup` routes are the same flow:
+There is no separate username/password system. Spotify OAuth is the host identity. The Host Login button on `/` routes to `/auth/login` which begins the PKCE redirect; on return, the host lands on `/host` (this screen).
+
+### Screen layout
 
 ```
 ┌─────────────────────────┐
-│     🎵 Bangerbingo      │
-│        Host Login       │
+│ Bangerbingo — Host      │
 ├─────────────────────────┤
+│  Spotify: ✓ Connected   │  ← connection status panel
+│  Signed in as Sarah J   │
+│  [Disconnect]           │  ← small, muted
 │                         │
-│  ┌─────────────────┐   │
-│  │  Connect Spotify│   │  ← PKCE OAuth redirect
-│  └─────────────────┘   │
+│  ┌─────────────────┐    │
+│  │ Start New Session│    │  ← primary CTA
+│  └─────────────────┘    │
 │                         │
-│  You'll be asked to     │
-│  log in to Spotify and  │
-│  allow Bangerbingo.     │
+│  Existing sessions      │
 │                         │
-│  ⚠ Use desktop Chrome   │  ← small, muted
-│  or Firefox for audio   │
+│  KXJM  Apr 5, 14:32  🗑 │  ← tap row to resume; trash deletes
+│  PZNT  Apr 3, 21:10  🗑 │
+│  RQWB  Apr 1, 19:48  🗑 │
 │                         │
 └─────────────────────────┘
 ```
 
-On OAuth success: server stores access + refresh tokens server-side (keyed to Spotify `user_id`), sets an httpOnly session cookie. Host is "logged in" for as long as the cookie + refresh token are valid.
+### Spotify connection panel
 
-Returning hosts with a valid session cookie skip this screen entirely.
+- **Connected state:** `✓ Connected` + Spotify account display name + `[Disconnect]` link
+- **Degraded state** (`auth:degraded` received): `⚠ Reconnect needed` + inline `[Reconnect Spotify]` CTA that opens OAuth popup
+- **Disconnect** clears tokens server-side and logs host out
 
-**Post-login flow:**
-1. OAuth success → host dashboard (room list / create room)
-2. Create room → room code displayed prominently → share link
-3. Configure first round → start
+### Start New Session
+
+- Primary CTA → opens Configure Round overlay for a fresh room (generates new room code, new state)
+- Host name is collected inside the Configure overlay (not on this screen)
+
+### Existing sessions list
+
+- **Row tap** → resume session as host (re-joins existing room; if a round is active, lands on Game page; else lands on Between-Rounds state)
+- **Trash icon** 🗑 → confirmation dialog *"Delete session [CODE]? Any connected players will be disconnected. This can't be undone."* → server broadcasts `session:end { reason: "host_deleted" }`, room destroyed, list refreshes
+- Rows show room code (monospace), creation timestamp (host's local timezone), trash icon
+- List sorted newest first
+- Empty state: list hidden; "Start New Session" CTA is the only affordance
+
+### Browser guidance
+
+Muted advisory below the session list: *"Use desktop Chrome or Firefox for audio. iOS Safari will work for controls but audio must play from another device."*
+
+### Session cookie persistence
+
+On OAuth success: server stores access + refresh tokens server-side (keyed to Spotify `user_id`), sets an httpOnly session cookie with `Max-Age: 14 days`. Returning hosts with a valid session cookie skip the OAuth redirect and land directly on `/host`.
 
 ---
 
@@ -555,7 +660,35 @@ Returning hosts with a valid session cookie skip this screen entirely.
 - **Newest first** — most recent songs at top (most relevant for catching up)
 - Song number helps players map history to their card tiles
 - Album art if available from provider; graceful fallback to music note icon
-- Always accessible mid-round — floating `≡` button in header, not in a menu
+- Always accessible mid-round — triggered from the header `[Nth Song]` status-indicator button
+- The button's label reflects the current song position live (e.g. `[3rd Song]` → `[4th Song]` on each `song:start`); falls back to `History` when no song is playing
+
+---
+
+## Component: Players Overlay
+
+**Trigger:** Tap the `[N Players]` status-indicator button in the header
+**Layout:** Bottom sheet, ~50% screen height, same pattern as Song History Drawer
+**Availability:** All players (host + guests) at all times during waiting, between rounds, and mid-round
+
+```
+┌─────────────────────────┐
+│  ── drag handle ──      │
+│  Players (4)            │
+├─────────────────────────┤
+│                         │
+│  Sarah  [host]          │  ← host tag: small brand-colour pill
+│  Marcus                 │
+│  Priya                  │
+│  Tom  (you)             │  ← current user suffix
+│                         │
+└─────────────────────────┘
+```
+
+- Host always shown first, with `[host]` pill
+- Current user suffixed with `(you)`
+- Live updates on `player:joined` / `player:left` (list and header count update atomically)
+- No actions on players in MVP (no kick, no promote)
 
 ---
 
@@ -710,8 +843,10 @@ Fired when all token refresh retries are exhausted. Host receives this; guests d
   event: "session:connect",
   role: "host" | "guest",
   playerName: string,
+  hostName: string,             // always populated; host sees own, guests see host's
   roomCode: string,
   roundActive: boolean,
+  songNumber?: number,          // current song ordinal (for [Nth Song] button label)
   // if roundActive:
   card?: number[][],            // 5×5 grid of songIds
   songHistory?: SongHistoryItem[],
@@ -719,7 +854,18 @@ Fired when all token refresh retries are exhausted. Host receives this; guests d
 }
 ```
 
-This payload drives the role-aware rendering split. Host gets host view; guest gets guest view. Same URL, same component tree entry point, branched on `role`.
+This payload drives the role-aware rendering split. Host gets host view; guest gets guest view. Same URL, same component tree entry point, branched on `role`. `hostName` populates the `[host]` tag in the Players Overlay and Guest Waiting Room.
+
+### `session:end` (server → all clients in room)
+
+```ts
+{
+  event: "session:end",
+  reason: "host_ended" | "host_deleted" | "host_timeout"
+}
+```
+
+Fired when a host ends a session in-game (Host Controls Overlay → End Session, reason: `host_ended`), deletes a session from Host Management (trash icon, reason: `host_deleted`), or the server times out an abandoned session (reason: `host_timeout`). All connected clients disconnect; guests redirect to `/` with a banner *"Session ended by host."* (dismissible after 5s). Host returns to `/host`.
 
 ---
 
@@ -769,5 +915,16 @@ States are composable: a tile can be `marked` + `revealed`, or `marked` + `win-p
 | Host controls handle | Persistent "Controls ▲" label | No hidden gesture discovery |
 | Desktop host layout | Card 60% / controls 40% inline | No context switching ever |
 | Genre presets UI | Visual cards, not dropdown | Scannable; matches party-time browsing behaviour |
-| Room code display | Large, monospace, persistent, copyable | Shout-across-room legibility |
+| Room code display | Muted, centered, monospace, tappable to copy; flanked by status-indicator buttons | Persistent without competing for attention |
 | Late arrival | No toast; history drawer always accessible | Trust players; reduce noise |
+| Root page audience | Guest-first; host entry is a small recessive button, not primary CTA | Prevents mis-taps; 90% flow is guest join |
+| Guest name persistence | Guest name stored in localStorage; prefilled on return visits | Returning guests shouldn't retype; room code never stored |
+| Host Management as landing | After OAuth, host lands on Host Management (Spotify status + New Session CTA + session list with timestamps/trash icons) | One admin surface for account + session lifecycle |
+| Round Config as overlay | Modal instead of standalone screen; same component for first-round and mid-session new-round | Single component, lighter navigation |
+| Host is a named player | Host provides name at session start; appears in players list with `[host]` pill | Matches "host plays too" principle; eliminates 0-players display |
+| Mini-player minimal | Three buttons only (play/pause, next, gear); no round/session controls exposed directly | Bar is for playback; management is one tap away |
+| Host Controls Overlay | Bottom sheet reached via gear icon; contains End Round, End Session, Host Management link | Groups lifecycle + navigation actions away from playback |
+| Header status-indicator buttons | Players button shows "N Players", History button shows "Nth Song" | Buttons carry live status + afford their overlays; doubles up UI work |
+| End Session dual entry | Available in-game (Host Controls Overlay) and as trash icon in Host Management | In-game for natural end, admin for housekeeping — same server behaviour |
+| End Round naming | "End Round" instead of "Configure" | Changing playlist always clears the round; honest naming |
+| Host session cookie lifetime | Extended to 14 days (previously session-only) | Host re-auth friction; refresh token continues as long as cookie valid |

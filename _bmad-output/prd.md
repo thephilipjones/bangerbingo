@@ -30,12 +30,17 @@ classification:
 - **Player** — anyone with a bingo card (host or guest)
 - **Host** — the player who also controls playback and manages rounds
 - **Guest** — a player with no account; ephemeral identity within a session
+- **Host Login** — entry point for hosts, separate from guest Join, reached via a small link on the landing page
+- **Host Management** — host's admin surface (`/host`) with Spotify connection status/controls, New Session CTA, and session list (create timestamps + trash icons)
+- **Host Controls Overlay** — in-game bottom-sheet (reached via the gear icon in the Host Mini-Player) containing End Round, End Session, and a link back to Host Management
+- **End Round** — host action that closes the current round, opens the Round Config overlay, and clears all player cards after confirmation
+- **End Session** — host action that closes the entire session (room destruction, guests disconnected); available in-game via Host Controls Overlay and as a trash icon per row in Host Management
 
 ---
 
 ## Executive Summary
 
-Bangerbingo is a self-hosted, Spotify-powered music bingo platform for personal use among friends and family. Hosts register an account, authenticate with Spotify Premium, and run game sessions via a shareable room URL and short room code. Guests join with no account and no Spotify dependency — name only. The platform runs indefinitely without subscription cost beyond hosting; any host who discovers it can run independent sessions.
+Bangerbingo is a self-hosted, Spotify-powered music bingo platform for personal use among friends and family. Hosts authenticate with Spotify Premium via a small host-login entry on the landing page, reach a lightweight Host Management screen (Spotify connection status, start new / resume existing / delete sessions), and configure the first round of a new session in an overlay. Guests join with no account and no Spotify dependency — name only. The platform runs indefinitely without subscription cost beyond hosting; any host who discovers it can run independent sessions.
 
 Guest join supports two flows: direct link (shareable URL → enter name) and Jackbox-style join (root URL → enter name + room code → redirect to session). The code flow handles the "someone shouts the code across the room" party scenario.
 
@@ -65,9 +70,9 @@ Bangerbingo bets on Spotify playlist quality over algorithmic selection: genre p
 
 *Sarah discovers Bangerbingo via GitHub, deploys via Docker Compose, creates an account, and connects Spotify Premium.*
 
-Game night: she opens the app on her MacBook, logs in, creates a room. She picks "90s Pop Hits" from the genre presets, sets clip length to 30s, and gets a shareable link and 5-character room code. She texts the link and shouts the code. Six guests join in under two minutes — she sees them appear in the lobby. She starts the first round. Audio routes through her MacBook to the Bluetooth speaker. She has her own card and is playing too. Three songs in, someone shouts "BINGO!" — the app verifies server-side and a full-screen popup fires on every device. She starts round two without leaving the app. Zero frustrated guests, zero disputed wins.
+Game night: she opens the app on her MacBook, taps the small "Host Login" link on the landing page, authenticates with Spotify, and lands on Host Management. She taps "Start New Session" and the Configure Round overlay opens. She picks "90s Pop Hits" from the genre presets, sets clip length to 30s, enters her name, and taps Start Round. The room code appears in the header of the game page for sharing. She texts the link and shouts the code. Six guests join in under two minutes — they appear in the waiting room with their names, and the players count on her header increments live. She starts the first round. Audio routes through her MacBook to the Bluetooth speaker. She has her own card and is playing too, listed with a `[host]` tag. Three songs in, someone shouts "BINGO!" — the app verifies server-side and a full-screen popup fires on every device. She taps the gear in the mini-player, chooses End Round, picks a new playlist, and round two begins. Zero frustrated guests, zero disputed wins.
 
-*Requires: host registration + Spotify OAuth, room creation, genre preset selection, guest lobby, host-as-player card, BT/AirPlay playback routing, server-verified win detection, multi-round session flow.*
+*Requires: Spotify OAuth + Host Login entry, Host Management screen, Round Config overlay with host name field, guest waiting room with named players, host-as-player card with `[host]` tag, status-indicator header (players/song/room code), Host Mini-Player + Host Controls Overlay, BT/AirPlay playback routing, server-verified win detection, multi-round session flow.*
 
 ### Journey 2: Guest — Late Arrival and Reconnect (Edge Case)
 

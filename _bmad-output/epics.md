@@ -118,6 +118,8 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 *Depends on Epic 5.*
 
+**Sequencing note (2026-04-05):** Story 6-1 (local-dev/Tailscale testing) continues. Stories 6-2+ wait for Epic 7 (UX Flow Restructure) to ship, so production hardening targets the revised UX.
+
 - Proxmox LXC + Docker setup (bangerbingo.net / pre.bangerbingo.net via Cloudflare Tunnel)
 - Environment config (.env.prod / .env.staging — Spotify Client ID/secret, redirect URI, session secret, DATABASE_PATH)
 - Make SQLite path env-configurable in src/server/db.ts (DATABASE_PATH var)
@@ -126,3 +128,30 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 - Smoke test: host auth → create room → guest join → round → bingo → next round
 
 **Acceptance bar:** A real game is playable by Philip + friends from their own devices over the internet.
+
+---
+
+## Epic 7: UX Flow Restructure
+
+*Depends on Epics 1–5 (all shipped). Runs in parallel with Epic 6 where non-conflicting; Epic 6 stories 6-2+ should wait for Epic 7 to ship.*
+
+**Scope:** Revise host/guest entry flows, repurpose Dashboard as Host Management, convert RoundConfig/Lobby to overlays + waiting room, rebuild host controls as minimal Mini-Player + Host Controls Overlay + status-indicator header, persist muted room code, make host a named player, add End Session dual-path.
+
+**Frontend:**
+- Root `/` cleanup: guest-first Join form + small recessive Host Login button + guest name localStorage prefill
+- Repurpose Dashboard as Host Management: Spotify connection panel + New Session CTA + session list with create timestamps + trash icons
+- Convert Round Config to overlay (launched from New Session + End Round action); add host name field
+- Replace standalone Lobby with Guest Waiting Room (pre-round, player names visible) + in-game Between-Rounds component
+- Rebuild Host Mini-Player (fixed bottom): play/pause + next + gear icon
+- New Host Controls Overlay (bottom sheet): End Round, End Session, link to Host Management
+- New Players Overlay (bottom sheet, same pattern as History)
+- Game page header: `[N Players]` + muted room code (center) + `[Nth Song]`; same header for host and guest
+- Host name capture in Round Config overlay on first use per session
+- End Session confirmation → `session:end` broadcast → guest redirect with banner
+
+**Server:**
+- `session:connect` payload: add `hostName`
+- `session:end { reason }` broadcast on end-session (in-game or admin delete); room destruction
+- Session cookie `Max-Age` extended to 14 days
+
+**Acceptance bar:** Host logs in, lands on Host Management (Spotify status + sessions + New Session), taps New Session → Configure overlay (enter name + playlist) → Start Round. Guests join via root URL with name prefilled from prior visit, see waiting room with all named players (host with `[host]` tag) and room code in URL. Game page header shows status-indicator buttons (`N Players`, `Nth Song`) flanking a muted room code. Host Mini-Player (fixed bottom) is play/pause + next + gear. Gear opens Host Controls Overlay with End Round, End Session, and Host Management link. Host can delete any session from Host Management; connected guests are redirected with a banner. Host stays logged in for 14 days.
