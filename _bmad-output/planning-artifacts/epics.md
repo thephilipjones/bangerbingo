@@ -916,3 +916,280 @@ So that I can catch up on missed songs and the host can recover without ending t
 **When** the popup closes
 **Then** the Auth Degraded Banner remains visible with no change to game state
 
+---
+
+## Epic 6: Deploy & Harden
+
+*Turn the working game into something Philip + friends can actually play over the internet from their own phones: single-command local dev (multi-browser + Tailscale phone testing), Dockerised deployment to a single Proxmox LXC hosting both staging and prod, HTTPS/WSS via Caddy, server-restart state recovery, host-controlled Spotify disconnect/reconnect, and Gitea Actions CI/CD with a trunk-based branching strategy.*
+
+### Story 6-1: Local Dev & Tailscale Multi-Device Testing
+
+As a developer,
+I want to run the full stack locally with a single command and reach it from other browsers and my phone,
+So that I can test host+guest flows end-to-end before deploying.
+
+**Acceptance Criteria:**
+
+**Given** a fresh clone of the repo on a Macbook
+**When** the developer runs `cp .env.example .env`, fills in Spotify credentials, and runs `npm install && npm run dev`
+**Then** Vite dev server starts on port 5173 and the Hono server starts on port 3000 concurrently (NFR17)
+**And** no further setup commands are required to begin developing
+
+**Given** the Hono server is starting up
+**When** `serve()` is called from `@hono/node-server`
+**Then** the server binds to `0.0.0.0` (not `127.0.0.1`) so peers on the LAN and Tailscale tailnet can reach it
+
+**Given** the Vite dev server is starting
+**When** `vite` reads `vite.config.ts`
+**Then** `server.host` is set to `true` so the dev server listens on all interfaces
+**And** the existing proxy entries for `/auth`, `/api`, and `/ws` continue to forward to `http://127.0.0.1:3000` unchanged
+
+**Given** the developer is on a Macbook with multiple browsers installed
+**When** they open `http://127.0.0.1:5173/` in Chrome as the host and `http://127.0.0.1:5173/room/:code` in Firefox and Safari as guests
+**Then** a full host + multi-guest session can be played locally without any additional tunnelling or proxy setup
+
+**Given** the Macbook is connected to the Tailscale tailnet
+**When** the developer opens `http://<macbook-tailnet-hostname>:5173/room/:code` on a phone also on the tailnet
+**Then** the phone can join as a guest, receive a card, mark tiles, and see real-time WS events from the host's Macbook browser
+
+**Given** the developer wants to test Spotify auth from a Tailscale peer
+**When** they consult the README
+**Then** the README documents how to register a secondary redirect URI matching the tailnet hostname in the Spotify developer dashboard (or use the primary `http://127.0.0.1:5173/auth/callback` on the Macbook and test Spotify-dependent flows from the Macbook only)
+
+**Given** the developer opens the README for the first time
+**When** they scroll to the "Local Development" section
+**Then** they find: (a) the single-command setup flow, (b) the multi-browser host+guest testing flow on Macbook, (c) the Tailscale phone testing flow with tailnet hostname example, (d) a Troubleshooting sub-section covering port collisions (3000/5173), tailnet TLS cert warnings on phone, and Spotify 400 errors from unregistered redirect URIs
+
+**Given** `.env.example` is the source of truth for required environment variables
+**When** the developer reads it
+**Then** every variable consumed by [src/server/config.ts](src/server/config.ts) is listed with a brief comment explaining its purpose and a safe placeholder value
+
+---
+
+### Story 6-2: Production Dockerfile & Docker Compose
+
+As an operator,
+I want a single `docker compose up -d` to bring up the whole stack with secrets from env,
+So that I can deploy to a Proxmox LXC without manual bootstrapping.
+
+**Acceptance Criteria:**
+
+**Given** a production deployment target
+**When** `docker build` is run against the new `Dockerfile`
+**Then** a multi-stage build executes: stage 1 (`node:20-alpine`) runs `npm ci && npm run build` producing `dist/client` and `dist/server`; stage 2 (`node:20-alpine`) copies `dist/`, `package.json`, and production-only `node_modules`, runs as a non-root user, and declares `CMD ["node", "dist/server/index.js"]`
+**And** the final image size is under 300 MB
+
+**Given** the production server starts inside the container
+**When** it reads `process.env.DB_PATH`
+**Then** [src/server/db.ts](src/server/db.ts) opens the SQLite database at that path, defaulting to `./bangerbingo.db` when unset, so the container can be pointed at a mounted volume
+
+**Given** the compose stack is started on a fresh LXC with a populated `.env` file
+**When** `docker compose up -d` is run
+**Then** a single `app` service starts, reading env from `.env` via `env_file:`, mounting a named volume (`bangerbingo-data`) at `/data`, with `DB_PATH=/data/bangerbingo.db` exported to the container
+**And** the app becomes reachable on the configured port within 60 seconds
+**And** no manual migration or seeding commands are required — the `CREATE TABLE IF NOT EXISTS` pattern in `initDb()` handles fresh databases
+
+**Given** the server starts up
+**When** a client hits `GET /healthz`
+**Then** the server responds with HTTP 200 and `{ "ok": true, "version": "<package.json version>" }`
+**And** the compose file's healthcheck uses this endpoint with a 30-second interval
+
+**Given** the operator needs to know what to configure
+**When** they read the new "Deployment" section of the README
+**Then** they find: the full list of required env vars (`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`, `SESSION_SECRET`, `APP_DOMAIN`, optional `PORT`), the exact `docker compose` commands for start/stop/logs/rebuild, and the named volume path (NFR7, NFR9 — secrets via env only, never in image)
+
+**Given** the repo root
+**When** `docker build` reads `.dockerignore`
+**Then** it excludes `node_modules`, `dist`, `.env`, `*.db`, `*.db-shm`, `*.db-wal`, `.claude/`, `_bmad*`, `.git`, and `_bmad-output` to keep the build context minimal
+
+**Given** the Spotify credentials are supplied at deploy time (FR43)
+**When** the operator populates `.env` on the host
+**Then** `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are read only from env — never baked into the image or committed to the repo (NFR9)
+
+---
+
+### Story 6-3: HTTPS/WSS via Caddy Reverse Proxy
+
+As an operator,
+I want TLS termination and WebSocket upgrade handled by a reverse proxy that auto-manages certificates,
+So that production traffic is HTTPS/WSS without manual cert wrangling (NFR6).
+
+**Acceptance Criteria:**
+
+**Given** the compose stack
+**When** it starts
+**Then** a second service `caddy` runs using the `caddy:2-alpine` image, with ports 80 and 443 published on the host, and named volumes `caddy_data` and `caddy_config` persisting certs across restarts
+
+**Given** a new `Caddyfile` at the repo root
+**When** Caddy reads it on startup
+**Then** it declares a site block for `{$APP_DOMAIN}` that uses `reverse_proxy app:3000` with the standard WebSocket upgrade headers (Caddy 2 handles WS upgrade automatically with `reverse_proxy`, so no extra matcher is needed)
+
+**Given** `APP_DOMAIN` resolves to a publicly reachable DNS name
+**When** Caddy attempts to provision a certificate
+**Then** it automatically obtains and renews a Let's Encrypt cert with no operator intervention
+
+**Given** `APP_DOMAIN` is a tailnet-only hostname (e.g. `bingo.tail-abc123.ts.net`)
+**When** Caddy cannot reach Let's Encrypt for DNS validation
+**Then** the Caddyfile documentation in the README explains switching that site to `tls internal` for a self-signed cert, and the tailnet-cert-warning troubleshooting steps in the phone browser
+
+**Given** a client makes an HTTP request to the domain
+**When** Caddy receives it on port 80
+**Then** Caddy returns a 308 redirect to the `https://` equivalent URL (Caddy's default behaviour when TLS is configured)
+
+**Given** a host or guest browser connects to `wss://{APP_DOMAIN}/ws`
+**When** the WebSocket upgrade request passes through Caddy
+**Then** the connection is successfully upgraded and `session:connect` / `player:joined` events flow exactly as they do in local dev
+
+**Given** deployment verification
+**When** the operator runs `curl -I https://{APP_DOMAIN}/healthz`
+**Then** the response is HTTP 200 with a valid TLS certificate (no `-k` flag required for public domains)
+
+**Given** a phone on the tailnet joining a room
+**When** the phone connects to `https://{APP_DOMAIN}/room/:code`
+**Then** both the REST requests and the WebSocket connection complete successfully end-to-end
+
+---
+
+### Story 6-4: Server Restart State Recovery
+
+As a player,
+I want a single server restart mid-round to not kill our game,
+So that we can resume after a deploy or crash without losing the current round (NFR13).
+
+**Acceptance Criteria:**
+
+**Given** the SQLite schema at boot
+**When** `initDb()` runs in [src/server/db.ts](src/server/db.ts)
+**Then** a new table is created: `active_rooms(room_code TEXT PRIMARY KEY, state_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`
+
+**Given** a new helper `persistRoomState(code)` is defined in [src/server/ws.ts](src/server/ws.ts)
+**When** it is called
+**Then** it reads the current `RoomState` from `roomSockets`, serializes a plain-data snapshot (omitting WebSocket refs, timer handles, and `host`/`guests` maps — keeping `hostUserId`, `pendingRound`, and the entire `currentRound` object except `timers`), and upserts it into `active_rooms` keyed by `room_code`
+
+**Given** a round transition occurs
+**When** any of the following events fires, `persistRoomState(code)` is invoked exactly once: (a) the round-start broadcast after `cards` and the initial `songHistory` are built, (b) each `song:start` broadcast in the game-loop (so `currentSongIndex` and `songHistory` are always durable), (c) a `round:win` broadcast after valid claim validation, (d) a `round:end` broadcast
+**And** no per-tap or per-guest-join snapshots are written — snapshot pressure stays low
+
+**Given** the server process starts up
+**When** boot completes and before accepting WebSocket connections
+**Then** a new `rehydrateRooms()` function reads every row from `active_rooms` and repopulates `roomSockets` with a reconstructed `RoomState` — `host: null`, `guests: new Map()`, `hostHasEverConnected: true`, `currentRound.timers: {}`, and `currentRound.paused: true` regardless of prior paused state
+
+**Given** a host reconnects via `session:connect` after a server restart
+**When** the server matches their session to `hostUserId`
+**Then** the existing re-send logic from Story 5-6 delivers the cached `round:start` payload + `songHistory`, and the host's card view renders with the exact tile state from before the restart
+
+**Given** a guest reconnects by name via `session:connect` after a server restart
+**When** the server finds their `playerName` in `currentRound.cards`
+**Then** the `session:connect` response includes their card from `currentRound.cards[playerName]` and the current `songHistory`, so their card renders identical to pre-restart
+
+**Given** the host hits Play after reconnecting post-restart
+**When** `POST /round/play` is called
+**Then** the server re-broadcasts `song:start` for the current `currentSongIndex` (no index increment) and the auto-advance timer restarts from that position — mid-song timer recovery is explicitly NOT required
+
+**Given** a round ends (either via `round:end` or via `round:win` broadcast)
+**When** the corresponding `persistRoomState` snapshot is written
+**Then** after the round transitions out of `active` state, the `active_rooms` row for that `room_code` is deleted so stale rows do not accumulate
+
+**Given** a room is closed entirely (`room:close`)
+**When** the room is torn down
+**Then** its row in `active_rooms` is deleted
+
+**Given** a restart-recovery verification scenario
+**When** the developer: (1) starts a round with 3 songs played, (2) kills the server process, (3) restarts it, (4) reconnects as a guest, (5) opens the History drawer
+**Then** the drawer shows the same 3 songs in the same order, and the guest's card tile state matches what they had marked before the kill
+
+---
+
+### Story 6-5: Host Spotify Disconnect/Reconnect Settings
+
+As a host,
+I want to disconnect and reconnect my Spotify account from settings,
+So that I can swap accounts or recover from a stuck auth state without admin help (FR5).
+
+**Acceptance Criteria:**
+
+**Given** an authenticated host session
+**When** the host navigates to `/account`
+**Then** an Account Settings page renders showing: the current Spotify display name (from the `hosts` row), a "Disconnect Spotify" button, and a "Reconnect Spotify" button (only one of the two is enabled at a time based on whether tokens exist)
+
+**Given** the host is not authenticated (no valid session cookie)
+**When** they attempt to navigate to `/account`
+**Then** they are redirected to the login screen (not a 404 — existing app convention)
+
+**Given** the host taps "Disconnect Spotify"
+**When** the button is tapped
+**Then** a confirmation dialog appears with the text "This will stop music playback in any active rooms. Continue?" and Cancel / Disconnect buttons
+
+**Given** the host confirms the disconnect dialog
+**When** the client calls `POST /api/account/spotify/disconnect`
+**Then** the server updates the authenticated host's row in the `hosts` table, setting `access_token`, `refresh_token`, and `token_expires_at` to NULL, and returns HTTP 200
+
+**Given** the host has disconnected Spotify
+**When** their browser is still running an active game and the SDK attempts to re-initialise (e.g. on the next `song:start` after disconnect)
+**Then** `SpotifySDKProvider.init()` fails and the existing SDK Failure Banner from Story 5-4 is shown, following the same fallback path as any other init failure
+
+**Given** the host taps "Reconnect Spotify"
+**When** the button is tapped
+**Then** the client initiates the existing PKCE OAuth flow from Epic 1 Story 1-1 (redirect to the Spotify authorize URL with PKCE challenge) rather than implementing a parallel flow
+
+**Given** the OAuth callback succeeds after a reconnect
+**When** the server processes the token exchange
+**Then** the new `access_token`, `refresh_token`, and `token_expires_at` are written back to the authenticated host's existing row in the `hosts` table (the row is never duplicated or replaced — matched on `user_id`)
+**And** the Account Settings page reflects the updated Spotify display name on next render
+
+**Given** a non-host client calls `POST /api/account/spotify/disconnect`
+**When** the server checks the session
+**Then** it returns HTTP 401 Unauthorized
+
+---
+
+### Story 6-6: Gitea Actions CI/CD, Branching Strategy & Smoke Test
+
+As a solo developer working across devices including mobile,
+I want `main` to auto-deploy to staging and a clear tag-based promotion to prod,
+So that I can ship from anywhere and verify with a repeatable smoke test.
+
+**Acceptance Criteria:**
+
+**Given** a new `.gitea/workflows/ci.yml` workflow
+**When** any push to any branch or any PR is opened
+**Then** the workflow installs Node 20, runs `npm ci`, then runs `npm run lint`, `npm test`, and `npm run build` in sequence
+**And** all four must pass for the workflow to succeed
+
+**Given** a new `.gitea/workflows/deploy-staging.yml` workflow
+**When** a push to `main` completes successfully and the CI workflow has passed
+**Then** the workflow SSHes to the shared Proxmox LXC (using a Gitea Actions secret for the SSH key) into `/srv/bangerbingo/staging`, runs `git pull origin main`, then `docker compose -p bb-staging --env-file .env.staging up -d --build`
+
+**Given** a new `.gitea/workflows/deploy-prod.yml` workflow
+**When** a git tag matching the pattern `prod-*` is pushed (e.g. `prod-2026-04-05-01`)
+**Then** the workflow SSHes to the same LXC into `/srv/bangerbingo/prod`, runs `git fetch --tags && git checkout <tag>`, then `docker compose -p bb-prod --env-file .env.prod up -d --build`
+
+**Given** staging and prod share one LXC
+**When** both stacks are running concurrently
+**Then** they use distinct compose project names (`bb-staging`, `bb-prod`), distinct named volumes (`bb-staging-data`, `bb-prod-data`, `bb-staging-caddy-data`, `bb-prod-caddy-data`), and distinct env files (`.env.staging`, `.env.prod`) each with its own `APP_DOMAIN`, `SPOTIFY_REDIRECT_URI`, and `SESSION_SECRET`
+**And** a single shared Caddy service routes by `APP_DOMAIN` host-matching to the correct upstream app container, avoiding port conflicts on 443 and duplicate cert issuance
+
+**Given** the branching strategy is documented in the README
+**When** a developer reads it
+**Then** the doc specifies: `main` is the one long-lived branch; feature work happens on short-lived branches named `feat/<slug>` or `fix/<slug>` merged via Gitea PR; staging deploys on every push to `main`; prod deploys on push of a tag matching `prod-YYYY-MM-DD-NN`; no long-lived `develop`/`staging`/`prod` branches exist
+
+**Given** the developer wants multiple Claude sessions (including mobile) working in parallel
+**When** they read the "Parallel Workstreams" README section
+**Then** it documents using `git worktree add ../bb-<branch> <branch>` to create isolated checkouts for separate Claude agents, with an example of how to run them against the same repo without file clobbering, and how to merge/delete the worktree when done
+
+**Given** the mobile-friendly flow
+**When** the developer merges a PR from the Gitea web UI on their phone
+**Then** the staging stack updates automatically within a few minutes, and the developer can smoke-test the change from their phone over the tailnet immediately — no desktop required for the full loop
+
+**Given** a new runbook at `docs/smoke-test.md`
+**When** the developer runs through it manually after any staging deploy
+**Then** it walks them through: (1) host registers + connects Spotify, (2) host creates a room, (3) guest joins from a second browser using the room code, (4) host starts a round with a genre preset and a short clip length, (5) first song plays and the correct tiles enter masked state, (6) guest marks tiles and claims bingo, (7) win overlay fires on both host and guest screens, (8) host taps "Start Next Round" and a new round configures
+
+**Given** the runbook includes a restart-recovery variant
+**When** the developer executes it
+**Then** they: run the smoke test to step (5), run `docker compose -p bb-staging restart app`, reconnect both browsers, press Play on the host, and verify the round resumes from the same `currentSongIndex` with the same songHistory and card state (validating Story 6-4)
+
+**Given** the runbook notes expected timings
+**When** the developer observes the smoke test
+**Then** it flags NFR1 (host control actions < 500ms), NFR2 (WS broadcast < 200ms), and NFR3 (card loads < 2s) as eyeball checkpoints — not automated assertions, but things to notice
+

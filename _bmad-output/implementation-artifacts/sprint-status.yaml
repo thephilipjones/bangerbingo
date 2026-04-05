@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-04  # 5-6-song-history-late-join-sync-and-auth-reauth → done
+last_updated: 2026-04-04 # epic-6 stories added to sprint status
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -77,11 +77,15 @@ development_status:
   5-4-spotify-web-playback-sdk-integration: done
   5-5-win-detection-and-win-overlay: done
   5-6-song-history-late-join-sync-and-auth-reauth: done
-  epic-5-retrospective: done
-
-  # Epic 5 (post): Pre-deploy cleanup
   5-7-pre-deploy-cleanup-and-hardening: done
+  epic-5-retrospective: done
 
   # Epic 6: Deploy & Harden
   epic-6: backlog
+  6-1-local-dev-and-tailscale-multi-device-testing: backlog
+  6-2-production-dockerfile-and-docker-compose: backlog
+  6-3-https-wss-via-caddy-reverse-proxy: backlog
+  6-4-server-restart-state-recovery: backlog
+  6-5-host-spotify-disconnect-reconnect-settings: backlog
+  6-6-gitea-actions-cicd-branching-and-smoke-test: backlog
   epic-6-retrospective: optional
