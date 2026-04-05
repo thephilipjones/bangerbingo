@@ -84,7 +84,7 @@
       })
 
     ws = connectAsHost(code, {
-      onConnect(initialPlayers) {
+      onConnect(initialPlayers, _hostName) {
         players = initialPlayers
       },
       onPlayerJoined(name) {

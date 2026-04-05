@@ -3,6 +3,7 @@
   import BingoCard from '../components/BingoCard.svelte'
   import WinOverlay from '../components/WinOverlay.svelte'
   import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
+  import GuestWaitingRoom from '../components/GuestWaitingRoom.svelte'
   import {
     initTiles,
     applyMask,
@@ -11,9 +12,10 @@
     toggleMark,
     applyWinPath,
   } from '../lib/bingo.ts'
+  import { applyPlayerEvent } from '../lib/ws.ts'
   import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
 
-  let { name, code, ws }: { name: string; code: string; ws: WebSocket } = $props()
+  let { name, code, ws, initialPlayers = [], hostName = null }: { name: string; code: string; ws: WebSocket; initialPlayers?: string[]; hostName?: string | null } = $props()
 
   type WinData = {
     winnerName: string
@@ -45,6 +47,7 @@
   let roundEnded = $state(false)
   let songHistory = $state<HistoryEntry[]>([])
   let showHistory = $state(false)
+  let players = $state<string[]>(initialPlayers)
 
   const hasBingo = $derived(
     tiles.length > 0 &&
@@ -86,6 +89,10 @@
           hostDisconnected = true
         } else if (data.type === 'host:reconnected') {
           hostDisconnected = false
+        } else if (data.type === 'player:joined') {
+          players = applyPlayerEvent(players, { type: 'player:joined', name: data.name })
+        } else if (data.type === 'player:left') {
+          players = applyPlayerEvent(players, { type: 'player:left', name: data.name })
         } else if (data.type === 'round:start') {
           tiles = initTiles(data.card)
           roundConfig = { titleRevealDelay: data.titleRevealDelay }
@@ -166,7 +173,7 @@
     {/if}
     <p class="status-line" role="status">{statusLine}</p>
   {:else}
-    <p role="status">{statusLine}</p>
+    <GuestWaitingRoom {code} selfName={name} {hostName} {players} />
   {/if}
 </main>
 

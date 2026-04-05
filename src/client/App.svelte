@@ -14,6 +14,8 @@
   let guestName = $state('')
   let guestRoomCode = $state('')
   let guestWs: WebSocket | null = $state(null)
+  let guestPlayers = $state<string[]>([])
+  let guestHostName = $state<string | null>(null)
   let currentRoomCode = $state('')
 
   onMount(async () => {
@@ -31,10 +33,12 @@
     page = 'login'
   }
 
-  function handleJoined(name: string, _role: string, _players: string[], code: string, ws: WebSocket) {
+  function handleJoined(name: string, _role: string, players: string[], hostName: string | null, code: string, ws: WebSocket) {
     guestName = name
     guestRoomCode = code
     guestWs = ws
+    guestPlayers = players
+    guestHostName = hostName
     page = 'room'
   }
 
@@ -63,7 +67,7 @@
 {:else if page === 'lobby'}
   <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} />
 {:else if page === 'room'}
-  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} />
+  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} />
 {:else if page === 'hostroom'}
   <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} />
 {/if}
