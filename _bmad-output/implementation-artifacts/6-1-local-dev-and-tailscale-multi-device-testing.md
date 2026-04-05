@@ -1,6 +1,6 @@
 # Story 6.1: Local Dev & Tailscale Multi-Device Testing
 
-Status: review
+Status: done
 
 ## Story
 
