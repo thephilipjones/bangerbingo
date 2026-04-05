@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of 5-6-song-history-late-join-sync-and-auth-reauth (2026-04-04)
+
+- `SongHistoryDrawer` missing keyboard trap and Escape key handler — `role="dialog"` without focus management; WCAG 2.1 SC 2.1.2 gap; acceptable for mobile-first MVP.
+- `auth:restored` silently dropped if host socket is offline at event time — banner stays stuck if popup completes while host is disconnected; low-probability scenario.
+- Popup stays open if Spotify returns `?error=` on callback — error path in `/auth/callback` doesn't detect popup mode; popup stays open with error page; out of spec scope (AC8 only covers user-closed case).
+- `authEvents` module-level `restored` listener never torn down — test isolation leak; mirrors pre-existing `degraded` listener pattern; acceptable for production singleton.
+- Duplicate `song:start` entries on WS reconnect replay — subsequent `round:start` resets state so self-healing; pre-existing pattern.
+- `reinitSdk()` race when SDK script still loading at `auth:restored` time — `initSdkPlayer()` existing guards likely handle this; pre-existing pattern.
+
 ## Deferred from: code review of 5-4-spotify-web-playback-sdk-integration (2026-04-04)
 
 - `GET /auth/token` returns token without on-demand refresh — intentional per story Dev Notes (Story 1-2 proactive refresh handles freshness); small expiry window remains if background scheduler lags.
