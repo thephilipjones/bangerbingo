@@ -120,8 +120,6 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 - Proxmox LXC + Docker setup (bangerbingo.net / pre.bangerbingo.net via Cloudflare Tunnel)
 - Environment config (.env.prod / .env.staging — Spotify Client ID/secret, redirect URI, session secret, DATABASE_PATH)
-- Fix `/playlists/{id}/items` Spotify endpoint rename in `getPlaylistTracks()` (src/server/music/spotify.ts:82)
-- Fix `SpotifySearchResponse` type: `tracks` → `items` field rename (src/server/music/spotify.ts:33)
 - Make SQLite path env-configurable in src/server/db.ts (DATABASE_PATH var)
 - SQLite Docker volume mount for persistence across deploys
 - Token refresh failure end-to-end test (force expiry, verify retry + degraded mode + re-auth popup)

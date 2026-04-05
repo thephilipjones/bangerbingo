@@ -266,8 +266,8 @@ Solo developer. Architecture is deliberately minimal: ~200 lines of server core,
 
 ### Host Account & Authentication
 
-- FR1: A host can register an account with a display name and password
-- FR2: A host can connect their Spotify Premium account via OAuth after registering
+- FR1: A host can register and sign in via Spotify OAuth (PKCE); display name and email are sourced from the Spotify profile. There is no separate username/password credential.
+- FR2: A host's Spotify Premium account is connected as part of the OAuth flow in FR1
 - FR3: A host can log in and access their room history
 - FR4: A host's Spotify access token refreshes silently before expiry without interrupting an active round
 - FR5: A host can disconnect and reconnect their Spotify account from account settings
@@ -351,7 +351,7 @@ Solo developer. Architecture is deliberately minimal: ~200 lines of server core,
 
 - NFR6: All client–server communication uses HTTPS/WSS in production
 - NFR7: Spotify OAuth tokens are stored server-side only — never exposed to the client
-- NFR8: Host passwords are stored as hashed values — never plaintext
+- NFR8: No host passwords are stored (Spotify OAuth is the sole credential); session cookies are HMAC-signed with a server-side secret
 - NFR9: Spotify app credentials are never embedded in client-side code or committed to the repository
 - NFR10: Guest names are held in memory only for session duration — not persisted
 

@@ -242,8 +242,6 @@ _This is one way to run the above. Skip if deploying elsewhere._
 - [ ] Create `.env.staging` and `.env.prod` on server
 
 **Code changes (Epic 6 stories)**
-- [ ] Fix `getPlaylistTracks()` URL: `/tracks` → `/items` (src/server/music/spotify.ts:82)
-- [ ] Fix `SpotifySearchResponse` interface: `tracks` → `items` (src/server/music/spotify.ts:33)
 - [ ] Make SQLite path env-configurable in `src/server/db.ts`
 - [ ] Write `Dockerfile`
 - [ ] Write `docker-compose.staging.yml` + `docker-compose.prod.yml`

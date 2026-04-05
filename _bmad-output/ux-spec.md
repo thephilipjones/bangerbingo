@@ -493,31 +493,6 @@ These are sourced from `winPattern` (tile indices) cross-referenced with `songHi
 
 **Routes:** `/login` (returning host), `/setup` (first-run registration)
 
-### `/login`
-
-```
-┌─────────────────────────┐
-│     🎵 Bangerbingo      │
-│        Host Login       │
-├─────────────────────────┤
-│  Username or email      │
-│  ┌─────────────────┐   │
-│  │                 │   │
-│  └─────────────────┘   │
-│                         │
-│  Password               │
-│  ┌─────────────────┐   │
-│  │                 │   │
-│  └─────────────────┘   │
-│                         │
-│  ┌─────────────────┐   │
-│  │    Log in       │   │
-│  └─────────────────┘   │
-│                         │
-│  First time? Set up →   │
-└─────────────────────────┘
-```
-
 ### Host auth: Spotify OAuth only
 
 There is no separate username/password system. Spotify OAuth is the host identity. The `/login` and `/setup` routes are the same flow:
