@@ -13,7 +13,8 @@
   let code = $state(untrack(() => prefillCode))
   let nameError = $state('')
   let codeError = $state('')
-  let connecting = $state(false)
+  const autoRejoining = untrack(() => !!(prefillCode && name))
+  let connecting = $state(autoRejoining)
   let nameInput: HTMLInputElement | undefined = $state()
   let activeWs: WebSocket | undefined
   let bufferedMessages: MessageEvent[] = []

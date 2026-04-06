@@ -11,15 +11,16 @@ describe('validateHostName', () => {
     expect(result).toEqual({ trimmed: null, error: null })
   })
 
-  it('errors when required and input is empty', () => {
+  it('returns no error when required and input is empty (empty = use server default)', () => {
     const result = validateHostName('', true)
     expect(result.trimmed).toBeNull()
-    expect(result.error).toBeTruthy()
+    expect(result.error).toBeNull()
   })
 
-  it('errors when required and input is whitespace only', () => {
+  it('returns no error when required and input is whitespace only (treated as empty)', () => {
     const result = validateHostName('   ', true)
-    expect(result.error).toBeTruthy()
+    expect(result.trimmed).toBeNull()
+    expect(result.error).toBeNull()
   })
 
   it('errors when required and input trimmed length > 30', () => {
@@ -113,9 +114,11 @@ describe('RoundConfigOverlay (DOM)', () => {
     void rerender
   })
 
-  it('(ii) Start Round shows inline error on submit when name field is empty and visible', async () => {
+  it('(ii) Start Round proceeds with empty name field (server will default to "Host")', async () => {
     const { default: RoundConfigOverlay } = await import('../components/RoundConfigOverlay.svelte')
     const api = await import('../lib/api.ts')
+    const startRoundMock = vi.mocked(api.startRound)
+    startRoundMock.mockResolvedValue(undefined)
 
     const { getByRole, findByText } = render(RoundConfigOverlay, {
       code: 'ABCD',
@@ -124,12 +127,13 @@ describe('RoundConfigOverlay (DOM)', () => {
       onStarted: vi.fn(),
     })
 
-    const startBtn = getByRole('button', { name: /Start Round/i })
-    await fireEvent.click(startBtn)
+    // Select a source so the only variable is the empty name field
+    const presetBtn = await findByText('80s Pop')
+    await fireEvent.click(presetBtn)
+    await fireEvent.click(getByRole('button', { name: /Start Round/i }))
 
-    // Error text shown (the validateHostName error); startRound NOT called.
-    await findByText(/Please enter your name/i)
-    expect(api.startRound).not.toHaveBeenCalled()
+    // No blocking error — startRound called (empty name omitted from payload, server defaults)
+    expect(startRoundMock).toHaveBeenCalled()
   })
 
   it('(iii) submits hostName in payload when visible, omits when hidden', async () => {

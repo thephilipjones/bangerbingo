@@ -395,7 +395,7 @@ describe('POST /api/rooms/:code/round', () => {
     })
     expect(res.status).toBe(400)
     const body = await res.json() as { message: string }
-    expect(body.message).toBe('hostName must be 1–30 characters')
+    expect(body.message).toBe('hostName must be 30 characters or fewer')
   })
 
   it('GET /api/rooms returns host_name on row after it is set', async () => {
