@@ -147,11 +147,13 @@ Create a `.env` file on the host from `.env.example` — never commit `.env`.
 | `SPOTIFY_CLIENT_SECRET` | Yes | From Spotify developer dashboard |
 | `SPOTIFY_REDIRECT_URI` | Yes | Must match registered redirect URI exactly |
 | `SESSION_SECRET` | Yes | Long random string for cookie signing |
-| `APP_DOMAIN` | No (6-3) | Public domain / tailnet hostname (required by Caddy reverse proxy in story 6-3) |
+| `APP_DOMAIN` | Yes | Public domain or tailnet hostname — required by Caddy (e.g. `bingo.example.com` or `bingo.tail-abc123.ts.net`) |
 | `PORT` | No | Defaults to 3000 |
 | `DB_PATH` | No | Set by compose to `/data/bangerbingo.db`; default `./bangerbingo.db` |
 
 ### Docker Compose commands
+
+`docker compose up -d --build` starts both the `app` container and the `caddy` reverse proxy. Caddy is the sole ingress — the app is not directly reachable on the host.
 
 ```sh
 # Start (build and run in background)
@@ -167,13 +169,41 @@ docker compose down
 docker compose up -d --build
 ```
 
+### Caddy / TLS setup
+
+Set `APP_DOMAIN` in `.env` to your public hostname (e.g. `bingo.example.com`). The domain must resolve to the host's IP before starting the stack so Caddy can complete the Let's Encrypt HTTP-01 challenge.
+
+**Public domain (automatic TLS):** Caddy obtains and auto-renews a Let's Encrypt certificate — no operator action required. Verify with:
+
+```sh
+curl -I https://<APP_DOMAIN>/healthz
+# expect: HTTP/2 200, no -k flag needed
+```
+
+**Tailnet-only hostname (self-signed TLS):** If `APP_DOMAIN` is a Tailscale hostname (e.g. `bingo.tail-abc123.ts.net`), Let's Encrypt cannot verify it. Edit `Caddyfile` and uncomment `tls internal`:
+
+```
+{$APP_DOMAIN} {
+    reverse_proxy app:3000
+    tls internal   # ← uncomment for tailnet hostnames
+}
+```
+
+Caddy will issue a local self-signed cert. Browsers and iOS Safari will show a "Not Secure" warning; accept it once. On iOS Safari: tap **Show Details** → **visit this website**.
+
+**HTTP → HTTPS redirect:** Caddy automatically returns a 308 redirect on port 80 when TLS is configured — no extra config needed.
+
+**WebSocket:** `wss://{APP_DOMAIN}/ws` works automatically — Caddy 2's `reverse_proxy` upgrades WebSocket connections without extra headers.
+
 ### Data persistence
 
-Data persists in the `bangerbingo-data` Docker named volume across rebuilds. To wipe the database:
+Data persists in the `bangerbingo-data` Docker named volume across rebuilds. TLS certificates persist in `caddy_data`. To wipe everything:
 
 ```sh
 docker compose down -v
 ```
+
+> **Warning:** `-v` deletes the `caddy_data` volume, which holds the Let's Encrypt certificate. Let's Encrypt rate-limits issuance to 5 certificates per domain per week — avoid repeated `down -v` cycles in production.
 
 > **Note:** Secrets are never baked into the image — they are injected at runtime via `.env`.
 

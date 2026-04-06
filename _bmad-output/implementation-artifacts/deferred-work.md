@@ -1,5 +1,15 @@
 # Deferred Work
 
+## Deferred from: code review of 6-3-https-wss-via-caddy-reverse-proxy (2026-04-06)
+
+- No firewall/NAT note for Let's Encrypt HTTP-01 — README notes domain must resolve but omits that port 80 must be publicly reachable; operators behind NAT will get silent ACME failures. Add a firewall prerequisite note to README.
+- `APP_DOMAIN` unset gives cryptic Caddy parse error — no validation in compose or startup script; could be improved with a compose healthcheck or entrypoint guard.
+- `SPOTIFY_REDIRECT_URI` in `.env.example` not updated for HTTPS production use — operators copying the example verbatim will get Spotify auth failures in production.
+- No `caddy reload` instruction after Caddyfile edit for tailnet path — README should add `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile` instruction.
+- WebSocket connections dropped on `app` container restart — pre-existing behavior; now the only ingress path. Consider documenting expected reconnect behavior.
+- `caddy_config` volume purpose undocumented in README — minor; backup/restore operators are unaware of it.
+- `wget` not explicitly installed in Dockerfile for `app` healthcheck — works on Alpine by default but not guaranteed across base image updates.
+
 ## Deferred from: code review of 7-3-round-config-overlay-and-host-name (2026-04-05)
 
 ## Deferred from: code review of 7-4-guest-waiting-room-and-host-as-player (2026-04-05)

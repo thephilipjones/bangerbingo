@@ -1,0 +1,5 @@
+{$APP_DOMAIN} {
+    reverse_proxy app:3000
+    # For tailnet-only hostnames (e.g. bingo.tail-abc123.ts.net), uncomment `tls internal` below:
+    # tls internal
+}
