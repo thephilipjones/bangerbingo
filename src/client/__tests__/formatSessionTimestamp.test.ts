@@ -1,21 +1,42 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { formatSessionTimestamp } from '../lib/formatSessionTimestamp.ts'
 
 describe('formatSessionTimestamp', () => {
-  it('returns a non-empty string containing the short month and 2-digit time', () => {
-    // 2026-04-05T14:32:00Z — intentionally relaxed assertions because locale
-    // and timezone formatting varies slightly between runtimes.
-    const out = formatSessionTimestamp(Date.UTC(2026, 3, 5, 14, 32, 0))
-    expect(typeof out).toBe('string')
-    expect(out.length).toBeGreaterThan(0)
-    // Formatter uses { hour: '2-digit', minute: '2-digit' } so the output
-    // must contain a HH:MM (or HH.MM) pattern.
-    expect(/\d{2}[:.]\d{2}/.test(out)).toBe(true)
+  afterEach(() => vi.useRealTimers())
+
+  it('formats a past date as M/D H:MMa or H:MMp', () => {
+    // Use a fixed local time: noon on Jan 1 2026
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 0, 1, 14, 0, 0)) // 2pm local
+    // A timestamp from a different day
+    const ts = new Date(2026, 5, 15, 18, 45, 0).getTime()
+    const out = formatSessionTimestamp(ts)
+    expect(out).toMatch(/^\d{1,2}\/\d{1,2} \d{1,2}:\d{2}[ap]$/)
+    expect(out).toBe('6/15 6:45p')
+  })
+
+  it('shows "Today" when the date matches today', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 3, 5, 10, 30, 0)) // Apr 5 2026, 10:30am local
+    const ts = new Date(2026, 3, 5, 10, 30, 0).getTime()
+    const out = formatSessionTimestamp(ts)
+    expect(out).toBe('Today 10:30a')
+  })
+
+  it('handles midnight (12:00a) and noon (12:00p) correctly', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 0, 2, 0, 0, 0)) // different day so no "Today"
+    const midnight = new Date(2026, 0, 1, 0, 0, 0).getTime()
+    const noon = new Date(2026, 0, 1, 12, 0, 0).getTime()
+    expect(formatSessionTimestamp(midnight)).toBe('1/1 12:00a')
+    expect(formatSessionTimestamp(noon)).toBe('1/1 12:00p')
   })
 
   it('different inputs produce different outputs', () => {
-    const a = formatSessionTimestamp(Date.UTC(2026, 0, 1, 9, 0, 0))
-    const b = formatSessionTimestamp(Date.UTC(2026, 5, 15, 18, 45, 0))
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 6, 1, 0, 0, 0))
+    const a = formatSessionTimestamp(new Date(2026, 0, 1, 9, 0, 0).getTime())
+    const b = formatSessionTimestamp(new Date(2026, 5, 15, 18, 45, 0).getTime())
     expect(a).not.toBe(b)
   })
 })

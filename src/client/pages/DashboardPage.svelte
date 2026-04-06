@@ -91,6 +91,25 @@
     }
   }
 
+  async function handleClearAllSessions() {
+    if (rooms.length === 0) return
+    const ok = window.confirm(
+      `Delete all ${rooms.length} session${rooms.length === 1 ? '' : 's'}?\n\nAll connected players will be disconnected. This can't be undone.`,
+    )
+    if (!ok) return
+    error = ''
+    const results = await Promise.allSettled(rooms.map((r) => deleteRoom(r.code)))
+    const failed = results.filter((r) => r.status === 'rejected').length
+    if (failed > 0) {
+      error = `${failed} session${failed === 1 ? '' : 's'} could not be deleted`
+    }
+    try {
+      rooms = await getRooms()
+    } catch {
+      // leave rooms as-is so the stale list stays visible alongside the error
+    }
+  }
+
   async function handleDisconnect() {
     try {
       await logout()
@@ -110,9 +129,14 @@
     <div class="spotify-row">
       <div class="spotify-info">
         <span class="display-name">{me?.display_name ?? '—'}</span>
-        <span class="pill" class:pill-good={!degraded} class:pill-bad={degraded}>
-          {degraded ? 'Reconnect needed' : 'Connected'}
-        </span>
+        <div class="pill-row">
+          <span class="pill" class:pill-good={!degraded} class:pill-bad={degraded}>
+            {degraded ? 'Reconnect needed' : 'Connected'}
+          </span>
+          <svg class="spotify-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.623.623 0 01-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 01-.277-1.216c3.809-.87 7.077-.496 9.712 1.115a.623.623 0 01.207.858zm1.224-2.722a.78.78 0 01-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 01-.973-.519.781.781 0 01.519-.973c3.632-1.102 8.147-.568 11.234 1.329a.78.78 0 01.257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 11-.543-1.794c3.532-1.072 9.404-.865 13.115 1.338a.937.937 0 01-.954 1.613z"/>
+          </svg>
+        </div>
       </div>
       <button class="ghost-btn" onclick={handleDisconnect}>Disconnect</button>
     </div>
@@ -153,6 +177,9 @@
         </li>
       {/each}
     </ul>
+    {#if rooms.length > 1}
+      <button class="clear-all-btn" onclick={handleClearAllSessions}>Clear All Sessions</button>
+    {/if}
   {:else}
     <p class="muted">No sessions yet — start one above.</p>
   {/if}
@@ -184,6 +211,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    margin-bottom: 0.5rem;
   }
 
   .spotify-row {
@@ -213,6 +241,12 @@
     padding: 0.15rem 0.6rem;
     border-radius: 1rem;
     white-space: nowrap;
+  }
+
+  .pill-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
   }
 
   .pill-good { background: #1db954; color: #000; }
@@ -303,6 +337,28 @@
 
   .trash-btn:hover { color: #e74c3c; background: #2a1a1a; }
   .trash-btn:focus-visible { outline: 2px solid #1db954; outline-offset: 2px; }
+
+  .spotify-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    fill: #1db954;
+    flex-shrink: 0;
+  }
+
+  .clear-all-btn {
+    background: transparent;
+    border: 1px solid #c0392b;
+    color: #e74c3c;
+    padding: 0.5rem 1.25rem;
+    border-radius: 1rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    margin-top: 0.25rem;
+  }
+
+  .clear-all-btn:hover {
+    background: #2a1a1a;
+  }
 
   .muted { color: #888; font-size: 0.875rem; }
   .error { color: #e74c3c; font-size: 0.875rem; }
