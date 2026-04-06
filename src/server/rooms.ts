@@ -49,6 +49,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     round.songHistory.push(entry)
   }
   round.currentSongIndex = songIndex
+  round.currentSongRevealed = round.config.titleRevealDelay === 0
   round.paused = false
 
   broadcast(roomCode, {
@@ -99,6 +100,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   if (round.config.titleRevealDelay && round.config.titleRevealDelay > 0) {
     round.timers.reveal = setTimeout(() => {
       if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
+      roomState.currentRound.currentSongRevealed = true
       broadcast(roomCode, { type: 'song:reveal', trackId: track.id, songIndex })
     }, round.config.titleRevealDelay * 1000)
   }
@@ -292,6 +294,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
       sessionPlayedIds: newSessionPlayed,
       active: true,
       currentSongIndex: -1,
+      currentSongRevealed: false,
       songHistory: [],
       paused: false,
       timers: {},

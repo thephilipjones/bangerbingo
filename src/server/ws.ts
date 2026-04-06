@@ -38,6 +38,7 @@ export interface RoundState {
   active: boolean
   // ── NEW in Story 5-1 ──────────────────────────────────────────
   currentSongIndex: number        // -1 = round not yet started
+  currentSongRevealed: boolean    // true once song:reveal has fired (or titleRevealDelay===0)
   songHistory: SongHistoryEntry[] // append-only; used by 5-5 win validation + 5-6 drawer
   paused: boolean                 // true after /pause; cleared on /play
   ended?: boolean                 // true after a valid win claim
@@ -258,6 +259,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         card,
         lateJoin: !existingCard,
         songHistory: round.songHistory,
+        currentSongRevealed: round.currentSongRevealed,
       }))
     }
 

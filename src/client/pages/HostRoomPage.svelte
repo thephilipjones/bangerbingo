@@ -153,8 +153,10 @@
           statusLine = 'Waiting for next song…'
           isPlaying = false
           winData = null
-          songIndex = null
-          songHistory = (data.songHistory ?? []).slice().reverse()
+          const rawHistory = (data.songHistory ?? []) as Array<{ trackId: string; title: string; artist: string; albumArtUrl: string; songIndex: number }>
+          songHistory = rawHistory.slice().reverse()
+          songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
+          currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
         } else if (data.type === 'song:start') {
           if (roundConfig) {
             tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
