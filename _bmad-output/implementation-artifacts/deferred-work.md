@@ -211,6 +211,13 @@
 - Keyboard accessibility / focus trap on HostControlsOverlay — no Escape key handler, no focus lock. Explicitly out of scope per AC #11; matches project-wide a11y deferral precedent.
 - `sdkReinitializing` re-entry race: if `auth:restored` fires twice while first reinit is in-flight, the second call returns early but `sdkErrorFired` has been reset by the first — subsequent SDK errors are silently swallowed, player stuck on "Connecting…" indefinitely. Pre-existing; unrelated to story changes. (src/client/pages/HostRoomPage.svelte)
 
+## Deferred from: code review of 6-2-production-dockerfile-and-docker-compose (2026-04-06)
+
+- Port binding exposes all host interfaces (`0.0.0.0`) — `${PORT:-3000}:${PORT:-3000}` in `docker-compose.yml` should use `127.0.0.1:` prefix once Caddy is the sole ingress; intentional for story 6-2 pre-Caddy, address in story 6-3.
+- `PORT` in `env_file` not visible to compose port interpolation — `${PORT:-3000}` in `ports:` resolves from host shell env, not `env_file:`; if `PORT` is only in `.env`, host maps `3000:3000` while container listens elsewhere; spec-defined syntax, address when Caddy takes over port routing in 6-3.
+- Floating `node:22-alpine` base image tag — no digest pinning; upstream re-tag could cause ABI mismatch for `better-sqlite3` native binary; production hardening out of scope for this story.
+- `serveStatic` wildcard ordering dependency — `/healthz` must remain before the wildcard; only a code comment enforces this; a future refactor could silently break the healthcheck (`src/server/index.ts`).
+
 ## Deferred from: code review of 6-1-local-dev-and-tailscale-multi-device-testing (2026-04-05)
 
 - **Session cookie `Secure=false` in dev silently breaks if `NODE_ENV=production` is set over plain-HTTP tailnet** (src/server/auth.ts:87,96,186) — cookies would be rejected by browsers over HTTP when `secure: true`, leading to empty session with no warning. Pre-existing; relevant to Epic 6-2/6-3 deploy hardening when TLS + prod env layering is finalized.

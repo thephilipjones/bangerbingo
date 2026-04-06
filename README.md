@@ -135,6 +135,48 @@ Spotify requires the OAuth redirect URI to match a URI registered on the Spotify
 - **Phone browser warns about an insecure connection.** Expected. Dev has no TLS — you're hitting plain HTTP over Tailscale. Proceed through the warning. HTTPS lands in Epic 6 deploy stories.
 - **Spotify returns `400 INVALID_CLIENT` / `redirect_uri_mismatch`.** The redirect URI you're using isn't registered on the Spotify app. Either register the tailnet URL as a second Redirect URI, or connect Spotify from the Macbook at `127.0.0.1:5173` (see Spotify auth section above).
 
+## Deployment
+
+### Required environment variables
+
+Create a `.env` file on the host from `.env.example` — never commit `.env`.
+
+| Env var | Required? | Description |
+|---|---|---|
+| `SPOTIFY_CLIENT_ID` | Yes | From Spotify developer dashboard |
+| `SPOTIFY_CLIENT_SECRET` | Yes | From Spotify developer dashboard |
+| `SPOTIFY_REDIRECT_URI` | Yes | Must match registered redirect URI exactly |
+| `SESSION_SECRET` | Yes | Long random string for cookie signing |
+| `APP_DOMAIN` | No (6-3) | Public domain / tailnet hostname (required by Caddy reverse proxy in story 6-3) |
+| `PORT` | No | Defaults to 3000 |
+| `DB_PATH` | No | Set by compose to `/data/bangerbingo.db`; default `./bangerbingo.db` |
+
+### Docker Compose commands
+
+```sh
+# Start (build and run in background)
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+
+# Rebuild after code changes
+docker compose up -d --build
+```
+
+### Data persistence
+
+Data persists in the `bangerbingo-data` Docker named volume across rebuilds. To wipe the database:
+
+```sh
+docker compose down -v
+```
+
+> **Note:** Secrets are never baked into the image — they are injected at runtime via `.env`.
+
 ## Scripts
 
 | Command | What it does |

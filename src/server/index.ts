@@ -1,3 +1,4 @@
+import pkg from '../../package.json'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
@@ -10,7 +11,7 @@ import { musicRouter } from './music/router.ts'
 import { setupWebSocketServer } from './ws.ts'
 
 // Init DB at startup (crash fast if it fails)
-initDb()
+initDb(process.env['DB_PATH'] || undefined)
 
 const app = new Hono<AuthEnv>()
 
@@ -33,6 +34,9 @@ app.get('/api/auth/status', requireAuth, (ctx) => {
   const host = ctx.var.host
   return ctx.json({ degraded: isHostDegraded(host.user_id), tokenExpiresAt: host.token_expires_at })
 })
+
+// Health check — must be registered before the serveStatic wildcard
+app.get('/healthz', (ctx) => ctx.json({ ok: true, version: pkg.version }))
 
 // Serve static client build in production
 if (config.isProduction) {
