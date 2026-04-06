@@ -31,7 +31,7 @@
         class:masked={tile.masked}
         class:revealing={tile.revealing}
         class:win-path={tile.winPath}
-        title={tile.title}
+        title={tile.masked ? undefined : tile.title}
         aria-label={tile.masked ? `${tile.songLabel} (masked)` : `${tile.title} by ${tile.artist}${tile.state === 'marked' ? ' (marked)' : ''}`}
         aria-pressed={tile.state === 'marked'}
         onclick={() => onTileClick(i)}
@@ -106,13 +106,12 @@
   }
 
   .tile.masked .tile-content {
-    filter: blur(4px);
-    user-select: none;
+    opacity: 0;
   }
 
   .tile.revealing .tile-content {
-    filter: blur(0);
-    transition: filter 300ms ease-out;
+    opacity: 1;
+    transition: opacity 300ms ease-out;
   }
 
   .tile-title {

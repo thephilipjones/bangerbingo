@@ -24,8 +24,8 @@
     {#if entries.length === 0}
       <p class="empty">No songs played yet.</p>
     {:else}
-      {#each entries as entry (entry.songIndex)}
-        <div class="entry">
+      {#each entries as entry, i (entry.songIndex)}
+        <div class="entry" class:current={i === 0}>
           <span class="song-number">#{entry.songIndex + 1}</span>
           {#if entry.albumArtUrl && !failedImages.has(entry.songIndex)}
             <img
@@ -160,6 +160,11 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+  }
+
+  .entry.current .track-info {
+    filter: blur(4px);
+    user-select: none;
   }
 
   .track-title {
