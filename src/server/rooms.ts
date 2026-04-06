@@ -5,6 +5,7 @@ import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs,
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
+import { refreshWithRetry } from './refresh.ts'
 import { buildPool, generateCards } from './game/cards.ts'
 
 // ── Win detection ─────────────────────────────────────────────────────────
@@ -81,7 +82,14 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
             position_ms: SEEK_POSITION_MS,
           }),
         }
-      ).catch((err) => console.error('[spotify:play]', err))
+      ).then((res) => {
+        if (!res.ok) {
+          res.text().then(body => console.error(`[spotify:play] ${res.status}`, body))
+          if (res.status === 401) refreshWithRetry(roomState.hostUserId).catch(() => {})
+        }
+      }).catch((err) => console.error('[spotify:play]', err))
+    } else {
+      console.warn('[spotify:play] no access_token for host', roomState.hostUserId)
     }
   }
 
@@ -379,7 +387,12 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
           method: 'PUT',
           headers: { Authorization: `Bearer ${sdkHost.access_token}` },
         }
-      ).catch((err) => console.error('[spotify:pause]', err))
+      ).then((res) => {
+        if (!res.ok) {
+          res.text().then(body => console.error(`[spotify:pause] ${res.status}`, body))
+          if (res.status === 401) refreshWithRetry(roomState!.hostUserId).catch(() => {})
+        }
+      }).catch((err) => console.error('[spotify:pause]', err))
     }
   }
 

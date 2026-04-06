@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, untrack } from 'svelte'
   import BingoCard from '../components/BingoCard.svelte'
   import WinOverlay from '../components/WinOverlay.svelte'
   import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
@@ -53,7 +53,7 @@
   let showPlayers = $state(false)
   let songIndex = $state<number | null>(null)
   let currentRevealed = $state(false)
-  let players = $state<string[]>(initialPlayers)
+  let players = $state<string[]>(untrack(() => initialPlayers))
   const playerCount = $derived(computePlayerCount(players, hostName))
 
   const hasBingo = $derived(
@@ -112,7 +112,7 @@
       songIndex = data.songIndex as number
       statusLine = `Song ${(data.songIndex as number) + 1} of this round`
       currentRevealed = false
-      songHistory = [{ trackId: data.trackId as string, title: data.title as string, artist: data.artist as string, albumArtUrl: data.albumArtUrl as string, songIndex: data.songIndex as number }, ...songHistory]
+      songHistory = [{ trackId: data.trackId as string, title: data.title as string, artist: data.artist as string, albumArtUrl: data.albumArtUrl as string, songIndex: data.songIndex as number }, ...songHistory.filter(e => e.songIndex !== data.songIndex)]
     } else if (data.type === 'song:reveal') {
       currentRevealed = true
       tiles = startReveal(tiles, data.trackId as string)

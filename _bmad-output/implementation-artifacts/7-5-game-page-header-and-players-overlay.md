@@ -155,10 +155,10 @@ So that I always know who's here, can share the code with latecomers, and can se
   - [x] Tap room code in header — "Copied!" flash, code in clipboard.
   - [x] Tap `2nd Song` — SongHistoryDrawer opens (same as before).
   - [ ] Mobile host: controls panel handle still works (slide up/down), no player list inside panel.
-  - [ ] Desktop host: split-view layout still correct (card left, controls right, no player list in controls).
+  - [x] Desktop host: split-view layout still correct (card left, controls right, no player list in controls).
   - [ ] WinOverlay fires — renders above header and any open overlay.
-  - [ ] Guest pre-round: GuestWaitingRoom renders (no GameHeader — header only appears when tiles are populated).
-  - [ ] Guest late-join: brief waiting room → card appears → header shows correct song ordinal.
+  - [x] Guest pre-round: GuestWaitingRoom renders (no GameHeader — header only appears when tiles are populated).
+  - [x] Guest late-join: brief waiting room → card appears → header shows correct song ordinal.
 
 ## Dev Notes
 

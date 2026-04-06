@@ -165,7 +165,7 @@
           currentTrackId = data.trackId
           isPlaying = true
           currentRevealed = false
-          songHistory = [{ trackId: data.trackId, title: data.title, artist: data.artist, albumArtUrl: data.albumArtUrl, songIndex: data.songIndex }, ...songHistory]
+          songHistory = [{ trackId: data.trackId, title: data.title, artist: data.artist, albumArtUrl: data.albumArtUrl, songIndex: data.songIndex }, ...songHistory.filter(e => e.songIndex !== data.songIndex)]
         } else if (data.type === 'song:reveal') {
           currentRevealed = true
           tiles = startReveal(tiles, data.trackId)
