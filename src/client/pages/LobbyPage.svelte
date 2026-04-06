@@ -119,7 +119,6 @@
         <span class="copied-tooltip">Copied!</span>
       {/if}
     </button>
-    <span class="player-count">{players.length} player{players.length === 1 ? '' : 's'}</span>
   </header>
 
   <!-- WS disconnected banner -->
@@ -184,10 +183,10 @@
     right: 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     padding: 0.75rem 1.5rem;
     background: #1a1a1a;
-    border-bottom: 1px solid #333;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   }
 
   .room-code {
@@ -217,11 +216,6 @@
     font-weight: 400;
     color: #1db954;
     white-space: nowrap;
-  }
-
-  .player-count {
-    font-size: 0.9rem;
-    color: #aaa;
   }
 
   .disconnected-banner {
