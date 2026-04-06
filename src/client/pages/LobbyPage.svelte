@@ -99,6 +99,7 @@
       onDisconnected() {
         wsDisconnected = true
       },
+      onRoundActive: onRoundStarted,
     })
   })
 

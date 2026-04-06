@@ -6,10 +6,14 @@ export type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'lobby' | 'room'
 export function determineInitialPage(
   me: MeResponse | null,
   pathname: string
-): { page: Page; prefillCode?: string } {
+): { page: Page; prefillCode?: string; roomCode?: string } {
   const roomMatch = pathname.match(/^\/room\/([A-Za-z]{4})$/)
+  if (roomMatch) {
+    const code = sanitizeCode(roomMatch[1])
+    if (me) return { page: 'lobby', roomCode: code }
+    return { page: 'join', prefillCode: code }
+  }
   if (me) return { page: 'dashboard' }
-  if (roomMatch) return { page: 'join', prefillCode: sanitizeCode(roomMatch[1]) }
   return { page: 'join' }
 }
 
@@ -34,6 +38,7 @@ export interface HostHandlers {
   onPlayerLeft(name: string): void
   onAuthDegraded(): void
   onDisconnected(): void
+  onRoundActive?(): void
 }
 
 export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
@@ -46,6 +51,8 @@ export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
       const data = JSON.parse(event.data)
       if (data.type === 'session:connect') {
         handlers.onConnect(data.players ?? [], data.hostName ?? null)
+      } else if (data.type === 'round:start') {
+        handlers.onRoundActive?.()
       } else if (data.type === 'player:joined') {
         handlers.onPlayerJoined(data.name)
       } else if (data.type === 'player:left') {

@@ -70,6 +70,13 @@ export function toggleMark(tiles: ClientTile[], index: number): ClientTile[] {
   })
 }
 
+export function restoreMarks(tiles: ClientTile[], markedIds: Set<string>): ClientTile[] {
+  if (markedIds.size === 0) return tiles
+  return tiles.map((tile) =>
+    !tile.free && markedIds.has(tile.trackId) ? { ...tile, state: 'marked' as const } : tile,
+  )
+}
+
 export function applyWinPath(tiles: ClientTile[], winningTileIds: string[]): ClientTile[] {
   const idSet = new Set(winningTileIds)
   return tiles.map((tile) => {

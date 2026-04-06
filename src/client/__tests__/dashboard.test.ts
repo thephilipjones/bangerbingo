@@ -23,9 +23,11 @@ describe('determineInitialPage', () => {
     expect(result.page).toBe('dashboard')
   })
 
-  it('routes to dashboard even when navigating to a room URL if authenticated', () => {
+  it('routes to lobby with roomCode when authenticated and on a room URL (reload/wakeup persistence)', () => {
     const result = determineInitialPage(user, '/room/ABCD')
-    expect(result.page).toBe('dashboard')
+    expect(result.page).toBe('lobby')
+    expect(result.roomCode).toBe('ABCD')
+    expect(result.prefillCode).toBeUndefined()
   })
 
   it('routes to join with prefillCode when unauthenticated and on a room URL', () => {

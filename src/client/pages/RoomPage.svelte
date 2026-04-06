@@ -14,6 +14,7 @@
     finishReveal,
     toggleMark,
     applyWinPath,
+    restoreMarks,
   } from '../lib/bingo.ts'
   import { applyPlayerEvent } from '../lib/ws.ts'
   import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
@@ -62,8 +63,26 @@
     WIN_LINES.some(line => line.every(i => tiles[i]?.state === 'marked' || tiles[i]?.state === 'free'))
   )
 
+  let marksKey = $state('')
+
+  function saveMarks(t: ClientTile[]) {
+    if (!marksKey) return
+    const ids = t.filter(tile => tile.state === 'marked').map(tile => tile.trackId)
+    localStorage.setItem(marksKey, JSON.stringify(ids))
+  }
+
+  function loadMarks(): Set<string> {
+    if (!marksKey) return new Set()
+    try {
+      return new Set(JSON.parse(localStorage.getItem(marksKey) ?? '[]'))
+    } catch {
+      return new Set()
+    }
+  }
+
   function handleTileClick(index: number) {
     tiles = toggleMark(tiles, index)
+    saveMarks(tiles)
   }
 
   async function handleBingoClick() {
@@ -98,7 +117,8 @@
     } else if (data.type === 'player:left') {
       players = applyPlayerEvent(players, { type: 'player:left', name: data.name as string })
     } else if (data.type === 'round:start') {
-      tiles = initTiles(data.card as Parameters<typeof initTiles>[0])
+      marksKey = `bangerbingo:marks:${code}:r${data.roundNumber}`
+      tiles = restoreMarks(initTiles(data.card as Parameters<typeof initTiles>[0]), loadMarks())
       roundConfig = { titleRevealDelay: data.titleRevealDelay as TitleRevealDelay }
       statusLine = 'Waiting for next song…'
       roundEnded = false

@@ -6,6 +6,7 @@ import {
   finishReveal,
   toggleMark,
   applyWinPath,
+  restoreMarks,
 } from '../lib/bingo.ts'
 import type { Tile } from '../lib/bingo.ts'
 
@@ -139,6 +140,35 @@ describe('toggleMark', () => {
     const result = toggleMark(tiles, 0)
     expect(result).not.toBe(tiles)
     expect(tiles[0].state).toBe('unmarked') // original unchanged
+  })
+})
+
+describe('restoreMarks', () => {
+  it('marks tiles whose trackId is in the set', () => {
+    const tiles = initTiles(makeTiles())
+    const result = restoreMarks(tiles, new Set(['track_0', 'track_1']))
+    expect(result[0].state).toBe('marked')
+    expect(result[1].state).toBe('marked')
+    expect(result[2].state).toBe('unmarked')
+  })
+
+  it('never marks the free tile', () => {
+    const tiles = initTiles(makeTiles())
+    const result = restoreMarks(tiles, new Set(['track_0', '']))
+    expect(result[12].state).toBe('free')
+  })
+
+  it('returns tiles unchanged when the set is empty', () => {
+    const tiles = initTiles(makeTiles())
+    const result = restoreMarks(tiles, new Set())
+    expect(result).toBe(tiles)
+  })
+
+  it('returns new array (immutable) when marks are applied', () => {
+    const tiles = initTiles(makeTiles())
+    const result = restoreMarks(tiles, new Set(['track_0']))
+    expect(result).not.toBe(tiles)
+    expect(tiles[0].state).toBe('unmarked')
   })
 })
 

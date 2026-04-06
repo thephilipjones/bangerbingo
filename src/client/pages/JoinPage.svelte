@@ -19,7 +19,12 @@
   let bufferedMessages: MessageEvent[] = []
 
   onMount(() => {
-    nameInput?.focus()
+    if (prefillCode && name) {
+      // Auto-rejoin when waking up from a room URL with a stored name
+      handleSubmit(new Event('submit'))
+    } else {
+      nameInput?.focus()
+    }
   })
 
   onDestroy(() => {

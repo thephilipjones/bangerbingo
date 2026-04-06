@@ -23,6 +23,7 @@
     const me = await getMe().catch(() => null)
     const result = determineInitialPage(me, window.location.pathname)
     prefillCode = result.prefillCode ?? ''
+    if (result.roomCode) currentRoomCode = result.roomCode
     page = result.page
   })
 
@@ -37,6 +38,7 @@
   function handleJoined(name: string, _role: string, players: string[], hostName: string | null, code: string, ws: WebSocket, pending: MessageEvent[]) {
     guestName = name
     guestRoomCode = code
+    history.pushState(null, '', `/room/${code}`)
     guestWs = ws
     guestPlayers = players
     guestHostName = hostName
@@ -46,6 +48,7 @@
 
   function handleEnterLobby(code: string) {
     currentRoomCode = code
+    history.pushState(null, '', `/room/${code}`)
     page = 'lobby'
   }
 
@@ -74,15 +77,3 @@
   <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} />
 {/if}
 
-<style>
-  :global(*, *::before, *::after) {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  :global(body) {
-    background: #121212;
-    color: #fff;
-  }
-</style>
