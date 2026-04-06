@@ -457,7 +457,7 @@ describe('Host ownership enforcement (AC: 6)', () => {
 // ── Late-join round:start (Story 4-3, AC: 7) ─────────────────────────────
 
 describe('Late-join after round:start', () => {
-  it('guest connecting after round:start receives round:start with lateJoin:true and blank card', async () => {
+  it('guest connecting after round:start receives round:start with lateJoin:true and a real card', async () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
@@ -496,11 +496,11 @@ describe('Late-join after round:start', () => {
     expect(roundMsg.type).toBe('round:start')
     expect(roundMsg.lateJoin).toBe(true)
 
-    // Card should be an array of 25 tiles, all blank (trackId = '')
+    // Card should be an array of 25 tiles with real track data
     const card = roundMsg.card as Array<{ trackId: string; free?: boolean }>
     expect(card).toHaveLength(25)
-    expect(card.every(t => t.trackId === '')).toBe(true)
     expect(card[12].free).toBe(true)
+    expect(card.filter(t => !t.free).every(t => t.trackId !== '')).toBe(true)
 
     vi.restoreAllMocks()
     host.close()

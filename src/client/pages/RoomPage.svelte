@@ -18,7 +18,7 @@
   import { applyPlayerEvent } from '../lib/ws.ts'
   import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
 
-  let { name, code, ws, initialPlayers = [], hostName = null }: { name: string; code: string; ws: WebSocket; initialPlayers?: string[]; hostName?: string | null } = $props()
+  let { name, code, ws, initialPlayers = [], hostName = null, pendingMessages = [] }: { name: string; code: string; ws: WebSocket; initialPlayers?: string[]; hostName?: string | null; pendingMessages?: MessageEvent[] } = $props()
 
   type WinData = {
     winnerName: string
@@ -87,54 +87,57 @@
     }
   }
 
-  onMount(() => {
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.type === 'host:disconnected') {
-          hostDisconnected = true
-        } else if (data.type === 'host:reconnected') {
-          hostDisconnected = false
-        } else if (data.type === 'player:joined') {
-          players = applyPlayerEvent(players, { type: 'player:joined', name: data.name })
-        } else if (data.type === 'player:left') {
-          players = applyPlayerEvent(players, { type: 'player:left', name: data.name })
-        } else if (data.type === 'round:start') {
-          tiles = initTiles(data.card)
-          roundConfig = { titleRevealDelay: data.titleRevealDelay }
-          statusLine = 'Waiting for next song…'
-          roundEnded = false
-          winData = null
-          songIndex = null
-          songHistory = (data.songHistory ?? []).slice().reverse()
-        } else if (data.type === 'song:start') {
-          if (roundConfig) {
-            tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
-          }
-          songIndex = data.songIndex
-          statusLine = `Song ${data.songIndex + 1} of this round`
-          songHistory = [{ trackId: data.trackId, title: data.title, artist: data.artist, albumArtUrl: data.albumArtUrl, songIndex: data.songIndex }, ...songHistory]
-        } else if (data.type === 'song:reveal') {
-          tiles = startReveal(tiles, data.trackId)
-          clearTimeout(revealTimer)
-          revealTimer = setTimeout(() => {
-            tiles = finishReveal(tiles, data.trackId)
-          }, 300)
-        } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
-          statusLine = 'Waiting for next song…'
-        } else if (data.type === 'round:win') {
-          tiles = applyWinPath(tiles, data.winningTileIds)
-          roundEnded = true
-          isClaiming = false
-          winData = { winnerName: data.winnerName, winningTileIds: data.winningTileIds, songHistory: data.songHistory }
-        } else if (data.type === 'round:end') {
-          tiles = []
-          statusLine = 'Waiting for the host to start a round...'
-          roundConfig = null
-        }
-      } catch {
-        // ignore unparseable messages
+  function handleWsData(data: Record<string, unknown>) {
+    if (data.type === 'host:disconnected') {
+      hostDisconnected = true
+    } else if (data.type === 'host:reconnected') {
+      hostDisconnected = false
+    } else if (data.type === 'player:joined') {
+      players = applyPlayerEvent(players, { type: 'player:joined', name: data.name as string })
+    } else if (data.type === 'player:left') {
+      players = applyPlayerEvent(players, { type: 'player:left', name: data.name as string })
+    } else if (data.type === 'round:start') {
+      tiles = initTiles(data.card as Parameters<typeof initTiles>[0])
+      roundConfig = { titleRevealDelay: data.titleRevealDelay as TitleRevealDelay }
+      statusLine = 'Waiting for next song…'
+      roundEnded = false
+      winData = null
+      songIndex = null
+      songHistory = ((data.songHistory as HistoryEntry[] | undefined) ?? []).slice().reverse()
+    } else if (data.type === 'song:start') {
+      if (roundConfig) {
+        tiles = applyMask(tiles, data.trackId as string, roundConfig.titleRevealDelay, data.songIndex as number)
       }
+      songIndex = data.songIndex as number
+      statusLine = `Song ${(data.songIndex as number) + 1} of this round`
+      songHistory = [{ trackId: data.trackId as string, title: data.title as string, artist: data.artist as string, albumArtUrl: data.albumArtUrl as string, songIndex: data.songIndex as number }, ...songHistory]
+    } else if (data.type === 'song:reveal') {
+      tiles = startReveal(tiles, data.trackId as string)
+      clearTimeout(revealTimer)
+      revealTimer = setTimeout(() => {
+        tiles = finishReveal(tiles, data.trackId as string)
+      }, 300)
+    } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
+      statusLine = 'Waiting for next song…'
+    } else if (data.type === 'round:win') {
+      tiles = applyWinPath(tiles, data.winningTileIds as string[])
+      roundEnded = true
+      isClaiming = false
+      winData = { winnerName: data.winnerName as string, winningTileIds: data.winningTileIds as string[], songHistory: data.songHistory as WinData['songHistory'] }
+    } else if (data.type === 'round:end') {
+      tiles = []
+      statusLine = 'Waiting for the host to start a round...'
+      roundConfig = null
+    }
+  }
+
+  onMount(() => {
+    for (const event of pendingMessages) {
+      try { handleWsData(JSON.parse(event.data)) } catch { /* ignore */ }
+    }
+
+    ws.onmessage = (event) => {
+      try { handleWsData(JSON.parse(event.data)) } catch { /* ignore */ }
     }
   })
 

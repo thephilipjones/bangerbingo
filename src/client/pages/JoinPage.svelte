@@ -5,7 +5,7 @@
 
   let { prefillCode = '', onJoined, onHostLogin }: {
     prefillCode?: string
-    onJoined: (name: string, role: string, players: string[], hostName: string | null, code: string, ws: WebSocket) => void
+    onJoined: (name: string, role: string, players: string[], hostName: string | null, code: string, ws: WebSocket, pending: MessageEvent[]) => void
     onHostLogin: () => void
   } = $props()
 
@@ -16,6 +16,7 @@
   let connecting = $state(false)
   let nameInput: HTMLInputElement | undefined = $state()
   let activeWs: WebSocket | undefined
+  let bufferedMessages: MessageEvent[] = []
 
   onMount(() => {
     nameInput?.focus()
@@ -49,13 +50,16 @@
     }
 
     connecting = true
+    bufferedMessages = []
     activeWs = connectAsGuest(name, code, {
       onConnect(role, players, hostName) {
         connecting = false
         const handedOff = activeWs!
+        const pending = bufferedMessages
         activeWs = undefined // prevent onDestroy from closing the handed-off socket
+        bufferedMessages = []
         setStoredGuestName(name)
-        onJoined(name, role, players, hostName, code, handedOff)
+        onJoined(name, role, players, hostName, code, handedOff, pending)
       },
       onError(message) {
         connecting = false
@@ -65,8 +69,8 @@
           codeError = message
         }
       },
-      onMessage(_event) {
-        // additional messages handled by room view after join
+      onMessage(event) {
+        bufferedMessages.push(event)
       },
     })
   }

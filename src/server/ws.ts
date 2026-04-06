@@ -6,7 +6,7 @@ import { authEvents } from './refresh.ts'
 import { verifySession } from './auth.ts'
 import { getRoomByCode, getHostById } from './db.ts'
 import type { Track } from './music/spotify.ts'
-import type { Tile } from './game/cards.ts'
+import { generateCard, type Tile } from './game/cards.ts'
 
 // ── Round config types ─────────────────────────────────────────────────────
 
@@ -247,17 +247,14 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     ws.send(JSON.stringify({ type: 'session:connect', role: 'guest', players: getPlayerList(code), hostName: room.host_name }))
 
-    // If a round is in progress, send round:start with a blank card
+    // If a round is in progress, send round:start with a freshly generated card
     const round = roomState.currentRound
     if (round?.active) {
-      const blankCard: Tile[] = Array.from({ length: 25 }, (_, i) =>
-        i === 12
-          ? { trackId: '', title: '', artist: '', albumArtUrl: '', free: true as const }
-          : { trackId: '', title: '', artist: '', albumArtUrl: '' }
-      )
+      const lateCard = generateCard(round.playlist)
+      round.cards.set(name, lateCard)
       ws.send(JSON.stringify({
         ...round.roundStartPayload,
-        card: blankCard,
+        card: lateCard,
         lateJoin: true,
         songHistory: round.songHistory,
       }))
