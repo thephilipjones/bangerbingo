@@ -103,7 +103,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
+    min-height: 100dvh;
     background: #121212;
     color: #fff;
     font-family: sans-serif;

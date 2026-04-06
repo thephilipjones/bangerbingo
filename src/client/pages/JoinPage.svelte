@@ -150,7 +150,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
+    min-height: 100dvh;
     gap: 1rem;
     font-family: sans-serif;
   }

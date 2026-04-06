@@ -196,7 +196,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
+    min-height: 100dvh;
     gap: 1.5rem;
     font-family: sans-serif;
     padding: 6rem 1.5rem 3rem;

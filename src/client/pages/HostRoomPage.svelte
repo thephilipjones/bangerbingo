@@ -374,7 +374,7 @@
   .host-game {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    min-height: 100dvh;
     background: #121212;
     font-family: sans-serif;
   }
@@ -383,7 +383,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 80px 16px 80px;
+    padding: 80px 16px 64px;
   }
 
   .bingo-btn {
@@ -447,6 +447,7 @@
     }
     .card-area {
       padding-top: 80px;
+      padding-bottom: 64px;
     }
   }
 </style>

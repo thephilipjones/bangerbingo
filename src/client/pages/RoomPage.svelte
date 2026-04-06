@@ -238,7 +238,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
+    min-height: 100dvh;
     font-family: sans-serif;
     padding: 16px;
     box-sizing: border-box;
