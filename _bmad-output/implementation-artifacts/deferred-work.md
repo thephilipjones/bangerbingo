@@ -205,6 +205,12 @@
 - **Desktop host split-view breakpoint verification pending** — UX spec requires card-60% / controls-40% inline layout at ≥768px; confirm `HostRoomPage.svelte` renders the split, not a scaled-up mobile layout.
 - **NFR15 ("~200 lines of server core") overshot** — realistic for delivered scope, but the maintainability bar in the PRD is no longer accurate. Update NFR15 wording post-Epic-6 or acknowledge the new line-count target.
 
+## Deferred from: code review of 7-6-host-mini-player-and-controls-overlay (2026-04-06)
+
+- `handlePlayPause` and `handleNext` swallow all fetch errors silently — no .catch(), no user feedback, UI isPlaying state can desync from server. Pre-existing pattern from HostControlsPanel. (src/client/pages/HostRoomPage.svelte)
+- Keyboard accessibility / focus trap on HostControlsOverlay — no Escape key handler, no focus lock. Explicitly out of scope per AC #11; matches project-wide a11y deferral precedent.
+- `sdkReinitializing` re-entry race: if `auth:restored` fires twice while first reinit is in-flight, the second call returns early but `sdkErrorFired` has been reset by the first — subsequent SDK errors are silently swallowed, player stuck on "Connecting…" indefinitely. Pre-existing; unrelated to story changes. (src/client/pages/HostRoomPage.svelte)
+
 ## Deferred from: code review of 6-1-local-dev-and-tailscale-multi-device-testing (2026-04-05)
 
 - **Session cookie `Secure=false` in dev silently breaks if `NODE_ENV=production` is set over plain-HTTP tailnet** (src/server/auth.ts:87,96,186) — cookies would be rejected by browsers over HTTP when `secure: true`, leading to empty session with no warning. Pre-existing; relevant to Epic 6-2/6-3 deploy hardening when TLS + prod env layering is finalized.
