@@ -265,6 +265,19 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     broadcast(code, { type: 'player:joined', name }, ws)
 
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString())
+        if (msg.type === 'guest:leave') {
+          const r = roomSockets.get(code)
+          if (r && r.guests.get(name) === ws) {
+            r.guests.delete(name)
+            broadcast(code, { type: 'player:left', name })
+          }
+        }
+      } catch { /* ignore malformed */ }
+    })
+
     ws.on('close', () => {
       const r = roomSockets.get(code)
       // Only remove if this is still the registered socket (not a reconnect)

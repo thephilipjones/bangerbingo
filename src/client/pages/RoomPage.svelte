@@ -20,7 +20,7 @@
   import { applyPlayerEvent } from '../lib/ws.ts'
   import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
 
-  let { name, code, ws, initialPlayers = [], hostName = null, pendingMessages = [] }: { name: string; code: string; ws: WebSocket; initialPlayers?: string[]; hostName?: string | null; pendingMessages?: MessageEvent[] } = $props()
+  let { name, code, ws, initialPlayers = [], hostName = null, pendingMessages = [], onLeave }: { name: string; code: string; ws: WebSocket; initialPlayers?: string[]; hostName?: string | null; pendingMessages?: MessageEvent[]; onLeave?: () => void } = $props()
 
   type WinData = {
     winnerName: string
@@ -212,7 +212,7 @@
     {/if}
     <p class="status-line" role="status">{statusLine}</p>
   {:else}
-    <GuestWaitingRoom {code} selfName={name} {hostName} {players} />
+    <GuestWaitingRoom {code} selfName={name} {hostName} {players} {onLeave} />
   {/if}
 </main>
 

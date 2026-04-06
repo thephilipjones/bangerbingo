@@ -64,6 +64,15 @@
     history.pushState(null, '', '/')
     page = 'dashboard'
   }
+
+  function handleGuestLeave() {
+    if (guestWs?.readyState === WebSocket.OPEN) {
+      guestWs.send(JSON.stringify({ type: 'guest:leave' }))
+    }
+    prefillCode = ''
+    history.pushState(null, '', '/')
+    page = 'join'
+  }
 </script>
 
 {#if page === 'loading'}
@@ -77,7 +86,7 @@
 {:else if page === 'lobby'}
   <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} onBackToDashboard={handleBackToDashboard} />
 {:else if page === 'room'}
-  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} pendingMessages={guestPendingMessages} />
+  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} />
 {:else if page === 'hostroom'}
   <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} />
 {/if}
