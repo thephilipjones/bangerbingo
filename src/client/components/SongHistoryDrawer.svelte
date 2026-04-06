@@ -226,4 +226,26 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  @media (min-width: 768px) {
+    .overlay {
+      background: transparent;
+    }
+
+    .sheet {
+      top: 56px;
+      bottom: auto;
+      left: 8px;
+      right: auto;
+      height: auto;
+      max-height: 60vh;
+      width: 320px;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    }
+
+    .sheet-header {
+      display: none;
+    }
+  }
 </style>

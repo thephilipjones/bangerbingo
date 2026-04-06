@@ -6,12 +6,16 @@
     playerCount,
     code,
     songIndex,
+    historyOpen = false,
+    playersOpen = false,
     onPlayersClick,
     onHistoryClick,
   }: {
     playerCount: number
     code: string
     songIndex: number | null
+    historyOpen?: boolean
+    playersOpen?: boolean
     onPlayersClick: () => void
     onHistoryClick: () => void
   } = $props()
@@ -36,7 +40,7 @@
 </script>
 
 <div class="game-header">
-  <button class="header-btn" onclick={onHistoryClick}>
+  <button class="header-btn" class:active={historyOpen} onclick={onHistoryClick}>
     {songIndex !== null ? formatSongOrdinal(songIndex) : 'History'}
   </button>
 
@@ -48,7 +52,7 @@
     {/if}
   </button>
 
-  <button class="header-btn" onclick={onPlayersClick}>
+  <button class="header-btn" class:active={playersOpen} onclick={onPlayersClick}>
     {playerCount} {playerCount === 1 ? 'Player' : 'Players'}
   </button>
 </div>
@@ -86,6 +90,11 @@
   .header-btn:hover {
     color: #fff;
     border-color: #666;
+  }
+
+  .header-btn.active {
+    color: #fff;
+    border-color: #1db954;
   }
 
   .room-code {

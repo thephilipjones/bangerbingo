@@ -278,7 +278,7 @@
 <div class="host-game">
   <div class="card-area">
     {#if tiles.length > 0}
-      <GameHeader {playerCount} {code} {songIndex} onPlayersClick={() => { showPlayers = true }} onHistoryClick={() => { showHistory = true }} />
+      <GameHeader {playerCount} {code} {songIndex} historyOpen={showHistory} playersOpen={showPlayers} onPlayersClick={() => { showPlayers = !showPlayers; showHistory = false }} onHistoryClick={() => { showHistory = !showHistory; showPlayers = false }} />
       <BingoCard {tiles} onTileClick={handleTileClick} />
       {#if hasBingo && !isClaiming}
         <button class="bingo-btn" onclick={handleBingoClick}>Bingo!</button>
