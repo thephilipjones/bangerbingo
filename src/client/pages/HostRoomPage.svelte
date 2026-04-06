@@ -20,6 +20,12 @@
   import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
   import { applyPlayerEvent } from '../lib/ws.ts'
 
+  const WIN_LINES = [
+    [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
+    [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
+    [0,6,12,18,24], [4,8,12,16,20],
+  ]
+
   let { code, onRoundEnded }: { code: string; onRoundEnded: () => void } = $props()
 
   type WinData = {
@@ -48,6 +54,12 @@
   let sdkFailed = $state(false)
   let currentTrackId = $state<string | null>(null)
   let winData = $state<WinData | null>(null)
+  let isClaiming = $state(false)
+  const hasBingo = $derived(
+    tiles.length > 0 &&
+    winData === null &&
+    WIN_LINES.some(line => line.every(i => tiles[i]?.state === 'marked' || tiles[i]?.state === 'free'))
+  )
   let revealTimer: ReturnType<typeof setTimeout> | undefined
   let songHistory = $state<HistoryEntry[]>([])
   let showHistory = $state(false)
@@ -65,6 +77,26 @@
 
   function handleTileClick(index: number) {
     tiles = toggleMark(tiles, index)
+  }
+
+  async function handleBingoClick() {
+    if (!hostName) return
+    isClaiming = true
+    const claimedTileIds = tiles
+      .filter(t => t.state === 'marked' || t.state === 'free')
+      .map(t => t.free ? 'FREE' : t.trackId)
+    try {
+      const res = await fetch(`/api/rooms/${code}/round/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerName: hostName, claimedTileIds }),
+      })
+      if (res.status !== 200) {
+        isClaiming = false
+      }
+    } catch {
+      isClaiming = false
+    }
   }
 
   function initSdkPlayer() {
@@ -181,6 +213,7 @@
         } else if (data.type === 'round:win') {
           tiles = applyWinPath(tiles, data.winningTileIds)
           isPlaying = false
+          isClaiming = false
           winData = { winnerName: data.winnerName, winningTileIds: data.winningTileIds, songHistory: data.songHistory }
         } else if (data.type === 'round:end') {
           onRoundEnded()
@@ -247,6 +280,11 @@
     {#if tiles.length > 0}
       <GameHeader {playerCount} {code} {songIndex} onPlayersClick={() => { showPlayers = true }} onHistoryClick={() => { showHistory = true }} />
       <BingoCard {tiles} onTileClick={handleTileClick} />
+      {#if hasBingo && !isClaiming}
+        <button class="bingo-btn" onclick={handleBingoClick}>Bingo!</button>
+      {:else if isClaiming}
+        <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
+      {/if}
       <p class="status-line" role="status">{statusLine}</p>
     {:else}
       <p class="status-line" role="status">{statusLine}</p>
@@ -313,6 +351,26 @@
     flex-direction: column;
     align-items: center;
     padding: 80px 16px 80px;
+  }
+
+  .bingo-btn {
+    margin-top: 16px;
+    background: #1db954;
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    padding: 14px 40px;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: sans-serif;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+
+  .bingo-btn--disabled {
+    background: #555;
+    color: #999;
+    cursor: default;
   }
 
   .status-line {
