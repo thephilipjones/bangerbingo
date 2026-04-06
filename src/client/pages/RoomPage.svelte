@@ -56,7 +56,7 @@
   let songIndex = $state<number | null>(null)
   let currentRevealed = $state(false)
   let players = $state<string[]>(untrack(() => initialPlayers))
-  const playerCount = $derived(computePlayerCount(players, hostName))
+  const playerCount = $derived(computePlayerCount(players))
 
   const hasBingo = $derived(
     tiles.length > 0 &&

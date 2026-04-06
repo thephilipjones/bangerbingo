@@ -56,7 +56,7 @@
   let hostName = $state<string | null>(null)
   let songIndex = $state<number | null>(null)
   let authDegraded = $state(false)
-  const playerCount = $derived(computePlayerCount(players, hostName))
+  const playerCount = $derived(computePlayerCount(players))
   let ws: WebSocket
   let player: Spotify.Player | undefined
   let sdkScript: HTMLScriptElement | undefined

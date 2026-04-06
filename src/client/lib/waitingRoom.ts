@@ -5,12 +5,10 @@
 
 /**
  * Compute total player count including host.
- * - If hostName is null, count is just the number of guests.
- * - If hostName is set, count includes the host + guests.
+ * The host is always counted regardless of whether their name has resolved.
  */
-export function computePlayerCount(players: string[], hostName: string | null): number {
-  const guestCount = players.length
-  return hostName ? guestCount + 1 : guestCount
+export function computePlayerCount(players: string[]): number {
+  return players.length + 1
 }
 
 /**

@@ -13,7 +13,7 @@
     onClose: () => void
   } = $props()
 
-  const playerCount = $derived(computePlayerCount(players, hostName))
+  const playerCount = $derived(computePlayerCount(players))
 </script>
 
 <!-- Background overlay -->

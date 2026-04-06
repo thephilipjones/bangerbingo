@@ -219,17 +219,19 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   if (!VALID_TITLE_REVEAL_DELAYS.includes(titleRevealDelay))
     return ctx.json({ message: 'Invalid titleRevealDelay' }, 400)
 
-  // hostName: capture-once per room.
+  // hostName: capture-once per room, optional.
   // If room.host_name is already set, ignore the field entirely (no validation, no overwrite).
-  // On first round (room.host_name IS NULL), hostName is required + validated + persisted
-  // BEFORE the Spotify fetch so a Spotify failure still preserves the name.
+  // On first round (room.host_name IS NULL), hostName is persisted if provided and valid.
   if (room.host_name === null) {
-    if (hostName === undefined) return ctx.json({ message: 'hostName required' }, 400)
-    if (typeof hostName !== 'string') return ctx.json({ message: 'hostName must be a string' }, 400)
-    const trimmed = hostName.trim()
-    if (trimmed.length < 1 || trimmed.length > 30)
-      return ctx.json({ message: 'hostName must be 1–30 characters' }, 400)
-    setRoomHostName(code, trimmed)
+    let resolvedName = 'Host'
+    if (hostName !== undefined) {
+      if (typeof hostName !== 'string') return ctx.json({ message: 'hostName must be a string' }, 400)
+      const trimmed = hostName.trim()
+      if (trimmed.length > 30)
+        return ctx.json({ message: 'hostName must be 30 characters or fewer' }, 400)
+      if (trimmed.length > 0) resolvedName = trimmed
+    }
+    setRoomHostName(code, resolvedName)
   }
 
   const roomState = roomSockets.get(code)

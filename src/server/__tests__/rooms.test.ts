@@ -327,7 +327,7 @@ describe('POST /api/rooms/:code/round', () => {
     expect(row.host_name).toBe('Sarah')
   })
 
-  it('returns 400 when first-round POST is missing hostName and room.host_name IS NULL', async () => {
+  it('defaults host_name to "Host" when hostName is omitted on first-round POST', async () => {
     seedHost()
     await seedRoom()
     const app = makeApp()
@@ -336,9 +336,10 @@ describe('POST /api/rooms/:code/round', () => {
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
     })
-    expect(res.status).toBe(400)
-    const body = await res.json() as { message: string }
-    expect(body.message).toBe('hostName required')
+    expect(res.status).toBe(200)
+    const { getDb } = await import('../db.ts')
+    const row = getDb().prepare('SELECT host_name FROM rooms WHERE code = ?').get('ABCD') as { host_name: string | null }
+    expect(row.host_name).toBe('Host')
   })
 
   it('accepts second-round POST without hostName when host_name already set', async () => {
@@ -368,7 +369,7 @@ describe('POST /api/rooms/:code/round', () => {
     expect(row.host_name).toBe('Sarah')
   })
 
-  it('returns 400 when hostName trims to empty', async () => {
+  it('defaults host_name to "Host" when hostName trims to empty', async () => {
     seedHost()
     await seedRoom()
     const app = makeApp()
@@ -377,9 +378,10 @@ describe('POST /api/rooms/:code/round', () => {
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: '   ' }),
     })
-    expect(res.status).toBe(400)
-    const body = await res.json() as { message: string }
-    expect(body.message).toBe('hostName must be 1–30 characters')
+    expect(res.status).toBe(200)
+    const { getDb } = await import('../db.ts')
+    const row = getDb().prepare('SELECT host_name FROM rooms WHERE code = ?').get('ABCD') as { host_name: string | null }
+    expect(row.host_name).toBe('Host')
   })
 
   it('returns 400 when hostName trimmed length exceeds 30', async () => {

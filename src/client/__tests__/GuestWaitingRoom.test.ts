@@ -2,24 +2,20 @@ import { describe, it, expect } from 'vitest'
 import { computePlayerCount, isSelfRow } from '../lib/waitingRoom.ts'
 
 describe('computePlayerCount', () => {
-  it('returns 0 when no guests and no host', () => {
-    expect(computePlayerCount([], null)).toBe(0)
+  it('returns 1 (host only) when no guests', () => {
+    expect(computePlayerCount([])).toBe(1)
   })
 
-  it('returns 1 when no guests but host is present', () => {
-    expect(computePlayerCount([], 'Sarah')).toBe(1)
+  it('returns guest count + 1 for multiple guests', () => {
+    expect(computePlayerCount(['Alice', 'Bob', 'Carol'])).toBe(4)
   })
 
-  it('returns guest count when no host', () => {
-    expect(computePlayerCount(['Alice', 'Bob', 'Carol'], null)).toBe(3)
-  })
-
-  it('returns guest count + 1 when host is present', () => {
-    expect(computePlayerCount(['Alice', 'Bob'], 'Sarah')).toBe(3)
+  it('returns guest count + 1 for two guests', () => {
+    expect(computePlayerCount(['Alice', 'Bob'])).toBe(3)
   })
 
   it('includes host in count for single guest', () => {
-    expect(computePlayerCount(['Philip'], 'Sarah')).toBe(2)
+    expect(computePlayerCount(['Philip'])).toBe(2)
   })
 })
 
