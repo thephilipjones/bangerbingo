@@ -200,7 +200,9 @@
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+    filter: blur(0px);
     transition: filter 400ms ease-out;
+    transform: translateZ(0);
   }
 
   .track-info.track-blurred {
