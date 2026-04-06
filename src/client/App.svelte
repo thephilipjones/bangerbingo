@@ -60,6 +60,11 @@
     page = 'lobby'
   }
 
+  function handleSessionEnded() {
+    history.pushState(null, '', '/')
+    page = 'dashboard'
+  }
+
   function handleBackToDashboard() {
     history.pushState(null, '', '/')
     page = 'dashboard'
@@ -88,6 +93,6 @@
 {:else if page === 'room'}
   <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} />
 {:else if page === 'hostroom'}
-  <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} />
+  <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} onSessionEnded={handleSessionEnded} />
 {/if}
 

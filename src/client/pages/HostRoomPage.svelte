@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import BingoCard from '../components/BingoCard.svelte'
-  import HostControlsPanel from '../components/HostControlsPanel.svelte'
   import SdkFailureBanner from '../components/SdkFailureBanner.svelte'
   import WinOverlay from '../components/WinOverlay.svelte'
   import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
   import AuthDegradedBanner from '../components/AuthDegradedBanner.svelte'
   import GameHeader from '../components/GameHeader.svelte'
   import PlayersOverlay from '../components/PlayersOverlay.svelte'
+  import HostMiniPlayer from '../components/HostMiniPlayer.svelte'
+  import HostControlsOverlay from '../components/HostControlsOverlay.svelte'
   import { computePlayerCount } from '../lib/waitingRoom.ts'
   import {
     initTiles,
@@ -26,7 +27,7 @@
     [0,6,12,18,24], [4,8,12,16,20],
   ]
 
-  let { code, onRoundEnded }: { code: string; onRoundEnded: () => void } = $props()
+  let { code, onRoundEnded, onSessionEnded }: { code: string; onRoundEnded: () => void; onSessionEnded: () => void } = $props()
 
   type WinData = {
     winnerName: string
@@ -43,12 +44,10 @@
   }
 
   let tiles = $state<ClientTile[]>([])
-  let statusLine = $state('Waiting for round to start…')
   let roundConfig = $state<{ titleRevealDelay: TitleRevealDelay } | null>(null)
   let currentTrack = $state<{ title: string; artist: string } | null>(null)
   let isPlaying = $state(false)
   let players = $state<string[]>([])
-  let panelOpen = $state(false)
   let wsError = $state(false)
   let sdkReady = $state(false)
   let sdkFailed = $state(false)
@@ -75,6 +74,18 @@
   let sdkErrorFired = false
   let sdkReinitializing = false
 
+  let showControls = $state(false)
+  let toastVisible = $state(false)
+  let undoTimer: ReturnType<typeof setTimeout> | undefined
+  let sessionEnded = false
+
+  function handleSessionEnd() {
+    if (sessionEnded) return
+    sessionEnded = true
+    clearTimeout(undoTimer)
+    onSessionEnded()
+  }
+
   function handleTileClick(index: number) {
     tiles = toggleMark(tiles, index)
   }
@@ -97,6 +108,30 @@
     } catch {
       isClaiming = false
     }
+  }
+
+  function handlePlayPause() {
+    const endpoint = isPlaying ? 'pause' : 'play'
+    fetch(`/api/rooms/${code}/round/${endpoint}`, { method: 'POST' })
+  }
+
+  function handleNext() {
+    fetch(`/api/rooms/${code}/round/next`, { method: 'POST' })
+  }
+
+  function handleEndRound() {
+    clearTimeout(undoTimer)
+    showControls = false
+    toastVisible = true
+    undoTimer = setTimeout(async () => {
+      toastVisible = false
+      await fetch(`/api/rooms/${code}/round/end`, { method: 'POST' })
+    }, 2000)
+  }
+
+  function handleUndo() {
+    toastVisible = false
+    clearTimeout(undoTimer)
   }
 
   function initSdkPlayer() {
@@ -182,7 +217,6 @@
         } else if (data.type === 'round:start') {
           tiles = initTiles(data.card)
           roundConfig = { titleRevealDelay: data.titleRevealDelay }
-          statusLine = 'Waiting for next song…'
           isPlaying = false
           winData = null
           const rawHistory = (data.songHistory ?? []) as Array<{ trackId: string; title: string; artist: string; albumArtUrl: string; songIndex: number }>
@@ -194,7 +228,6 @@
             tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
           }
           songIndex = data.songIndex
-          statusLine = `Song ${data.songIndex + 1} of this round`
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
           isPlaying = true
@@ -208,7 +241,6 @@
             tiles = finishReveal(tiles, data.trackId)
           }, 300)
         } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
-          statusLine = 'Waiting for next song…'
           isPlaying = false
         } else if (data.type === 'round:win') {
           tiles = applyWinPath(tiles, data.winningTileIds)
@@ -217,6 +249,8 @@
           winData = { winnerName: data.winnerName, winningTileIds: data.winningTileIds, songHistory: data.songHistory }
         } else if (data.type === 'round:end') {
           onRoundEnded()
+        } else if (data.type === 'session:end') {
+          handleSessionEnd()
         } else if (data.type === 'auth:degraded') {
           authDegraded = true
         } else if (data.type === 'auth:restored') {
@@ -236,6 +270,7 @@
 
   onDestroy(() => {
     clearTimeout(revealTimer)
+    clearTimeout(undoTimer)
     ws?.close()
     player?.disconnect()
     if (sdkScript && document.head.contains(sdkScript)) {
@@ -275,6 +310,13 @@
   />
 {/if}
 
+{#if toastVisible}
+  <div class="toast" role="status">
+    <span>Ending round…</span>
+    <button class="undo-btn" onclick={handleUndo}>Undo</button>
+  </div>
+{/if}
+
 <div class="host-game">
   <div class="card-area">
     {#if tiles.length > 0}
@@ -285,43 +327,34 @@
       {:else if isClaiming}
         <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
       {/if}
-      <p class="status-line" role="status">{statusLine}</p>
-    {:else}
-      <p class="status-line" role="status">{statusLine}</p>
     {/if}
     {#if !sdkReady && !sdkFailed}
       <p class="sdk-status" role="status">Connecting to Spotify audio…</p>
     {/if}
   </div>
-
-  <!-- Desktop: controls always visible in right column -->
-  <div class="panel-desktop">
-    <HostControlsPanel
-      {code}
-      {currentTrack}
-      {isPlaying}
-      {sdkReady}
-      {onRoundEnded}
-    />
-  </div>
 </div>
 
-<!-- Mobile: fixed handle + slide-up panel -->
-<div class="panel-mobile">
-  <button class="panel-handle" onclick={() => (panelOpen = !panelOpen)}>
-    Controls {panelOpen ? '▼' : '▲'}
-  </button>
+<HostMiniPlayer
+  {currentTrack}
+  {isPlaying}
+  {sdkReady}
+  {sdkFailed}
+  {currentTrackId}
+  onPlayPause={handlePlayPause}
+  onNext={handleNext}
+  onGearClick={() => { showControls = true }}
+  controlsOpen={showControls}
+/>
 
-  <div class="panel-sheet" class:open={panelOpen} aria-hidden={!panelOpen}>
-    <HostControlsPanel
-      {code}
-      {currentTrack}
-      {isPlaying}
-      {sdkReady}
-      {onRoundEnded}
-    />
-  </div>
-</div>
+{#if showControls}
+  <HostControlsOverlay
+    {code}
+    onClose={() => { showControls = false }}
+    onEndRound={handleEndRound}
+    onSessionEnded={handleSessionEnd}
+    onHostManagement={handleSessionEnd}
+  />
+{/if}
 
 <style>
   .error-banner {
@@ -373,11 +406,30 @@
     cursor: default;
   }
 
-  .status-line {
-    margin-top: 12px;
-    font-size: 14px;
-    color: #aaa;
-    text-align: center;
+  .toast {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 200;
+    white-space: nowrap;
+  }
+
+  .undo-btn {
+    background: none;
+    border: 1px solid #fff;
+    color: #fff;
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 13px;
   }
 
   .sdk-status {
@@ -387,78 +439,14 @@
     text-align: center;
   }
 
-  /* Desktop layout */
-  .panel-desktop {
-    display: none;
-  }
-
-  .panel-mobile {
-    display: block;
-  }
-
   @media (min-width: 768px) {
     .host-game {
-      display: grid;
-      grid-template-columns: 3fr 2fr;
-      gap: 24px;
-      max-width: 960px;
+      max-width: 640px;
       margin: 0 auto;
       padding: 16px;
-      min-height: 100vh;
-      align-items: start;
     }
-
     .card-area {
-      padding: 0;
       padding-top: 80px;
     }
-
-    .panel-desktop {
-      display: block;
-      position: sticky;
-      top: 16px;
-    }
-
-    .panel-mobile {
-      display: none;
-    }
-  }
-
-  /* Mobile panel */
-  .panel-handle {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: #1a1a1a;
-    color: #fff;
-    border: none;
-    border-top: 1px solid #333;
-    padding: 14px 16px;
-    font-size: 15px;
-    font-weight: 600;
-    font-family: sans-serif;
-    cursor: pointer;
-    z-index: 20;
-    min-height: 44px;
-    text-align: center;
-  }
-
-  .panel-sheet {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 60vh;
-    background: #1a1a1a;
-    z-index: 10;
-    overflow-y: auto;
-    transform: translateY(100%);
-    transition: transform 300ms ease;
-    padding-bottom: 60px;
-  }
-
-  .panel-sheet.open {
-    transform: translateY(0);
   }
 </style>

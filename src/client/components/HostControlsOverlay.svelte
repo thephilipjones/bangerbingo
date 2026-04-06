@@ -1,0 +1,273 @@
+<script lang="ts">
+  let {
+    code,
+    onClose,
+    onEndRound,
+    onSessionEnded,
+    onHostManagement,
+  }: {
+    code: string
+    onClose: () => void
+    onEndRound: () => void
+    onSessionEnded: () => void
+    onHostManagement: () => void
+  } = $props()
+
+  let showConfirm = $state(false)
+  let endSessionError = $state('')
+  let ending = $state(false)
+
+  function handleEndRound() {
+    onEndRound()
+    onClose()
+  }
+
+  async function handleEndSessionConfirm() {
+    ending = true
+    endSessionError = ''
+    try {
+      const res = await fetch(`/api/rooms/${code}`, { method: 'DELETE' })
+      if (res.ok) {
+        onSessionEnded()
+      } else {
+        endSessionError = 'Failed to end session — try again.'
+        ending = false
+      }
+    } catch {
+      endSessionError = 'Failed to end session — try again.'
+      ending = false
+    }
+  }
+</script>
+
+<!-- Background overlay -->
+<div class="overlay" role="presentation" onclick={onClose}></div>
+
+<!-- Sheet -->
+<div class="sheet" role="dialog" aria-label="Host controls">
+  <div class="sheet-header">
+    <span class="sheet-title">Host Controls</span>
+    <button class="close-btn" onclick={onClose} aria-label="Close controls">×</button>
+  </div>
+  <div class="sheet-body">
+    <button class="action-btn" onclick={handleEndRound} disabled={ending}>
+      <span class="action-icon">↻</span> End Round
+    </button>
+
+    <button class="action-btn" onclick={() => { showConfirm = true }} disabled={ending}>
+      <span class="action-icon">⏻</span> End Session
+    </button>
+
+    {#if showConfirm}
+      <div class="confirm-dialog">
+        <p class="confirm-title">End this session for everyone?</p>
+        <p class="confirm-sub">All players will be disconnected.</p>
+        {#if endSessionError}
+          <p class="error-text">{endSessionError}</p>
+        {/if}
+        <div class="confirm-actions">
+          <button class="confirm-cancel" onclick={() => { showConfirm = false; endSessionError = '' }} disabled={ending}>Cancel</button>
+          <button class="confirm-end" onclick={handleEndSessionConfirm} disabled={ending}>End Session</button>
+        </div>
+      </div>
+    {/if}
+
+    <div class="divider"></div>
+
+    <button class="mgmt-link" onclick={onHostManagement}>
+      <span class="action-icon">→</span> Host Management
+    </button>
+  </div>
+</div>
+
+<style>
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 149;
+  }
+
+  .sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40vh;
+    z-index: 150;
+    background: #1a1a1a;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    flex-direction: column;
+    font-family: sans-serif;
+  }
+
+  .sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+  }
+
+  .sheet-title {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .close-btn:hover {
+    color: #fff;
+  }
+
+  .sheet-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .action-btn {
+    background: #333;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: sans-serif;
+    cursor: pointer;
+    text-align: left;
+    min-height: 44px;
+  }
+
+  .action-btn:hover {
+    background: #444;
+  }
+
+  .action-icon {
+    margin-right: 8px;
+  }
+
+  .confirm-dialog {
+    background: #242424;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 16px;
+  }
+
+  .confirm-title {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+
+  .confirm-sub {
+    color: #aaa;
+    font-size: 13px;
+    margin: 0 0 12px;
+  }
+
+  .error-text {
+    color: #e74c3c;
+    font-size: 13px;
+    margin: 0 0 8px;
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  .confirm-cancel,
+  .confirm-end {
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 0 16px;
+  }
+
+  .confirm-cancel {
+    background: #333;
+    color: #fff;
+  }
+
+  .confirm-end {
+    background: #e74c3c;
+    color: #fff;
+  }
+
+  .confirm-cancel:disabled,
+  .confirm-end:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .divider {
+    height: 1px;
+    background: #333;
+    margin: 4px 0;
+  }
+
+  .mgmt-link {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 14px;
+    font-family: sans-serif;
+    cursor: pointer;
+    text-align: left;
+    padding: 10px 0;
+    min-height: 44px;
+  }
+
+  .mgmt-link:hover {
+    color: #ccc;
+  }
+
+  @media (min-width: 768px) {
+    .overlay {
+      background: transparent;
+    }
+
+    .sheet {
+      bottom: 72px;
+      top: auto;
+      right: 8px;
+      left: auto;
+      height: auto;
+      max-height: 60vh;
+      width: 280px;
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    }
+
+    .sheet-header {
+      display: none;
+    }
+  }
+</style>

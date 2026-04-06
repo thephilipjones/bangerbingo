@@ -154,6 +154,8 @@
       tiles = []
       statusLine = 'Waiting for the host to start a round...'
       roundConfig = null
+    } else if (data.type === 'session:end') {
+      onLeave?.()
     }
   }
 
