@@ -247,15 +247,16 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     ws.send(JSON.stringify({ type: 'session:connect', role: 'guest', players: getPlayerList(code), hostName: room.host_name }))
 
-    // If a round is in progress, send round:start with a freshly generated card
+    // If a round is in progress, resend round:start — reuse existing card if reconnecting
     const round = roomState.currentRound
     if (round?.active) {
-      const lateCard = generateCard(round.playlist)
-      round.cards.set(name, lateCard)
+      const existingCard = round.cards.get(name)
+      const card = existingCard ?? generateCard(round.playlist)
+      if (!existingCard) round.cards.set(name, card)
       ws.send(JSON.stringify({
         ...round.roundStartPayload,
-        card: lateCard,
-        lateJoin: true,
+        card,
+        lateJoin: !existingCard,
         songHistory: round.songHistory,
       }))
     }
