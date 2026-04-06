@@ -6,6 +6,9 @@
   import WinOverlay from '../components/WinOverlay.svelte'
   import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
   import AuthDegradedBanner from '../components/AuthDegradedBanner.svelte'
+  import GameHeader from '../components/GameHeader.svelte'
+  import PlayersOverlay from '../components/PlayersOverlay.svelte'
+  import { computePlayerCount } from '../lib/waitingRoom.ts'
   import {
     initTiles,
     applyMask,
@@ -48,7 +51,11 @@
   let revealTimer: ReturnType<typeof setTimeout> | undefined
   let songHistory = $state<HistoryEntry[]>([])
   let showHistory = $state(false)
+  let showPlayers = $state(false)
+  let hostName = $state<string | null>(null)
+  let songIndex = $state<number | null>(null)
   let authDegraded = $state(false)
+  const playerCount = $derived(computePlayerCount(players, hostName))
   let ws: WebSocket
   let player: Spotify.Player | undefined
   let sdkScript: HTMLScriptElement | undefined
@@ -138,17 +145,20 @@
         const data = JSON.parse(event.data)
         if (data.type === 'session:connect') {
           players = data.players ?? []
+          hostName = data.hostName ?? null
         } else if (data.type === 'round:start') {
           tiles = initTiles(data.card)
           roundConfig = { titleRevealDelay: data.titleRevealDelay }
           statusLine = 'Waiting for next song…'
           isPlaying = false
           winData = null
+          songIndex = null
           songHistory = (data.songHistory ?? []).slice().reverse()
         } else if (data.type === 'song:start') {
           if (roundConfig) {
             tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
           }
+          songIndex = data.songIndex
           statusLine = `Song ${data.songIndex + 1} of this round`
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
@@ -213,6 +223,10 @@
   <SongHistoryDrawer entries={songHistory} onClose={() => { showHistory = false }} />
 {/if}
 
+{#if showPlayers}
+  <PlayersOverlay {players} {hostName} selfName={null} onClose={() => { showPlayers = false }} />
+{/if}
+
 {#if winData !== null}
   <WinOverlay
     winnerName={winData.winnerName}
@@ -226,9 +240,7 @@
 <div class="host-game">
   <div class="card-area">
     {#if tiles.length > 0}
-      <div class="card-header">
-        <button class="history-btn" onclick={() => { showHistory = true }}>≡ History</button>
-      </div>
+      <GameHeader {playerCount} {code} {songIndex} onPlayersClick={() => { showPlayers = true }} onHistoryClick={() => { showHistory = true }} />
       <BingoCard {tiles} onTileClick={handleTileClick} />
       <p class="status-line" role="status">{statusLine}</p>
     {:else}
@@ -244,7 +256,6 @@
     <HostControlsPanel
       {code}
       {currentTrack}
-      {players}
       {isPlaying}
       {sdkReady}
       {onRoundEnded}
@@ -262,7 +273,6 @@
     <HostControlsPanel
       {code}
       {currentTrack}
-      {players}
       {isPlaying}
       {sdkReady}
       {onRoundEnded}
@@ -312,31 +322,6 @@
     font-size: 13px;
     color: #888;
     text-align: center;
-  }
-
-  .card-header {
-    display: flex;
-    justify-content: flex-end;
-    width: 100%;
-    margin-bottom: 8px;
-  }
-
-  .history-btn {
-    background: none;
-    border: 1px solid #444;
-    color: #aaa;
-    border-radius: 6px;
-    padding: 6px 14px;
-    font-size: 13px;
-    font-family: sans-serif;
-    cursor: pointer;
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  .history-btn:hover {
-    color: #fff;
-    border-color: #666;
   }
 
   /* Desktop layout */

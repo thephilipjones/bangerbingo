@@ -2,14 +2,12 @@
   let {
     code,
     currentTrack,
-    players,
     isPlaying,
     sdkReady,
     onRoundEnded,
   }: {
     code: string
     currentTrack: { title: string; artist: string } | null
-    players: string[]
     isPlaying: boolean
     sdkReady: boolean
     onRoundEnded: () => void
@@ -83,15 +81,6 @@
       {isPlaying ? 'Pause' : 'Play'}
     </button>
     <button class="ctrl-btn next-btn" onclick={handleNext} aria-label="Next">Next</button>
-  </div>
-
-  <div class="player-list">
-    <p class="player-count">{players.length} player{players.length !== 1 ? 's' : ''}</p>
-    <ul>
-      {#each players as player}
-        <li>{player}</li>
-      {/each}
-    </ul>
   </div>
 
   <div class="end-round-row">
@@ -213,28 +202,6 @@
     font-size: 16px;
     padding: 0 24px;
     min-height: 52px;
-  }
-
-  .player-list {
-    font-size: 13px;
-  }
-
-  .player-count {
-    font-weight: 600;
-    margin-bottom: 6px;
-    color: #aaa;
-  }
-
-  .player-list ul {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .player-list li {
-    padding: 4px 0;
-    border-bottom: 1px solid #2a2a2a;
   }
 
   .end-round-row {
