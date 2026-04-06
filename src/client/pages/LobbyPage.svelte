@@ -4,6 +4,8 @@
   import { connectAsHost, applyPlayerEvent, copyRoomCode } from '../lib/ws.ts'
   import { getRooms } from '../lib/api.ts'
   import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
+  import VinylWithTonearm from '../components/VinylWithTonearm.svelte'
+  import PlayerList from '../components/PlayerList.svelte'
 
   let {
     code,
@@ -22,12 +24,23 @@
 
   // ── Vinyl / header ──────────────────────────────────────────────────────────
   let copied = $state(false)
+  let copiedUrl = $state(false)
 
   async function handleCopyCode() {
     try {
       await copyRoomCode(code)
       copied = true
       setTimeout(() => (copied = false), 1500)
+    } catch {
+      // clipboard unavailable — no UI change
+    }
+  }
+
+  async function handleCopyUrl() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/room/${code}`)
+      copiedUrl = true
+      setTimeout(() => (copiedUrl = false), 1500)
     } catch {
       // clipboard unavailable — no UI change
     }
@@ -117,9 +130,18 @@
   <!-- Header: room code -->
   <header class="lobby-header">
     <button class="back-btn" onclick={onBackToDashboard} aria-label="Back to session manager">← Sessions</button>
-    <button class="room-code" onclick={handleCopyCode} aria-label="Copy room code">
-      {copied ? 'Copied!' : code}
-    </button>
+    <div class="header-center">
+      <div class="room-invite">
+        Join at
+        <button class="url-copy-btn" onclick={handleCopyUrl} aria-label="Copy room URL">
+          {copiedUrl ? 'Copied!' : 'BangerBingo.net'}
+          {#if !copiedUrl}<svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"/></svg>{/if}
+        </button>
+      </div>
+      <button class="room-code" onclick={handleCopyCode} aria-label="Copy room code">
+        {copied ? 'Copied!' : code}
+      </button>
+    </div>
     <div class="header-spacer"></div>
   </header>
 
@@ -136,20 +158,22 @@
     </p>
   {/if}
 
-  <!-- Spinning vinyl -->
-  <div class="vinyl" aria-hidden="true">
-    <svg viewBox="0 0 80 80" width="80" height="80">
-      <circle cx="40" cy="40" r="38" fill="#1a1a1a" stroke="#333" stroke-width="2" />
-      <circle cx="40" cy="40" r="20" fill="#222" />
-      <circle cx="40" cy="40" r="4" fill="#444" />
-    </svg>
+  <!-- Vinyl + needle -->
+  <VinylWithTonearm />
+
+  <!-- Start a Round CTA -->
+  <button class="configure-btn" onclick={() => { isConfigOpen = true; hasEverOpenedConfig = true }}>Start a Round</button>
+
+  <p class="waiting">Waiting for you…</p>
+
+  <!-- Player list -->
+  <div class="players-section">
+    <h2 class="players-label">Players here ({players.length + 1})</h2>
+    <PlayerList {players} hostName={roomHostName} selfName={null} />
   </div>
 
   <!-- Trivia fact -->
   <p class="fact" class:visible>{facts[factIndex]}</p>
-
-  <!-- Configure Round CTA -->
-  <button class="configure-btn" onclick={() => { isConfigOpen = true; hasEverOpenedConfig = true }}>Configure Round →</button>
 </div>
 
 {#if isConfigOpen}
@@ -175,7 +199,10 @@
     min-height: 100vh;
     gap: 1.5rem;
     font-family: sans-serif;
-    padding: 2rem;
+    padding: 6rem 1.5rem 3rem;
+    box-sizing: border-box;
+    background: #121212;
+    color: #fff;
   }
 
   .lobby-header {
@@ -209,6 +236,38 @@
     min-width: 6rem;
   }
 
+  .header-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+  }
+
+  .room-invite {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: #666;
+  }
+
+  .url-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: sans-serif;
+  }
+
+  .url-copy-btn:hover {
+    color: #aaa;
+  }
+
   .room-code {
     font-size: 2rem;
     font-family: monospace;
@@ -219,6 +278,7 @@
     cursor: pointer;
     letter-spacing: 0.1em;
     padding: 0;
+    line-height: 1;
   }
 
   .room-code:hover {
@@ -256,22 +316,32 @@
     font-size: 0.8rem;
   }
 
-  .vinyl {
-    animation: spin 3s linear infinite;
-    margin-top: 4rem; /* clear fixed header */
+  .waiting {
+    font-size: 0.8rem;
+    color: #444;
+    text-align: center;
+    margin: 0;
   }
 
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+  .players-section {
+    width: 100%;
+    max-width: 24rem;
+  }
+
+  .players-label {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0 0 12px 0;
+    text-align: left;
   }
 
   .fact {
     max-width: 24rem;
+    min-height: 4.5rem;
     text-align: center;
-    font-size: 1rem;
-    color: #ccc;
+    font-size: 0.95rem;
+    color: #666;
     line-height: 1.5;
     transition: opacity 0.4s;
     opacity: 0;
@@ -290,7 +360,6 @@
     font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
-    margin-top: 1rem;
   }
 
   .configure-btn:hover {

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { computePlayerCount, isSelfRow } from '../lib/waitingRoom.ts'
+  import { computePlayerCount } from '../lib/waitingRoom.ts'
+  import PlayerList from './PlayerList.svelte'
 
   let {
     players,
@@ -29,31 +30,7 @@
     {#if players.length === 0 && hostName === null}
       <p class="empty">No players yet.</p>
     {:else}
-      <ul class="players-list">
-        {#if hostName}
-          <li class="player-row">
-            <span class="player-name">{hostName}</span>
-            <span class="host-pill">host</span>
-            {#if selfName !== null && isSelfRow(hostName, selfName)}
-              <span class="you-suffix">(you)</span>
-            {/if}
-          </li>
-        {:else}
-          <li class="player-row">
-            <span class="player-name">Host</span>
-            <span class="host-pill">host</span>
-          </li>
-        {/if}
-
-        {#each players as playerName (playerName)}
-          <li class="player-row">
-            <span class="player-name">{playerName}</span>
-            {#if selfName !== null && isSelfRow(playerName, selfName)}
-              <span class="you-suffix">(you)</span>
-            {/if}
-          </li>
-        {/each}
-      </ul>
+      <PlayerList {players} {hostName} {selfName} --player-row-bg="#222" />
     {/if}
   </div>
 </div>
@@ -127,47 +104,4 @@
     font-size: 14px;
   }
 
-  .players-list {
-    list-style: none;
-    padding: 8px 16px;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .player-row {
-    display: flex;
-    align-items: center;
-    padding: 12px;
-    background: #222;
-    border: 1px solid #333;
-    border-radius: 6px;
-    font-size: 0.95rem;
-  }
-
-  .player-name {
-    flex: 1;
-    color: #fff;
-  }
-
-  .host-pill {
-    display: inline-block;
-    margin-left: 8px;
-    padding: 2px 8px;
-    background: #1db954;
-    color: #000;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    border-radius: 9999px;
-    vertical-align: middle;
-    letter-spacing: 0.02em;
-  }
-
-  .you-suffix {
-    margin-left: 6px;
-    color: #888;
-    font-size: 0.8125rem;
-    font-weight: 400;
-  }
 </style>

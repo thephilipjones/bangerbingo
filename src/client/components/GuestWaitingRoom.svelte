@@ -1,12 +1,33 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { isSelfRow } from '../lib/waitingRoom.ts'
   import { TRIVIA_FACTS, shuffle } from '../lib/trivia.ts'
+  import VinylWithTonearm from './VinylWithTonearm.svelte'
+  import PlayerList from './PlayerList.svelte'
 
-  let { code, selfName, hostName, players }: { code: string; selfName: string; hostName: string | null; players: string[] } = $props()
+  let { code, selfName, hostName, players, onLeave }: { code: string; selfName: string; hostName: string | null; players: string[]; onLeave?: () => void } = $props()
 
   // Host row is always rendered (with name or generic "Host"), so always count host as +1
   const playerCount = $derived(players.length + 1)
+
+  // ── Header copy ─────────────────────────────────────────────────────────────
+  let copied = $state(false)
+  let copiedUrl = $state(false)
+
+  async function handleCopyCode() {
+    try {
+      await navigator.clipboard.writeText(code)
+      copied = true
+      setTimeout(() => (copied = false), 1500)
+    } catch { /* unavailable */ }
+  }
+
+  async function handleCopyUrl() {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/room/${code}`)
+      copiedUrl = true
+      setTimeout(() => (copiedUrl = false), 1500)
+    } catch { /* unavailable */ }
+  }
 
   // ── Trivia cycling ─────────────────────────────────────────────────────────
   let facts = $state(shuffle([...TRIVIA_FACTS]))
@@ -37,17 +58,28 @@
 <div class="waiting-room">
   <!-- Header -->
   <header class="header">
-    <div class="room-code">{code}</div>
+    {#if onLeave}
+      <button class="back-btn" onclick={onLeave} aria-label="Leave session">← Leave</button>
+    {:else}
+      <div class="header-spacer"></div>
+    {/if}
+    <div class="header-center">
+      <div class="room-invite">
+        Join at
+        <button class="url-copy-btn" onclick={handleCopyUrl} aria-label="Copy room URL">
+          {copiedUrl ? 'Copied!' : 'BangerBingo.net'}
+          {#if !copiedUrl}<svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"/></svg>{/if}
+        </button>
+      </div>
+      <button class="room-code" onclick={handleCopyCode} aria-label="Copy room code">
+        {copied ? 'Copied!' : code}
+      </button>
+    </div>
+    <div class="header-spacer"></div>
   </header>
 
-  <!-- Vinyl -->
-  <div class="vinyl" aria-hidden="true">
-    <svg viewBox="0 0 80 80" width="80" height="80">
-      <circle cx="40" cy="40" r="38" fill="#1a1a1a" stroke="#333" stroke-width="2" />
-      <circle cx="40" cy="40" r="20" fill="#222" />
-      <circle cx="40" cy="40" r="4" fill="#444" />
-    </svg>
-  </div>
+  <!-- Vinyl + needle -->
+  <VinylWithTonearm />
 
   <!-- Headline -->
   <h1 class="headline">You're in!</h1>
@@ -58,28 +90,7 @@
   <!-- Player list -->
   <div class="players-section">
     <h2 class="players-label">Players here ({playerCount})</h2>
-    <ul class="players-list">
-      {#if hostName}
-        <li class="player-row">
-          <span class="player-name">{hostName}</span>
-          <span class="host-pill">host</span>
-        </li>
-      {:else}
-        <li class="player-row">
-          <span class="player-name">Host</span>
-          <span class="host-pill">host</span>
-        </li>
-      {/if}
-
-      {#each players as playerName (playerName)}
-        <li class="player-row">
-          <span class="player-name">{playerName}</span>
-          {#if isSelfRow(playerName, selfName)}
-            <span class="you-suffix">(you)</span>
-          {/if}
-        </li>
-      {/each}
-    </ul>
+    <PlayerList {players} {hostName} {selfName} />
   </div>
 
   <!-- Trivia -->
@@ -91,11 +102,12 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     min-height: 100vh;
     background: #121212;
     color: #fff;
     font-family: sans-serif;
-    padding: 80px 16px 48px;
+    padding: 6rem 1.5rem 3rem;
     box-sizing: border-box;
     gap: 1.5rem;
   }
@@ -107,28 +119,80 @@
     right: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
-    padding: 12px 16px;
+    justify-content: space-between;
+    padding: 12px 24px;
     background: #1a1a1a;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     z-index: 10;
+  }
+
+  .back-btn {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 0.875rem;
+    cursor: pointer;
+    padding: 0.25rem 0;
+    min-width: 5rem;
+    font-family: sans-serif;
+  }
+
+  .back-btn:hover {
+    color: #fff;
+  }
+
+  .header-spacer {
+    min-width: 5rem;
+  }
+
+  .header-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+  }
+
+  .room-invite {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: #666;
+  }
+
+  .url-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: sans-serif;
+  }
+
+  .url-copy-btn:hover {
+    color: #aaa;
   }
 
   .room-code {
     font-size: 2rem;
     font-family: monospace;
     font-weight: 700;
+    background: none;
+    border: none;
     color: #fff;
+    cursor: pointer;
     letter-spacing: 0.1em;
     text-transform: uppercase;
+    padding: 0;
+    line-height: 1;
   }
 
-  .vinyl {
-    animation: spin 3s linear infinite;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
+  .room-code:hover {
+    color: #1db954;
   }
 
   .headline {
@@ -147,7 +211,7 @@
 
   .players-section {
     width: 100%;
-    max-width: 400px;
+    max-width: 24rem;
   }
 
   .players-label {
@@ -158,52 +222,9 @@
     text-align: left;
   }
 
-  .players-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .player-row {
-    display: flex;
-    align-items: center;
-    padding: 12px;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 6px;
-    font-size: 0.95rem;
-  }
-
-  .player-name {
-    flex: 1;
-    color: #fff;
-  }
-
-  .host-pill {
-    display: inline-block;
-    margin-left: 8px;
-    padding: 2px 8px;
-    background: #1db954;
-    color: #000;
-    font-size: 0.6875rem;
-    font-weight: 700;
-    border-radius: 9999px;
-    vertical-align: middle;
-    letter-spacing: 0.02em;
-  }
-
-  .you-suffix {
-    margin-left: 6px;
-    color: #888;
-    font-size: 0.8125rem;
-    font-weight: 400;
-  }
-
   .fact {
-    max-width: 36rem;
+    max-width: 24rem;
+    min-height: 4.5rem;
     text-align: center;
     font-size: 0.95rem;
     color: #666;

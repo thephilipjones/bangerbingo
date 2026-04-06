@@ -13,7 +13,7 @@ export function computePlayerCount(players: string[]): number {
 
 /**
  * Determine if a row name matches the current user (case-sensitive exact match).
- * Used to display "(you)" suffix next to the user's own row.
+ * Used to display a "You" pill next to the user's own row.
  */
 export function isSelfRow(rowName: string, selfName: string): boolean {
   return rowName === selfName
