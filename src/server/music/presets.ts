@@ -11,4 +11,5 @@ export const PRESETS: Preset[] = [
   { name: 'Pop Classics', description: 'Essential pop anthems', playlistId: '37i9dQZF1DXcBWIGoYBM5M' },
   { name: 'Rock Anthems', description: 'Guitar-driven crowd pleasers', playlistId: '37i9dQZF1DXcF6B6QPhFDv' },
   { name: 'Party Hits', description: 'Floor-fillers across all eras', playlistId: '37i9dQZF1DXdPec7aLTmlC' },
+  { name: 'About to See', description: "Philip's upcoming shows", playlistId: '0peg7lWJ3q0Ai3RHq5rjvx' },
 ]
