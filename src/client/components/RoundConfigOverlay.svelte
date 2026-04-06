@@ -367,6 +367,7 @@
     max-width: 480px;
     padding: 2.5rem 1rem 1.5rem;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    font-family: sans-serif;
   }
 
   .close-btn {
@@ -402,6 +403,7 @@
     border-radius: 6px;
     color: #fff;
     font-size: 1rem;
+    font-family: inherit;
   }
 
   /* Tab bar */
@@ -496,6 +498,7 @@
     border-radius: 6px;
     color: #fff;
     font-size: 1rem;
+    font-family: inherit;
   }
 
   .search-input::placeholder {
