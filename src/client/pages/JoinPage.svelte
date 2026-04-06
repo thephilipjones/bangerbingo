@@ -14,7 +14,8 @@
   let nameError = $state('')
   let codeError = $state('')
   const autoRejoining = untrack(() => !!(prefillCode && name))
-  let connecting = $state(autoRejoining)
+  let autoRejoinFailed = $state(false)
+  let connecting = $state(false)
   let nameInput: HTMLInputElement | undefined = $state()
   let activeWs: WebSocket | undefined
   let bufferedMessages: MessageEvent[] = []
@@ -69,6 +70,7 @@
       },
       onError(message) {
         connecting = false
+        autoRejoinFailed = true
         if (message === 'That name is already taken') {
           nameError = message
         } else {
@@ -82,7 +84,7 @@
   }
 </script>
 
-<div class="join-page">
+<div class="join-page" class:hidden={autoRejoining && !autoRejoinFailed}>
   <button type="button" class="host-login-btn" onclick={onHostLogin} disabled={connecting}>Host Login</button>
   <h1>BangerBingo</h1>
   <form onsubmit={handleSubmit}>
@@ -138,6 +140,10 @@
 </div>
 
 <style>
+  .join-page.hidden {
+    display: none;
+  }
+
   .join-page {
     position: relative;
     display: flex;
