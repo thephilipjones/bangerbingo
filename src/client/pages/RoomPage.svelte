@@ -52,6 +52,7 @@
   let showHistory = $state(false)
   let showPlayers = $state(false)
   let songIndex = $state<number | null>(null)
+  let currentRevealed = $state(false)
   let players = $state<string[]>(initialPlayers)
   const playerCount = $derived(computePlayerCount(players, hostName))
 
@@ -110,8 +111,10 @@
       }
       songIndex = data.songIndex as number
       statusLine = `Song ${(data.songIndex as number) + 1} of this round`
+      currentRevealed = false
       songHistory = [{ trackId: data.trackId as string, title: data.title as string, artist: data.artist as string, albumArtUrl: data.albumArtUrl as string, songIndex: data.songIndex as number }, ...songHistory]
     } else if (data.type === 'song:reveal') {
+      currentRevealed = true
       tiles = startReveal(tiles, data.trackId as string)
       clearTimeout(revealTimer)
       revealTimer = setTimeout(() => {
@@ -168,7 +171,7 @@
 {/if}
 
 {#if showHistory}
-  <SongHistoryDrawer entries={songHistory} onClose={() => { showHistory = false }} />
+  <SongHistoryDrawer entries={songHistory} {currentRevealed} onClose={() => { showHistory = false }} />
 {/if}
 
 {#if showPlayers}

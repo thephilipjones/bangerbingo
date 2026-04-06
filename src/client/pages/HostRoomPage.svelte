@@ -51,6 +51,7 @@
   let revealTimer: ReturnType<typeof setTimeout> | undefined
   let songHistory = $state<HistoryEntry[]>([])
   let showHistory = $state(false)
+  let currentRevealed = $state(false)
   let showPlayers = $state(false)
   let hostName = $state<string | null>(null)
   let songIndex = $state<number | null>(null)
@@ -163,8 +164,10 @@
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
           isPlaying = true
+          currentRevealed = false
           songHistory = [{ trackId: data.trackId, title: data.title, artist: data.artist, albumArtUrl: data.albumArtUrl, songIndex: data.songIndex }, ...songHistory]
         } else if (data.type === 'song:reveal') {
+          currentRevealed = true
           tiles = startReveal(tiles, data.trackId)
           clearTimeout(revealTimer)
           revealTimer = setTimeout(() => {
@@ -220,7 +223,7 @@
 {/if}
 
 {#if showHistory}
-  <SongHistoryDrawer entries={songHistory} onClose={() => { showHistory = false }} />
+  <SongHistoryDrawer entries={songHistory} {currentRevealed} onClose={() => { showHistory = false }} />
 {/if}
 
 {#if showPlayers}

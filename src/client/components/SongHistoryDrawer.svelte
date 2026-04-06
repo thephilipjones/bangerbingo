@@ -7,7 +7,7 @@
     songIndex: number
   }
 
-  let { entries, onClose }: { entries: HistoryEntry[]; onClose: () => void } = $props()
+  let { entries, currentRevealed = false, onClose }: { entries: HistoryEntry[]; currentRevealed?: boolean; onClose: () => void } = $props()
   let failedImages = $state(new Set<number>())
 </script>
 
@@ -25,21 +25,25 @@
       <p class="empty">No songs played yet.</p>
     {:else}
       {#each entries as entry, i (entry.songIndex)}
-        <div class="entry" class:current={i === 0}>
+        {@const blurred = i === 0 && !currentRevealed}
+        <div class="entry">
           <span class="song-number">#{entry.songIndex + 1}</span>
-          {#if entry.albumArtUrl && !failedImages.has(entry.songIndex)}
-            <img
-              class="album-art"
-              src={entry.albumArtUrl}
-              alt=""
-              width="40"
-              height="40"
-              onerror={() => { failedImages = new Set([...failedImages, entry.songIndex]) }}
-            />
-          {:else}
-            <div class="art-fallback" aria-hidden="true">♪</div>
-          {/if}
-          <div class="track-info">
+          <div class="art-wrapper" class:art-blurred={blurred}>
+            {#if entry.albumArtUrl && !failedImages.has(entry.songIndex)}
+              <img
+                class="album-art"
+                src={entry.albumArtUrl}
+                alt=""
+                width="40"
+                height="40"
+                onerror={() => { failedImages = new Set([...failedImages, entry.songIndex]) }}
+              />
+            {:else}
+              <div class="art-fallback" aria-hidden="true">♪</div>
+            {/if}
+            <div class="mystery-art" aria-hidden="true">?</div>
+          </div>
+          <div class="track-info" class:track-blurred={blurred}>
             <span class="track-title">{entry.title}</span>
             <span class="track-artist">{entry.artist}</span>
           </div>
@@ -134,12 +138,21 @@
     flex-shrink: 0;
   }
 
+  /* Art wrapper — positions real art and mystery icon on top of each other */
+  .art-wrapper {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+
   .album-art {
     width: 40px;
     height: 40px;
     border-radius: 4px;
     object-fit: cover;
-    flex-shrink: 0;
+    display: block;
+    transition: opacity 400ms ease-out;
   }
 
   .art-fallback {
@@ -152,18 +165,46 @@
     justify-content: center;
     color: #888;
     font-size: 18px;
-    flex-shrink: 0;
+    transition: opacity 400ms ease-out;
   }
 
+  .art-wrapper.art-blurred .album-art,
+  .art-wrapper.art-blurred .art-fallback {
+    opacity: 0;
+  }
+
+  .mystery-art {
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+    background: #242424;
+    border: 1px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1db954;
+    opacity: 0;
+    transition: opacity 400ms ease-out;
+    pointer-events: none;
+  }
+
+  .art-wrapper.art-blurred .mystery-art {
+    opacity: 1;
+  }
+
+  /* Track text */
   .track-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+    transition: filter 400ms ease-out;
   }
 
-  .entry.current .track-info {
-    filter: blur(4px);
+  .track-info.track-blurred {
+    filter: blur(10px);
     user-select: none;
   }
 
