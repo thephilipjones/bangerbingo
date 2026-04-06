@@ -7,6 +7,7 @@ import {
   toggleMark,
   applyWinPath,
   restoreMarks,
+  cardFingerprint,
 } from '../lib/bingo.ts'
 import type { Tile } from '../lib/bingo.ts'
 
@@ -140,6 +141,19 @@ describe('toggleMark', () => {
     const result = toggleMark(tiles, 0)
     expect(result).not.toBe(tiles)
     expect(tiles[0].state).toBe('unmarked') // original unchanged
+  })
+})
+
+describe('cardFingerprint', () => {
+  it('returns the same value for the same card', () => {
+    const card = makeTiles()
+    expect(cardFingerprint(card)).toBe(cardFingerprint(card))
+  })
+
+  it('returns different values for different cards', () => {
+    const card1 = makeTiles()
+    const card2 = makeTiles().map((t, i) => i === 0 ? { ...t, trackId: 'different' } : t)
+    expect(cardFingerprint(card1)).not.toBe(cardFingerprint(card2))
   })
 })
 

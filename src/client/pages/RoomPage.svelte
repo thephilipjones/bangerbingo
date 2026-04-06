@@ -15,6 +15,7 @@
     toggleMark,
     applyWinPath,
     restoreMarks,
+    cardFingerprint,
   } from '../lib/bingo.ts'
   import { applyPlayerEvent } from '../lib/ws.ts'
   import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
@@ -117,7 +118,7 @@
     } else if (data.type === 'player:left') {
       players = applyPlayerEvent(players, { type: 'player:left', name: data.name as string })
     } else if (data.type === 'round:start') {
-      marksKey = `bangerbingo:marks:${code}:r${data.roundNumber}`
+      marksKey = `bangerbingo:marks:${code}:${cardFingerprint(data.card as Parameters<typeof initTiles>[0])}`
       tiles = restoreMarks(initTiles(data.card as Parameters<typeof initTiles>[0]), loadMarks())
       roundConfig = { titleRevealDelay: data.titleRevealDelay as TitleRevealDelay }
       statusLine = 'Waiting for next song…'

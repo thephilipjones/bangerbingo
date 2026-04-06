@@ -70,6 +70,18 @@ export function toggleMark(tiles: ClientTile[], index: number): ClientTile[] {
   })
 }
 
+/** FNV-1a hash of the card's track IDs — stable key for localStorage mark persistence. */
+export function cardFingerprint(card: Tile[]): string {
+  let h = 0x811c9dc5
+  for (const tile of card) {
+    for (let i = 0; i < tile.trackId.length; i++) {
+      h ^= tile.trackId.charCodeAt(i)
+      h = Math.imul(h, 0x01000193)
+    }
+  }
+  return (h >>> 0).toString(36)
+}
+
 export function restoreMarks(tiles: ClientTile[], markedIds: Set<string>): ClientTile[] {
   if (markedIds.size === 0) return tiles
   return tiles.map((tile) =>
