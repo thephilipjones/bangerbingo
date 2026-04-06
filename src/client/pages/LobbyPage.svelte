@@ -8,9 +8,11 @@
   let {
     code,
     onRoundStarted,
+    onBackToDashboard,
   }: {
     code: string
     onRoundStarted: () => void
+    onBackToDashboard: () => void
   } = $props()
 
   // ── Round Config Overlay ────────────────────────────────────────────────────
@@ -114,12 +116,11 @@
 <div class="lobby">
   <!-- Header: room code -->
   <header class="lobby-header">
+    <button class="back-btn" onclick={onBackToDashboard} aria-label="Back to session manager">← Sessions</button>
     <button class="room-code" onclick={handleCopyCode} aria-label="Copy room code">
-      {code}
-      {#if copied}
-        <span class="copied-tooltip">Copied!</span>
-      {/if}
+      {copied ? 'Copied!' : code}
     </button>
+    <div class="header-spacer"></div>
   </header>
 
   <!-- WS disconnected banner -->
@@ -184,39 +185,44 @@
     right: 0;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     padding: 0.75rem 1.5rem;
     background: #1a1a1a;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   }
 
+  .back-btn {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 0.875rem;
+    cursor: pointer;
+    padding: 0.25rem 0;
+    min-width: 6rem;
+  }
+
+  .back-btn:hover {
+    color: #fff;
+  }
+
+  .header-spacer {
+    min-width: 6rem;
+  }
+
   .room-code {
-    font-size: 2rem; /* 32px */
+    font-size: 2rem;
     font-family: monospace;
     font-weight: 700;
     background: none;
     border: none;
     color: #fff;
     cursor: pointer;
-    position: relative;
     letter-spacing: 0.1em;
     padding: 0;
   }
 
   .room-code:hover {
     color: #1db954;
-  }
-
-  .copied-tooltip {
-    position: absolute;
-    bottom: -1.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.75rem;
-    font-family: sans-serif;
-    font-weight: 400;
-    color: #1db954;
-    white-space: nowrap;
   }
 
   .disconnected-banner {
@@ -262,7 +268,7 @@
   }
 
   .fact {
-    max-width: 36rem;
+    max-width: 24rem;
     text-align: center;
     font-size: 1rem;
     color: #ccc;

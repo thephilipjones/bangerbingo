@@ -8,12 +8,13 @@ export interface HostNameValidation {
   error: string | null
 }
 
-/** Validates the host name input. Returns `trimmed: null` when the field is not required. */
+/** Validates the host name input. Returns `trimmed: null` when the field is not required or left blank. */
 export function validateHostName(input: string, required: boolean): HostNameValidation {
   if (!required) return { trimmed: null, error: null }
   const trimmed = input.trim()
-  if (trimmed.length < 1 || trimmed.length > 30) {
-    return { trimmed: null, error: 'Please enter your name (1–30 characters)' }
+  if (trimmed.length === 0) return { trimmed: null, error: null }
+  if (trimmed.length > 30) {
+    return { trimmed: null, error: 'Name must be 30 characters or fewer' }
   }
   return { trimmed, error: null }
 }

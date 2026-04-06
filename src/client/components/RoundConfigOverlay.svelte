@@ -116,10 +116,10 @@
   // ── Title reveal ───────────────────────────────────────────────────────────
 
   const REVEAL_OPTIONS: { value: number | null; label: string }[] = [
-    { value: 0, label: 'Immediately' },
-    { value: 5, label: 'After 5s' },
-    { value: 10, label: 'After 10s' },
-    { value: 15, label: 'After 15s' },
+    { value: 0, label: 'Now' },
+    { value: 5, label: '5s' },
+    { value: 10, label: '10s' },
+    { value: 15, label: '15s' },
     { value: null, label: 'Never' },
   ]
 
@@ -200,24 +200,6 @@
     <button class="close-btn" onclick={requestClose} aria-label="Close">✕</button>
 
     <div class="config-panel">
-
-      {#if needsHostName}
-        <section class="option-section">
-          <label class="option-label" for="host-name-input">Your name</label>
-          <input
-            id="host-name-input"
-            class="name-input"
-            type="text"
-            maxlength="30"
-            required
-            aria-label="Your name"
-            bind:value={hostNameInput}
-          />
-          {#if hostNameError}
-            <p class="source-error">{hostNameError}</p>
-          {/if}
-        </section>
-      {/if}
 
       <!-- Tab bar -->
       <div class="tab-bar" role="tablist">
@@ -312,23 +294,38 @@
         </div>
       </section>
 
-      <!-- Title reveal radios -->
+      <!-- Title reveal pills -->
       <section class="option-section">
         <h2 class="option-label">Title Reveal</h2>
-        <div class="radio-group" role="radiogroup" aria-label="Title reveal timing">
+        <div class="pill-group" role="group" aria-label="Title reveal timing">
           {#each REVEAL_OPTIONS as opt (String(opt.value))}
-            <label class="radio-label">
-              <input
-                type="radio"
-                name="titleReveal"
-                checked={titleRevealDelay === opt.value}
-                onchange={() => titleRevealDelay = opt.value}
-              />
-              {opt.label}
-            </label>
+            <button
+              class="pill"
+              class:selected={titleRevealDelay === opt.value}
+              onclick={() => titleRevealDelay = opt.value}
+              aria-pressed={titleRevealDelay === opt.value}
+            >{opt.label}</button>
           {/each}
         </div>
       </section>
+
+      {#if needsHostName}
+        <section class="option-section">
+          <label class="option-label" for="host-name-input">Your name</label>
+          <input
+            id="host-name-input"
+            class="host-name-input"
+            type="text"
+            maxlength="30"
+            placeholder="Play along!"
+            aria-label="Your name"
+            bind:value={hostNameInput}
+          />
+          {#if hostNameError}
+            <p class="source-error">{hostNameError}</p>
+          {/if}
+        </section>
+      {/if}
 
       <!-- Error + Start button -->
       {#if sourceError}
@@ -395,7 +392,7 @@
     gap: 1.5rem;
   }
 
-  .name-input {
+  .host-name-input {
     padding: 0.6rem 0.75rem;
     min-height: 44px;
     background: #2a2a2a;
@@ -456,9 +453,9 @@
   .preset-card {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.75rem;
-    min-height: 72px;
+    gap: 0.15rem;
+    padding: 0.5rem 0.75rem;
+    min-height: 56px;
     background: #2a2a2a;
     border: 2px solid transparent;
     border-radius: 8px;
@@ -598,29 +595,6 @@
     border-color: #1db954;
   }
 
-  /* Title reveal radios */
-  .radio-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .radio-label {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    min-height: 44px;
-    cursor: pointer;
-    font-size: 0.95rem;
-    padding: 0.25rem 0;
-  }
-
-  .radio-label input[type='radio'] {
-    width: 18px;
-    height: 18px;
-    accent-color: #1db954;
-    cursor: pointer;
-  }
 
   /* Start button */
   .source-error {

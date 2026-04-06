@@ -59,6 +59,11 @@
   function handleRoundEnded() {
     page = 'lobby'
   }
+
+  function handleBackToDashboard() {
+    history.pushState(null, '', '/')
+    page = 'dashboard'
+  }
 </script>
 
 {#if page === 'loading'}
@@ -70,7 +75,7 @@
 {:else if page === 'dashboard'}
   <DashboardPage onEnterLobby={handleEnterLobby} />
 {:else if page === 'lobby'}
-  <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} />
+  <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} onBackToDashboard={handleBackToDashboard} />
 {:else if page === 'room'}
   <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} pendingMessages={guestPendingMessages} />
 {:else if page === 'hostroom'}
