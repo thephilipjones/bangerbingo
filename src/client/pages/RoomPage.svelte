@@ -172,7 +172,7 @@
   <PlayersOverlay {players} {hostName} selfName={name} onClose={() => { showPlayers = false }} />
 {/if}
 
-<main class="room-page">
+<main class="room-page" class:game-active={tiles.length > 0}>
   {#if tiles.length > 0}
     <GameHeader {playerCount} {code} {songIndex} onPlayersClick={() => { showPlayers = true }} onHistoryClick={() => { showHistory = true }} />
     <BingoCard {tiles} onTileClick={handleTileClick} />
@@ -211,6 +211,11 @@
     font-family: sans-serif;
     padding: 16px;
     box-sizing: border-box;
+  }
+
+  .room-page.game-active {
+    justify-content: flex-start;
+    padding-top: 80px;
   }
 
   .status-line {

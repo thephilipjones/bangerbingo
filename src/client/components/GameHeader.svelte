@@ -36,8 +36,8 @@
 </script>
 
 <div class="game-header">
-  <button class="header-btn" onclick={onPlayersClick}>
-    {playerCount} {playerCount === 1 ? 'Player' : 'Players'}
+  <button class="header-btn" onclick={onHistoryClick}>
+    {songIndex !== null ? formatSongOrdinal(songIndex) : 'History'}
   </button>
 
   <button class="room-code" onclick={handleCopyCode}>
@@ -48,22 +48,24 @@
     {/if}
   </button>
 
-  <button class="header-btn" onclick={onHistoryClick}>
-    {songIndex !== null ? formatSongOrdinal(songIndex) : 'History'}
+  <button class="header-btn" onclick={onPlayersClick}>
+    {playerCount} {playerCount === 1 ? 'Player' : 'Players'}
   </button>
 </div>
 
 <style>
   .game-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 100%;
-    margin-bottom: 8px;
     background: #1a1a1a;
-    border-bottom: 1px solid #333;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     padding: 6px 8px;
-    border-radius: 6px;
     box-sizing: border-box;
   }
 

@@ -307,7 +307,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 16px 16px 80px;
+    padding: 80px 16px 80px;
   }
 
   .status-line {
@@ -347,7 +347,7 @@
 
     .card-area {
       padding: 0;
-      padding-top: 16px;
+      padding-top: 80px;
     }
 
     .panel-desktop {
