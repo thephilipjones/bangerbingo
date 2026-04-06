@@ -9,6 +9,14 @@
 - Guest `session:connect` server test uses partial field assertions rather than full `toEqual` — functionally correct but weaker than host-path style. Quality improvement only.
 - `initialPlayers` frozen at RoomPage mount; WS messages arriving in the gap between JoinPage handoff and `onMount` could be missed. Pre-existing architecture concern; mitigated by Svelte 5 synchronous rerender.
 
+## Deferred from: code review of 7-5-game-page-header-and-players-overlay (2026-04-05)
+
+- PlayersOverlay: no focus trap / keyboard dismissal — explicitly out of scope per spec, matches project-wide a11y deferral precedent (7-3, 7-4).
+- PlayersOverlay: `playerCount` in sheet title vs rendered row count mismatch when `hostName === null` + guests present — `computePlayerCount` excludes null host but placeholder "Host" row always renders; theoretical edge, hostName set before GameHeader visible in normal flow.
+- PlayersOverlay: backdrop click fragility — sheet is sibling not child of overlay div; no `stopPropagation` needed today but fragile at extreme zoom. Systemic pattern from SongHistoryDrawer.
+- PlayersOverlay: duplicate player name used as `#each` key — Svelte would warn on duplicate keys; server controls name uniqueness; fix upstream if deduplication is added.
+- GameHeader: history button has no `aria-label` update when text changes from `"History"` to `"Nth Song"` — button's function (open drawer) doesn't change but label does; a11y polish, out of scope for 7-5.
+
 - Concurrent first-round POSTs can both pass `host_name IS NULL` check (src/server/rooms.ts round route) — pre-existing race shape; low risk for 5-user personal app. Fix would be `UPDATE ... WHERE host_name IS NULL` + rows-affected check.
 - Unicode/emoji length handling: `.length` counts UTF-16 surrogates, no grapheme count, no zero-width/control-char normalization (src/client/lib/roundConfig.ts, src/server/rooms.ts validation) — personal/friends context, aligns with existing guest-name validation.
 - `getRooms()` fetches the entire host's room list just to read one `host_name` field (src/client/pages/LobbyPage.svelte onMount) — no `GET /api/rooms/:code` endpoint exists; pre-existing API shape.
