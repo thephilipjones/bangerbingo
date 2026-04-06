@@ -465,7 +465,8 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
 
   const { playerName, claimedTileIds } = body as { playerName: string; claimedTileIds: string[] }
 
-  const card = round.cards.get(playerName)
+  const cardKey = playerName === room.host_name ? room.host_user_id : playerName
+  const card = round.cards.get(cardKey)
   if (!card) { round.ended = false; return ctx.json({ message: 'Player card not found' }, 422) }
 
   const effectiveId = (tile: { free?: boolean; trackId: string }) => tile.free ? 'FREE' : tile.trackId
