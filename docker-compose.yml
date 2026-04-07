@@ -9,7 +9,7 @@ services:
       - bangerbingo-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT:-3000}/healthz | grep -q '\"ok\":true'"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:$${PORT:-3000}/healthz | grep -q '\"ok\":true'"]
       interval: 30s
       timeout: 10s
       retries: 3
