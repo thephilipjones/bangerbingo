@@ -672,6 +672,7 @@ function seedActiveRound(code = 'ABCD', clipDuration: ClipDuration = 30, titleRe
     currentSongIndex: -1,
     songHistory: [],
     paused: false,
+    currentSongRevealed: false,
     timers: {},
   }
   roomState.currentRound = round
@@ -1411,5 +1412,36 @@ describe('POST /api/rooms/:code/round/claim', () => {
 
     // Only one round:win broadcast
     expect(sent.filter(m => JSON.parse(m).type === 'round:win')).toHaveLength(1)
+  })
+})
+
+// ── POST /api/account/spotify/disconnect ──────────────────────────────────
+
+describe('POST /api/account/spotify/disconnect', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+  })
+
+  it('returns 401 without a session cookie', async () => {
+    const app = makeApp()
+    const res = await app.request('/api/account/spotify/disconnect', { method: 'POST' })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 200 and clears tokens for authenticated host', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/account/spotify/disconnect', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    const { getHostById } = await import('../db.ts')
+    const host = getHostById('host_1')
+    expect(host).toBeDefined()
+    expect(host!.access_token).toBe('')
+    expect(host!.refresh_token).toBe('')
+    expect(host!.token_expires_at).toBe(0)
   })
 })
