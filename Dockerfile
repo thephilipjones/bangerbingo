@@ -12,6 +12,7 @@ RUN npm ci --omit=dev
 FROM node:22-alpine AS runner
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
+RUN mkdir -p /data && chown app:app /data
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules

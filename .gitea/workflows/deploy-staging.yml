@@ -38,5 +38,6 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 2222
           script: |
             cd /srv/bangerbingo/staging && git pull origin main && docker compose up -d --build
