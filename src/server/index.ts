@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import pkg from '../../package.json'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
@@ -45,6 +46,10 @@ app.get('/healthz', (ctx) => ctx.json({ ok: true, version: pkg.version }))
 // Serve static client build in production
 if (config.isProduction) {
   app.use('/*', serveStatic({ root: './dist/client' }))
+
+  // SPA fallback: serve index.html for client-side routes
+  const indexHtml = readFileSync('./dist/client/index.html', 'utf-8')
+  app.get('*', (ctx) => ctx.html(indexHtml))
 }
 
 if (config.nodeEnv !== 'test') {
