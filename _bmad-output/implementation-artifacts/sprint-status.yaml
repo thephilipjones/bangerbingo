@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-06 # story 6-4 done
+last_updated: 2026-04-06 # story 6-5 done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +87,7 @@ development_status:
   6-2-production-dockerfile-and-docker-compose: done
   6-3-https-wss-via-caddy-reverse-proxy: done
   6-4-server-restart-state-recovery: done
-  6-5-host-spotify-disconnect-reconnect-settings: ready-for-dev
+  6-5-host-spotify-disconnect-reconnect-settings: done
   6-6-gitea-actions-cicd-branching-and-smoke-test: backlog
   epic-6-retrospective: optional
 

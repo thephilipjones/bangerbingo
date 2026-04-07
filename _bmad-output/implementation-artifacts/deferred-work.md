@@ -221,6 +221,11 @@
 - Keyboard accessibility / focus trap on HostControlsOverlay — no Escape key handler, no focus lock. Explicitly out of scope per AC #11; matches project-wide a11y deferral precedent.
 - `sdkReinitializing` re-entry race: if `auth:restored` fires twice while first reinit is in-flight, the second call returns early but `sdkErrorFired` has been reset by the first — subsequent SDK errors are silently swallowed, player stuck on "Connecting…" indefinitely. Pre-existing; unrelated to story changes. (src/client/pages/HostRoomPage.svelte)
 
+## Deferred from: code review of story 6-5 (2026-04-06)
+
+- No WebSocket notification to active rooms on disconnect — disconnect endpoint clears tokens but doesn't broadcast `auth:degraded` or pause active rounds; players in active rooms get no signal that music stopped. Feature-level addition beyond story scope.
+- Room creation allowed while Spotify is disconnected — `POST /rooms` succeeds but the room is dead-on-arrival (first round start returns 503). Guard on room creation would improve UX.
+
 ## Deferred from: code review of 6-2-production-dockerfile-and-docker-compose (2026-04-06)
 
 - Port binding exposes all host interfaces (`0.0.0.0`) — `${PORT:-3000}:${PORT:-3000}` in `docker-compose.yml` should use `127.0.0.1:` prefix once Caddy is the sole ingress; intentional for story 6-2 pre-Caddy, address in story 6-3.
