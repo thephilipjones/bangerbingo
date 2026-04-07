@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
-import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, type Room } from './db.ts'
+import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, type Room } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
-import { roomSockets, broadcast, destroyRoom, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
+import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
 import { buildPool, generateCards } from './game/cards.ts'
@@ -64,6 +64,8 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     songIndex,
     roundNumber: round.roundNumber,
   })
+
+  persistRoomState(roomCode)
 
   // Fire-and-forget Spotify play via Web API (AC 5)
   const sdkDevice = roomState.sdkDeviceId
@@ -314,6 +316,8 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
         ws.send(JSON.stringify({ ...roundStartPayload, card: guestCard }))
       }
     }
+
+    persistRoomState(code)
   }
 
   // Persist played songs to SQLite
@@ -437,6 +441,7 @@ roomsRouter.post('/rooms/:code/round/end', requireAuth, (ctx) => {
   clearRoundTimers(round)
   roomState!.currentRound = undefined
   broadcast(code, { type: 'round:end' })
+  deleteActiveRoom(code)
 
   return ctx.json({})
 })
@@ -501,6 +506,9 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
     winningTileIds,
     songHistory: round.songHistory,
   })
+
+  persistRoomState(code)
+  deleteActiveRoom(code)
 
   return ctx.json({})
 })

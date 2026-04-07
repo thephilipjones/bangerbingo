@@ -8,7 +8,7 @@ import { authRouter, requireAuth, type AuthEnv } from './auth.ts'
 import { startRefreshScheduler, isHostDegraded } from './refresh.ts'
 import { roomsRouter } from './rooms.ts'
 import { musicRouter } from './music/router.ts'
-import { setupWebSocketServer } from './ws.ts'
+import { setupWebSocketServer, rehydrateRooms } from './ws.ts'
 
 // Init DB at startup (crash fast if it fails)
 initDb(process.env['DB_PATH'] || undefined)
@@ -50,6 +50,7 @@ if (config.nodeEnv !== 'test') {
       `bangerbingo server listening on port ${config.port} (reachable on all LAN/tailnet interfaces)`,
     )
   })
+  rehydrateRooms()
   setupWebSocketServer(httpServer)
 }
 

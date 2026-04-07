@@ -4,7 +4,7 @@ import type { Socket } from 'node:net'
 import type { ServerType } from '@hono/node-server'
 import { authEvents } from './refresh.ts'
 import { verifySession } from './auth.ts'
-import { getRoomByCode, getHostById } from './db.ts'
+import { getRoomByCode, getHostById, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms } from './db.ts'
 import type { Track } from './music/spotify.ts'
 import { generateCard, type Tile } from './game/cards.ts'
 
@@ -61,6 +61,72 @@ export interface RoomState {
 }
 
 export const roomSockets = new Map<string, RoomState>()
+
+// ── State persistence ─────────────────────────────────────────────────────
+
+export function persistRoomState(code: string): void {
+  const room = roomSockets.get(code)
+  if (!room) return
+  const round = room.currentRound
+  const snapshot = {
+    hostUserId: room.hostUserId,
+    hostHasEverConnected: room.hostHasEverConnected,
+    pendingRound: room.pendingRound,
+    sdkDeviceId: room.sdkDeviceId,
+    currentRound: round ? {
+      roundNumber: round.roundNumber,
+      config: round.config,
+      playlist: round.playlist,
+      cards: Object.fromEntries(round.cards),
+      roundStartPayload: round.roundStartPayload,
+      sessionPlayedIds: round.sessionPlayedIds,
+      active: round.active,
+      currentSongIndex: round.currentSongIndex,
+      currentSongRevealed: round.currentSongRevealed,
+      songHistory: round.songHistory,
+      paused: round.paused,
+      ended: round.ended,
+    } : undefined,
+  }
+  upsertActiveRoom(code, JSON.stringify(snapshot))
+}
+
+export function rehydrateRooms(): void {
+  const rows = getAllActiveRooms()
+  for (const row of rows) {
+    // Skip orphaned rows whose room was deleted from the DB
+    if (!getRoomByCode(row.room_code)) {
+      console.warn(`[rehydrate] room ${row.room_code} no longer exists in DB — deleting stale active_rooms row`)
+      deleteActiveRoom(row.room_code)
+      continue
+    }
+
+    let snap: any
+    try {
+      snap = JSON.parse(row.state_json)
+    } catch {
+      console.warn(`[rehydrate] corrupt state_json for room ${row.room_code} — deleting row`)
+      deleteActiveRoom(row.room_code)
+      continue
+    }
+
+    const roomState: RoomState = {
+      host: null,
+      hostUserId: snap.hostUserId,
+      hostHasEverConnected: true,
+      guests: new Map(),
+      pendingRound: snap.pendingRound,
+      sdkDeviceId: snap.sdkDeviceId,
+      currentRound: snap.currentRound ? {
+        ...snap.currentRound,
+        cards: new Map(Object.entries(snap.currentRound.cards)),
+        paused: true,
+        timers: {},
+      } : undefined,
+    }
+    roomSockets.set(row.room_code, roomState)
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -121,6 +187,9 @@ export function destroyRoom(roomCode: string): void {
 
   // 4. drop the entry
   roomSockets.delete(roomCode)
+
+  // 5. clear any persisted state for this room
+  deleteActiveRoom(roomCode)
 }
 
 export function getPlayerList(roomCode: string): string[] {

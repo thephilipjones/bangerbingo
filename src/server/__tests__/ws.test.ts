@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createAdaptorServer } from '@hono/node-server'
 import type { AddressInfo } from 'node:net'
 import WebSocket from 'ws'
-import { initDb, upsertHost, createRoom, getDb, getRoomByCode, getPlayedSongs, recordPlayedSongs, setRoomHostName } from '../db.ts'
+import { initDb, upsertHost, createRoom, getDb, getRoomByCode, getPlayedSongs, recordPlayedSongs, setRoomHostName, upsertActiveRoom, getAllActiveRooms } from '../db.ts'
 
 vi.stubEnv('SPOTIFY_CLIENT_ID', 'test_client_id')
 vi.stubEnv('SPOTIFY_CLIENT_SECRET', 'test_secret')
@@ -12,7 +12,7 @@ vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
 const { app } = await import('../index.ts')
-const { setupWebSocketServer, roomSockets, getPlayerList } = await import('../ws.ts')
+const { setupWebSocketServer, roomSockets, getPlayerList, rehydrateRooms } = await import('../ws.ts')
 const { authEvents } = await import('../refresh.ts')
 const { signUserId } = await import('../auth.ts')
 
@@ -763,5 +763,140 @@ describe('POST /auth/logout', () => {
     const expiresMatch = setCookie.match(/Expires=([^;]+)/i)
     const expiresInPast = expiresMatch ? Date.parse(expiresMatch[1]) <= Date.now() : false
     expect(maxAgeZero || expiresInPast).toBe(true)
+  })
+})
+
+// ── rehydrateRooms (Story 6-4) ──────────────────────────────────────────
+
+describe('rehydrateRooms', () => {
+  it('reconstructs RoomState from active_rooms with correct defaults', () => {
+    const snapshot = {
+      hostUserId: 'host_1',
+      hostHasEverConnected: true,
+      pendingRound: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1 },
+      sdkDeviceId: 'dev_123',
+      currentRound: {
+        roundNumber: 1,
+        config: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1 },
+        playlist: [{ id: 't0', title: 'S0', artist: 'A0', albumArtUrl: '' }],
+        cards: { host_1: [{ trackId: 't0', title: 'S0', artist: 'A0', albumArtUrl: '', free: false }] },
+        roundStartPayload: { type: 'round:start', roundNumber: 1 },
+        sessionPlayedIds: ['t0'],
+        active: true,
+        currentSongIndex: 0,
+        currentSongRevealed: false,
+        songHistory: [{ trackId: 't0', title: 'S0', artist: 'A0', albumArtUrl: '', songIndex: 0 }],
+        paused: false,
+        ended: false,
+      },
+    }
+
+    seedHost('host_1')
+    createRoom('ABCD', 'host_1')
+    upsertActiveRoom('ABCD', JSON.stringify(snapshot))
+    rehydrateRooms()
+
+    const room = roomSockets.get('ABCD')
+    expect(room).toBeDefined()
+    expect(room!.host).toBeNull()
+    expect(room!.hostUserId).toBe('host_1')
+    expect(room!.hostHasEverConnected).toBe(true)
+    expect(room!.guests.size).toBe(0)
+    expect(room!.sdkDeviceId).toBe('dev_123')
+    expect(room!.currentRound).toBeDefined()
+    expect(room!.currentRound!.paused).toBe(true) // force-paused
+    expect(room!.currentRound!.timers).toEqual({}) // timers cleared
+    expect(room!.currentRound!.cards).toBeInstanceOf(Map)
+    expect(room!.currentRound!.cards.get('host_1')).toHaveLength(1)
+    expect(room!.currentRound!.songHistory).toHaveLength(1)
+  })
+
+  it('rehydrates room without currentRound', () => {
+    const snapshot = {
+      hostUserId: 'host_1',
+      hostHasEverConnected: true,
+      pendingRound: undefined,
+      sdkDeviceId: undefined,
+      currentRound: undefined,
+    }
+
+    seedHost('host_1')
+    createRoom('WXYZ', 'host_1')
+    upsertActiveRoom('WXYZ', JSON.stringify(snapshot))
+    rehydrateRooms()
+
+    const room = roomSockets.get('WXYZ')
+    expect(room).toBeDefined()
+    expect(room!.currentRound).toBeUndefined()
+    expect(room!.host).toBeNull()
+    expect(room!.guests.size).toBe(0)
+  })
+})
+
+// ── persistRoomState triggers (Story 6-4) ───────────────────────────────
+
+describe('persistRoomState triggers', () => {
+  it('round:start persists state to active_rooms', async () => {
+    seedHost('host_1')
+    createRoom('PERS', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+
+    const host = await connect('/ws?code=PERS', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const roundRes = await app.request('/api/rooms/PERS/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+    })
+    expect(roundRes.status).toBe(200)
+    await host.next('round:start')
+
+    const rows = getAllActiveRooms()
+    expect(rows.some(r => r.room_code === 'PERS')).toBe(true)
+
+    vi.restoreAllMocks()
+    host.close()
+  })
+
+  it('round:end deletes active_rooms row', async () => {
+    seedHost('host_1')
+    createRoom('ENDR', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+
+    const host = await connect('/ws?code=ENDR', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    await app.request('/api/rooms/ENDR/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+
+    // Verify row exists after round:start
+    expect(getAllActiveRooms().some(r => r.room_code === 'ENDR')).toBe(true)
+
+    // End the round
+    const endRes = await app.request('/api/rooms/ENDR/round/end', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(endRes.status).toBe(200)
+    await host.next('round:end')
+
+    // Row should be deleted
+    expect(getAllActiveRooms().some(r => r.room_code === 'ENDR')).toBe(false)
+
+    vi.restoreAllMocks()
+    host.close()
   })
 })

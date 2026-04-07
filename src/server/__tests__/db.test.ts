@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
-import { initDb, upsertHost, getHostById, getDb, createRoom, setRoomHostName } from '../db.ts'
+import { initDb, upsertHost, getHostById, getDb, createRoom, setRoomHostName, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms } from '../db.ts'
 
 describe('db', () => {
   beforeEach(() => {
@@ -81,6 +81,49 @@ describe('db', () => {
       const row = getDb().prepare('SELECT host_name FROM rooms WHERE code = ?').get('ABCD') as { host_name: string | null }
       expect(row.host_name).toBe('Sarah')
     })
+  })
+})
+
+describe('active_rooms', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+  })
+
+  it('active_rooms table is created by initDb', () => {
+    const tables = getDb().prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='active_rooms'").all()
+    expect(tables).toHaveLength(1)
+  })
+
+  it('upsertActiveRoom inserts and getAllActiveRooms retrieves', () => {
+    upsertActiveRoom('ABCD', '{"test":true}')
+    const rows = getAllActiveRooms()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].room_code).toBe('ABCD')
+    expect(rows[0].state_json).toBe('{"test":true}')
+  })
+
+  it('upsertActiveRoom updates existing row on conflict', () => {
+    upsertActiveRoom('ABCD', '{"v":1}')
+    upsertActiveRoom('ABCD', '{"v":2}')
+    const rows = getAllActiveRooms()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].state_json).toBe('{"v":2}')
+  })
+
+  it('deleteActiveRoom removes the row', () => {
+    upsertActiveRoom('ABCD', '{"test":true}')
+    deleteActiveRoom('ABCD')
+    expect(getAllActiveRooms()).toHaveLength(0)
+  })
+
+  it('deleteActiveRoom is a no-op for missing row', () => {
+    expect(() => deleteActiveRoom('ZZZZ')).not.toThrow()
+  })
+
+  it('getAllActiveRooms returns multiple rows', () => {
+    upsertActiveRoom('AAAA', '{"a":1}')
+    upsertActiveRoom('BBBB', '{"b":2}')
+    expect(getAllActiveRooms()).toHaveLength(2)
   })
 })
 

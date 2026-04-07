@@ -41,6 +41,11 @@ export function initDb(dbPath = './bangerbingo.db'): void {
       track_id TEXT NOT NULL,
       played_at INTEGER NOT NULL,
       PRIMARY KEY (room_id, track_id)
+    );
+    CREATE TABLE IF NOT EXISTS active_rooms (
+      room_code TEXT PRIMARY KEY,
+      state_json TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
     )
   `)
   // Idempotent migration: ensure `host_name` column exists on pre-existing databases
@@ -130,4 +135,22 @@ export function recordPlayedSongs(roomId: string, trackIds: string[]): void {
   for (const trackId of trackIds) {
     stmt.run(roomId, trackId, now)
   }
+}
+
+export function upsertActiveRoom(code: string, stateJson: string): void {
+  db.prepare(`
+    INSERT INTO active_rooms (room_code, state_json, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(room_code) DO UPDATE SET
+      state_json = excluded.state_json,
+      updated_at = excluded.updated_at
+  `).run(code, stateJson, Date.now())
+}
+
+export function deleteActiveRoom(code: string): void {
+  db.prepare('DELETE FROM active_rooms WHERE room_code = ?').run(code)
+}
+
+export function getAllActiveRooms(): Array<{ room_code: string; state_json: string }> {
+  return db.prepare('SELECT room_code, state_json FROM active_rooms').all() as Array<{ room_code: string; state_json: string }>
 }
