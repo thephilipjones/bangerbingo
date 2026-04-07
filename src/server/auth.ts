@@ -37,6 +37,7 @@ export function verifySession(cookie: string): string | null {
 // ── Token refresh helper ───────────────────────────────────────────────────
 
 export async function withFreshToken(host: Host): Promise<Host | null> {
+  if (!host.access_token) return null
   if (host.token_expires_at - Date.now() >= 60_000) return host
   await refreshWithRetry(host.user_id)
   if (isHostDegraded(host.user_id)) return null
@@ -205,5 +206,6 @@ authRouter.post('/logout', (ctx) => {
 
 // GET /auth/token
 authRouter.get('/token', requireAuth, (ctx) => {
+  if (!ctx.var.host.access_token) return ctx.json({ error: 'Spotify not connected' }, 403)
   return ctx.json({ accessToken: ctx.var.host.access_token })
 })

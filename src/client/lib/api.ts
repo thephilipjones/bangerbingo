@@ -49,12 +49,18 @@ export async function logout(): Promise<void> {
 export interface AuthStatusResponse {
   degraded: boolean
   tokenExpiresAt: number
+  spotifyConnected: boolean
 }
 
 export async function getAuthStatus(): Promise<AuthStatusResponse> {
   const res = await fetch('/api/auth/status')
   if (!res.ok) throw new Error(`/api/auth/status failed: ${res.status}`)
   return res.json()
+}
+
+export async function disconnectSpotify(): Promise<void> {
+  const res = await fetch('/api/account/spotify/disconnect', { method: 'POST' })
+  if (!res.ok) throw new Error(`POST /api/account/spotify/disconnect failed: ${res.status}`)
 }
 
 export interface StartRoundPayload {

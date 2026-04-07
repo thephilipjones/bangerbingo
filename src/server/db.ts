@@ -89,6 +89,17 @@ export function updateHostTokens(
   if (result.changes === 0) throw new Error(`updateHostTokens: no host found for userId ${userId}`)
 }
 
+export function clearHostTokens(userId: string): void {
+  const result = db.prepare(`
+    UPDATE hosts SET
+      access_token = '',
+      refresh_token = '',
+      token_expires_at = 0
+    WHERE user_id = ?
+  `).run(userId)
+  if (result.changes === 0) throw new Error(`clearHostTokens: no host found for userId ${userId}`)
+}
+
 export function getAllHosts(): Host[] {
   return db.prepare('SELECT * FROM hosts').all() as Host[]
 }

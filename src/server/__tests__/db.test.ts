@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
-import { initDb, upsertHost, getHostById, getDb, createRoom, setRoomHostName, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms } from '../db.ts'
+import { initDb, upsertHost, getHostById, getDb, createRoom, setRoomHostName, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms, clearHostTokens } from '../db.ts'
 
 describe('db', () => {
   beforeEach(() => {
@@ -41,6 +41,34 @@ describe('db', () => {
       expect(host!.display_name).toBe('New Name')
       expect(host!.access_token).toBe('new_access')
       expect(host!.token_expires_at).toBe(9999)
+    })
+  })
+
+  describe('clearHostTokens', () => {
+    it('sets tokens to empty string and expiry to 0', () => {
+      upsertHost({
+        user_id: 'user123',
+        display_name: 'Test User',
+        email: 'test@example.com',
+        access_token: 'access_abc',
+        refresh_token: 'refresh_xyz',
+        token_expires_at: Date.now() + 3600_000,
+      })
+
+      clearHostTokens('user123')
+
+      const host = getHostById('user123')
+      expect(host).toBeDefined()
+      expect(host!.access_token).toBe('')
+      expect(host!.refresh_token).toBe('')
+      expect(host!.token_expires_at).toBe(0)
+      // display_name and email should be preserved
+      expect(host!.display_name).toBe('Test User')
+      expect(host!.email).toBe('test@example.com')
+    })
+
+    it('throws for unknown user', () => {
+      expect(() => clearHostTokens('nonexistent')).toThrow('clearHostTokens: no host found')
     })
   })
 

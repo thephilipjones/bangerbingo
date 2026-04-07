@@ -32,7 +32,11 @@ app.get('/api/me', requireAuth, (ctx) => {
 
 app.get('/api/auth/status', requireAuth, (ctx) => {
   const host = ctx.var.host
-  return ctx.json({ degraded: isHostDegraded(host.user_id), tokenExpiresAt: host.token_expires_at })
+  return ctx.json({
+    degraded: isHostDegraded(host.user_id),
+    tokenExpiresAt: host.token_expires_at,
+    spotifyConnected: host.access_token !== '',
+  })
 })
 
 // Health check — must be registered before the serveStatic wildcard

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
-import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, type Room } from './db.ts'
+import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
@@ -163,6 +163,12 @@ export function createRoomWithRetry(
 // ── Rooms router ───────────────────────────────────────────────────────────
 
 export const roomsRouter = new Hono<AuthEnv>()
+
+roomsRouter.post('/account/spotify/disconnect', requireAuth, (ctx) => {
+  const host = ctx.var.host
+  clearHostTokens(host.user_id)
+  return ctx.json({})
+})
 
 roomsRouter.post('/rooms', requireAuth, (ctx) => {
   const host = ctx.var.host

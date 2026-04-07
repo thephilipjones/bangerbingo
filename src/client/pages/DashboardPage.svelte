@@ -7,6 +7,7 @@
     getMe,
     getAuthStatus,
     logout,
+    disconnectSpotify,
     type RoomSummary,
     type MeResponse,
     type AuthStatusResponse,
@@ -20,6 +21,7 @@
   let authStatus = $state<AuthStatusResponse | null>(null)
   let loading = $state(true)
   let creating = $state(false)
+  let disconnecting = $state(false)
   let error = $state('')
 
   onMount(async () => {
@@ -110,16 +112,32 @@
     }
   }
 
-  async function handleDisconnect() {
+  async function handleDisconnectSpotify() {
+    const ok = window.confirm('This will stop music playback in any active rooms. Continue?')
+    if (!ok) return
+    disconnecting = true
+    error = ''
     try {
-      await logout()
+      await disconnectSpotify()
+      authStatus = { ...authStatus!, spotifyConnected: false, degraded: true }
     } catch {
-      // Even if logout fails, force a cold reload so the app re-reads auth state.
+      error = 'Failed to disconnect Spotify'
     }
-    window.location.href = '/'
+    disconnecting = false
   }
 
-  const degraded = $derived(authStatus?.degraded === true)
+  async function handleResetHost() {
+    const ok = window.confirm('This will clear your host session on this device. Continue?')
+    if (!ok) return
+    try {
+      await logout()
+      window.location.href = '/'
+    } catch {
+      error = 'Failed to reset host session'
+    }
+  }
+
+  const spotifyConnected = $derived(authStatus?.spotifyConnected ?? false)
 </script>
 
 <div class="dashboard">
@@ -130,19 +148,22 @@
       <div class="spotify-info">
         <span class="display-name">{me?.display_name ?? '—'}</span>
         <div class="pill-row">
-          <span class="pill" class:pill-good={!degraded} class:pill-bad={degraded}>
-            {degraded ? 'Reconnect needed' : 'Connected'}
+          <span class="pill" class:pill-good={spotifyConnected} class:pill-bad={!spotifyConnected}>
+            {spotifyConnected ? 'Connected' : 'Disconnected'}
           </span>
           <svg class="spotify-icon" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424a.623.623 0 01-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.623.623 0 01-.277-1.216c3.809-.87 7.077-.496 9.712 1.115a.623.623 0 01.207.858zm1.224-2.722a.78.78 0 01-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 01-.973-.519.781.781 0 01.519-.973c3.632-1.102 8.147-.568 11.234 1.329a.78.78 0 01.257 1.072zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71a.937.937 0 11-.543-1.794c3.532-1.072 9.404-.865 13.115 1.338a.937.937 0 01-.954 1.613z"/>
           </svg>
         </div>
       </div>
-      <button class="ghost-btn" onclick={handleDisconnect}>Disconnect</button>
+      {#if spotifyConnected}
+        <button class="ghost-btn" onclick={handleDisconnectSpotify} disabled={disconnecting}>
+          {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+        </button>
+      {:else}
+        <a class="reconnect-btn" href="/auth/login">Reconnect Spotify</a>
+      {/if}
     </div>
-    {#if degraded}
-      <a class="reconnect-link" href="/auth/login">Reconnect Spotify</a>
-    {/if}
   </section>
 
   {#if error}
@@ -178,10 +199,20 @@
       {/each}
     </ul>
     {#if rooms.length > 1}
-      <button class="clear-all-btn" onclick={handleClearAllSessions}>Clear All Sessions</button>
+      <div class="danger-row">
+        <button class="danger-btn" onclick={handleClearAllSessions}>Clear All Sessions</button>
+        <button class="danger-btn" onclick={handleResetHost}>Reset Host</button>
+      </div>
+    {:else}
+      <div class="danger-row">
+        <button class="danger-btn" onclick={handleResetHost}>Reset Host</button>
+      </div>
     {/if}
   {:else}
     <p class="muted">No sessions yet — start one above.</p>
+    <div class="danger-row">
+      <button class="danger-btn" onclick={handleResetHost}>Reset Host</button>
+    </div>
   {/if}
 </div>
 
@@ -262,13 +293,20 @@
     cursor: pointer;
   }
 
-  .ghost-btn:hover { color: #fff; border-color: #555; }
+  .ghost-btn:hover:not(:disabled) { color: #fff; border-color: #555; }
+  .ghost-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-  .reconnect-link {
+  .reconnect-btn {
     color: #1db954;
-    font-size: 0.85rem;
-    text-decoration: underline;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid #1db954;
+    padding: 0.35rem 0.75rem;
+    border-radius: 1rem;
   }
+
+  .reconnect-btn:hover { background: #1db95420; }
 
   .create-btn {
     background: #1db954;
@@ -345,7 +383,13 @@
     flex-shrink: 0;
   }
 
-  .clear-all-btn {
+  .danger-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .danger-btn {
     background: transparent;
     border: 1px solid #c0392b;
     color: #e74c3c;
@@ -353,12 +397,9 @@
     border-radius: 1rem;
     font-size: 0.85rem;
     cursor: pointer;
-    margin-top: 0.25rem;
   }
 
-  .clear-all-btn:hover {
-    background: #2a1a1a;
-  }
+  .danger-btn:hover { background: #2a1a1a; }
 
   .muted { color: #888; font-size: 0.875rem; }
   .error { color: #e74c3c; font-size: 0.875rem; }

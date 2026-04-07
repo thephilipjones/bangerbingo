@@ -23,6 +23,7 @@ export const authEvents = new EventEmitter()
 export async function refreshTokenForHost(userId: string): Promise<void> {
   const host = getHostById(userId)
   if (!host) throw new Error(`Host not found: ${userId}`)
+  if (!host.refresh_token) throw new Error(`Host ${userId} has no refresh token`)
 
   const res = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
@@ -45,6 +46,10 @@ export async function refreshTokenForHost(userId: string): Promise<void> {
   if (!data.access_token || !data.expires_in) {
     throw new Error(`Spotify returned malformed token response for ${userId}`)
   }
+
+  // Re-check: host may have disconnected while the refresh was in-flight
+  const current = getHostById(userId)
+  if (!current?.refresh_token) return
 
   const newRefreshToken = data.refresh_token ?? host.refresh_token
   updateHostTokens(userId, data.access_token, newRefreshToken, Date.now() + data.expires_in * 1000)
@@ -90,6 +95,7 @@ export function startRefreshScheduler(): ReturnType<typeof setInterval> {
       const hosts = getAllHosts()
       for (const host of hosts) {
         if (isHostDegraded(host.user_id)) continue
+        if (!host.refresh_token) continue
         if (host.token_expires_at - Date.now() < REFRESH_THRESHOLD) {
           await refreshWithRetry(host.user_id)
         }
