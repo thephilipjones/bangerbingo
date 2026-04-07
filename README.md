@@ -207,6 +207,83 @@ docker compose down -v
 
 > **Note:** Secrets are never baked into the image — they are injected at runtime via `.env`.
 
+## Branching Strategy
+
+Trunk-based development with a single long-lived branch:
+
+| Branch / tag | Purpose | Deploys to |
+|---|---|---|
+| `main` | Always deployable trunk | Staging (auto on every push) |
+| `feat/<slug>` | Feature work | — (merge via Gitea PR) |
+| `fix/<slug>` | Bug fixes | — (merge via Gitea PR) |
+| `prod-YYYY-MM-DD-NN` | Production release tag | Prod (auto on tag push) |
+
+There are no long-lived `develop`, `staging`, or `release` branches. Staging deploys on every push to `main`. Production deploys when a tag matching `prod-*` is pushed (e.g. `prod-2026-04-06-01`). The `NN` suffix is a zero-padded sequence for same-day releases.
+
+### Mobile-friendly workflow
+
+Merging a PR from the Gitea web UI on a phone triggers the staging deploy automatically. Smoke-test from your phone over tailnet immediately after merge.
+
+## Parallel Workstreams (git worktree)
+
+Use `git worktree` for isolated checkouts when running separate Claude agent sessions in parallel:
+
+```sh
+# Create a worktree for a feature branch
+git worktree add ../bb-feat-my-feature feat/my-feature
+
+# Work in the isolated checkout
+cd ../bb-feat-my-feature
+npm install          # separate node_modules
+npm run dev          # separate Vite port, separate DB file
+# ... Claude agent works here independently
+
+# When done, merge and clean up
+cd ../bangerbingo
+git merge feat/my-feature
+git worktree remove ../bb-feat-my-feature
+git branch -d feat/my-feature
+```
+
+Each worktree gets its own `node_modules`, `bangerbingo.db`, and Vite dev server port. No file clobbering between concurrent agents.
+
+## Dual-Stack Deployment (Staging + Prod)
+
+Run both staging and production on a single LXC using compose project-name isolation and a shared Caddy reverse proxy.
+
+### Setup
+
+```sh
+# 1. Create shared Docker network
+docker network create bangerbingo-net
+
+# 2. Start shared Caddy (edit Caddyfile.multi with your domains first)
+docker compose -f docker-compose.caddy.yml up -d
+
+# 3. Start staging
+docker compose -p bb-staging --env-file .env.staging up -d --build
+
+# 4. Start prod
+docker compose -p bb-prod --env-file .env.prod up -d --build
+```
+
+### How isolation works
+
+The `-p` (project name) flag prefixes all Docker resources:
+
+| Resource | Staging | Prod |
+|---|---|---|
+| App container | `bb-staging-app-1` | `bb-prod-app-1` |
+| Data volume | `bb-staging_bangerbingo-data` | `bb-prod_bangerbingo-data` |
+| Caddy volume | `bb-staging_caddy_data` | `bb-prod_caddy_data` |
+| Env file | `.env.staging` | `.env.prod` |
+
+Each env file needs its own `APP_DOMAIN`, `SPOTIFY_REDIRECT_URI`, and `SESSION_SECRET`.
+
+The shared Caddy instance (`docker-compose.caddy.yml`) routes by hostname to the correct upstream container. Neither app stack exposes ports directly — Caddy owns 80/443.
+
+To connect app containers to the shared network, uncomment the `networks` section at the bottom of `docker-compose.yml` and remove the `caddy` service from each app stack (the shared Caddy handles TLS instead).
+
 ## Scripts
 
 | Command | What it does |

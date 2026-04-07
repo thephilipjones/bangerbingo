@@ -1,0 +1,40 @@
+# Shared Caddy reverse proxy for dual-stack (staging + prod) on one LXC.
+#
+# Prerequisites:
+#   docker network create bangerbingo-net
+#
+# Usage:
+#   docker compose -f docker-compose.caddy.yml up -d
+#
+# This Caddy instance routes by APP_DOMAIN host-matching to the correct
+# upstream app container. Both app stacks (bb-staging, bb-prod) must be
+# on the same bangerbingo-net network.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.multi:/etc/caddy/Caddyfile:ro
+      - caddy-shared-data:/data
+      - caddy-shared-config:/config
+    networks:
+      - bangerbingo-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  caddy-shared-data:
+  caddy-shared-config:
+
+networks:
+  bangerbingo-net:
+    external: true

@@ -42,3 +42,22 @@ volumes:
   bangerbingo-data:
   caddy_data:
   caddy_config:
+
+# Dual-stack deployment (staging + prod on one LXC):
+#
+# 1. Create a shared network:  docker network create bangerbingo-net
+# 2. Start shared Caddy:       docker compose -f docker-compose.caddy.yml up -d
+# 3. Start staging:            docker compose -p bb-staging --env-file .env.staging up -d --build
+# 4. Start prod:               docker compose -p bb-prod --env-file .env.prod up -d --build
+#
+# The -p flag gives each stack distinct volume prefixes (bb-staging_bangerbingo-data,
+# bb-prod_bangerbingo-data, etc.) so data is fully isolated without any compose changes.
+#
+# To connect app containers to the shared Caddy network, uncomment the networks
+# section below and remove the caddy service ports (Caddy from docker-compose.caddy.yml
+# owns ports 80/443 instead).
+#
+# networks:
+#   default:
+#     name: bangerbingo-net
+#     external: true

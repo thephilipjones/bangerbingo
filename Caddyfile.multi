@@ -1,0 +1,17 @@
+# Multi-domain Caddyfile for dual-stack deployment (staging + prod).
+#
+# Replace the placeholder domains below with your actual hostnames.
+# Caddy handles automatic HTTPS (Let's Encrypt) for each domain.
+#
+# Both app containers must be on the bangerbingo-net Docker network.
+# Container names follow the compose project-name convention:
+#   bb-staging → bb-staging-app-1
+#   bb-prod    → bb-prod-app-1
+
+staging.bingo.example.com {
+    reverse_proxy bb-staging-app-1:3000
+}
+
+prod.bingo.example.com {
+    reverse_proxy bb-prod-app-1:3000
+}
