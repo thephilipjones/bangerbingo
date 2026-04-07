@@ -3,12 +3,13 @@ name: Deploy Staging
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     container:
-      image: node:20
+      image: node:22
     steps:
       - uses: actions/checkout@v4
 
@@ -38,4 +39,4 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd /srv/bangerbingo/staging && git pull origin main && docker compose -p bb-staging --env-file .env.staging up -d --build
+            cd /srv/bangerbingo/staging && git pull origin main && docker compose up -d --build

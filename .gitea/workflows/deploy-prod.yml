@@ -4,12 +4,17 @@ on:
   push:
     tags:
       - 'prod-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Production tag to deploy (e.g. prod-2026-04-06-01)'
+        required: true
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     container:
-      image: node:20
+      image: node:22
     steps:
       - uses: actions/checkout@v4
 
@@ -39,4 +44,5 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            cd /srv/bangerbingo/prod && git fetch --tags && git checkout ${{ github.ref_name }} && docker compose -p bb-prod --env-file .env.prod up -d --build
+            TAG="${{ github.event.inputs.tag || github.ref_name }}"
+            cd /srv/bangerbingo/prod && git fetch --tags && git checkout "$TAG" && docker compose up -d --build

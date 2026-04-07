@@ -5,6 +5,9 @@ dist/
 *.db-shm
 *.db-wal
 
+# Server-side override (Ansible-managed, not tracked)
+docker-compose.override.yml
+
 # AI tool personal settings and framework tooling (not project config)
 .claude/
 .gemini/
