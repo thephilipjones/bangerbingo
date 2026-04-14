@@ -45,7 +45,7 @@ async function seedRoom(hostUserId = 'host_1', code = 'ABCD') {
   const { getDb } = await import('../db.ts')
   const db = getDb()
   db.prepare('INSERT OR IGNORE INTO rooms (code, host_user_id, created_at) VALUES (?, ?, ?)').run(code, hostUserId, Date.now())
-  roomSockets.set(code, { host: null, hostUserId, hostHasEverConnected: false, guests: new Map() })
+  roomSockets.set(code, { host: null, hostUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: { winsByName: {}, lastRoundWinner: null } })
 }
 
 // ── Code generation ────────────────────────────────────────────────────────
@@ -1494,11 +1494,79 @@ describe('POST /api/rooms/:code/round/claim', () => {
     expect(res.status).toBe(200)
     expect(round.active).toBe(false)
     expect(round.ended).toBe(true)
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(2)
     const msg = JSON.parse(sent[0])
     expect(msg.type).toBe('round:win')
     expect(msg.winnerName).toBe('Alice')
     expect(msg.winningTileIds).toHaveLength(5)
+  })
+
+  it('200 — stats:updated broadcast follows round:win', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+
+    const winTracks = makeTracksLocal(5)
+    const card = makeCard(winTracks)
+    round.cards.set('Alice', card)
+    winTracks.forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i })
+    )
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice', claimedTileIds: winTracks.map(t => t.id) }),
+    })
+    expect(res.status).toBe(200)
+    expect(sent).toHaveLength(2)
+    const first = JSON.parse(sent[0])
+    const second = JSON.parse(sent[1])
+    expect(first.type).toBe('round:win')
+    expect(second.type).toBe('stats:updated')
+    expect(second.winsByName).toEqual({ Alice: 1 })
+    expect(second.lastRoundWinner).toBe('Alice')
+    expect(roomState.sessionStats.winsByName).toEqual({ Alice: 1 })
+    expect(roomState.sessionStats.lastRoundWinner).toBe('Alice')
+  })
+
+  it('200 — winsByName increments across multiple wins for the same player', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+
+    // Pre-seed a prior Alice win in sessionStats
+    roomState.sessionStats.winsByName['Alice'] = 1
+    roomState.sessionStats.lastRoundWinner = 'Alice'
+
+    // Seed a fresh active round on the same roomState (second round)
+    const round = seedActiveRound()
+    const winTracks = makeTracksLocal(5)
+    const card = makeCard(winTracks)
+    round.cards.set('Alice', card)
+    winTracks.forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i })
+    )
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice', claimedTileIds: winTracks.map(t => t.id) }),
+    })
+    expect(res.status).toBe(200)
+    const stats = JSON.parse(sent[1])
+    expect(stats.type).toBe('stats:updated')
+    expect(stats.winsByName.Alice).toBe(2)
+    expect(stats.lastRoundWinner).toBe('Alice')
   })
 
   it('200 — valid claim with FREE in winning line (middle row)', async () => {
@@ -1535,11 +1603,13 @@ describe('POST /api/rooms/:code/round/claim', () => {
       body: JSON.stringify({ playerName: 'Alice', claimedTileIds: ['FREE', ...winTracks.map(t => t.id)] }),
     })
     expect(res.status).toBe(200)
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(2)
     const msg = JSON.parse(sent[0])
     expect(msg.type).toBe('round:win')
     expect(msg.winningTileIds).toContain('FREE')
     expect(msg.winningTileIds).toHaveLength(5)
+    const stats = JSON.parse(sent[1])
+    expect(stats.type).toBe('stats:updated')
   })
 
   it('422 — claimed tile not on player card', async () => {

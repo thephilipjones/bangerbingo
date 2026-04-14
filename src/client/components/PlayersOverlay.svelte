@@ -6,11 +6,17 @@
     players,
     hostName,
     selfName,
+    winsByName = {},
+    lastRoundWinner = null,
+    showStats = false,
     onClose,
   }: {
     players: string[]
     hostName: string | null
     selfName: string | null
+    winsByName?: Record<string, number>
+    lastRoundWinner?: string | null
+    showStats?: boolean
     onClose: () => void
   } = $props()
 
@@ -30,7 +36,7 @@
     {#if players.length === 0 && hostName === null}
       <p class="empty">No players yet.</p>
     {:else}
-      <PlayerList {players} {hostName} {selfName} --player-row-bg="#222" />
+      <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} --player-row-bg="#222" />
     {/if}
   </div>
 </div>

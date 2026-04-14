@@ -5,7 +5,17 @@
 
   let { prefillCode = '', onJoined, onHostLogin }: {
     prefillCode?: string
-    onJoined: (name: string, role: string, players: string[], hostName: string | null, code: string, ws: WebSocket, pending: MessageEvent[]) => void
+    onJoined: (
+      name: string,
+      role: string,
+      players: string[],
+      hostName: string | null,
+      winsByName: Record<string, number>,
+      lastRoundWinner: string | null,
+      code: string,
+      ws: WebSocket,
+      pending: MessageEvent[],
+    ) => void
     onHostLogin: () => void
   } = $props()
 
@@ -59,14 +69,14 @@
     connecting = true
     bufferedMessages = []
     activeWs = connectAsGuest(name, code, {
-      onConnect(role, players, hostName) {
+      onConnect(role, players, hostName, winsByName, lastRoundWinner) {
         connecting = false
         const handedOff = activeWs!
         const pending = bufferedMessages
         activeWs = undefined // prevent onDestroy from closing the handed-off socket
         bufferedMessages = []
         setStoredGuestName(name)
-        onJoined(name, role, players, hostName, code, handedOff, pending)
+        onJoined(name, role, players, hostName, winsByName, lastRoundWinner, code, handedOff, pending)
       },
       onError(message) {
         connecting = false

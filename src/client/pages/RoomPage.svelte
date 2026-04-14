@@ -10,12 +10,14 @@
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
 
-  let { name, code, ws, initialPlayers = [], hostName = null, pendingMessages = [], onLeave }: {
+  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, pendingMessages = [], onLeave }: {
     name: string
     code: string
     ws: WebSocket
     initialPlayers?: string[]
     hostName?: string | null
+    initialWinsByName?: Record<string, number>
+    initialLastRoundWinner?: string | null
     pendingMessages?: MessageEvent[]
     onLeave?: () => void
   } = $props()
@@ -38,6 +40,8 @@
     code: untrack(() => code),
     getPlayerName: () => name,
     initialPlayers: untrack(() => initialPlayers),
+    initialWinsByName: untrack(() => initialWinsByName),
+    initialLastRoundWinner: untrack(() => initialLastRoundWinner),
     getMarksForCard: (card: Tile[]) => {
       marksKey = `bangerbingo:marks:${code}:${cardFingerprint(card)}`
       return loadMarks()
@@ -115,7 +119,7 @@
 {/if}
 
 {#if game.showPlayers}
-  <PlayersOverlay players={game.players} {hostName} selfName={name} onClose={() => { game.showPlayers = false }} />
+  <PlayersOverlay players={game.players} {hostName} selfName={name} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} onClose={() => { game.showPlayers = false }} />
 {/if}
 
 <main class="room-page" class:game-active={game.tiles.length > 0}>
@@ -137,7 +141,7 @@
     {/if}
     <p class="status-line" role="status">{statusLine}</p>
   {:else}
-    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} {onLeave} />
+    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {onLeave} />
   {/if}
 </main>
 

@@ -78,7 +78,13 @@ export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
 }
 
 export interface GuestHandlers {
-  onConnect(role: string, players: string[], hostName: string | null): void
+  onConnect(
+    role: string,
+    players: string[],
+    hostName: string | null,
+    winsByName: Record<string, number>,
+    lastRoundWinner: string | null,
+  ): void
   onError(message: string): void
   onMessage(event: { data: string }): void
   onHostDisconnected?(): void
@@ -126,7 +132,13 @@ export function connectAsGuest(name: string, code: string, handlers: GuestHandle
       const data = JSON.parse(event.data)
       if (data.type === 'session:connect') {
         sessionConnected = true
-        handlers.onConnect(data.role, data.players ?? [], data.hostName ?? null)
+        handlers.onConnect(
+          data.role,
+          data.players ?? [],
+          data.hostName ?? null,
+          data.winsByName ?? {},
+          data.lastRoundWinner ?? null,
+        )
       } else if (data.type === 'host:disconnected') {
         handlers.onHostDisconnected?.()
       } else if (data.type === 'host:reconnected') {

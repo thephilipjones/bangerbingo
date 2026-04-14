@@ -169,7 +169,7 @@
   <!-- Player list -->
   <div class="players-section">
     <h2 class="players-label">Players here ({players.length + 1})</h2>
-    <PlayerList {players} hostName={roomHostName} selfName={null} />
+    <PlayerList {players} hostName={roomHostName} selfName={null} winsByName={{}} lastRoundWinner={null} showStats={false} />
   </div>
 
   <!-- Trivia fact -->

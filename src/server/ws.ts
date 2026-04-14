@@ -50,6 +50,17 @@ export interface RoundState {
   }
 }
 
+// ── Session stats (Story 8-2) ─────────────────────────────────────────────
+
+export interface SessionStats {
+  winsByName: Record<string, number>
+  lastRoundWinner: string | null
+}
+
+export function emptySessionStats(): SessionStats {
+  return { winsByName: {}, lastRoundWinner: null }
+}
+
 // ── Room state ─────────────────────────────────────────────────────────────
 
 export interface RoomState {
@@ -60,6 +71,7 @@ export interface RoomState {
   pendingRound?: RoundConfig
   currentRound?: RoundState
   sdkDeviceId?: string
+  sessionStats: SessionStats
 }
 
 export const roomSockets = new Map<string, RoomState>()
@@ -119,6 +131,7 @@ export function rehydrateRooms(): void {
       guests: new Map(),
       pendingRound: snap.pendingRound,
       sdkDeviceId: snap.sdkDeviceId,
+      sessionStats: emptySessionStats(),
       currentRound: snap.currentRound ? {
         ...snap.currentRound,
         config: {
@@ -261,7 +274,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     const wasInMap = roomSockets.has(code)
     if (!wasInMap) {
-      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map() })
+      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats() })
     }
     const roomState = roomSockets.get(code)!
 
@@ -276,7 +289,14 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     roomState.hostUserId = sessionUserId
     roomState.hostHasEverConnected = true
 
-    ws.send(JSON.stringify({ type: 'session:connect', role: 'host', players: getPlayerList(code), hostName: room.host_name }))
+    ws.send(JSON.stringify({
+      type: 'session:connect',
+      role: 'host',
+      players: getPlayerList(code),
+      hostName: room.host_name,
+      winsByName: { ...roomState.sessionStats.winsByName },
+      lastRoundWinner: roomState.sessionStats.lastRoundWinner,
+    }))
 
     // Send round:start if there is an active round (needed for HostRoomPage initial load)
     const activeRound = roomState.currentRound
@@ -311,7 +331,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     }
 
     if (!roomSockets.has(code)) {
-      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map() })
+      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats() })
     }
     const roomState = roomSockets.get(code)!
 
@@ -325,7 +345,14 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     // Add/overwrite slot (handles reconnect)
     roomState.guests.set(name, ws)
 
-    ws.send(JSON.stringify({ type: 'session:connect', role: 'guest', players: getPlayerList(code), hostName: room.host_name }))
+    ws.send(JSON.stringify({
+      type: 'session:connect',
+      role: 'guest',
+      players: getPlayerList(code),
+      hostName: room.host_name,
+      winsByName: { ...roomState.sessionStats.winsByName },
+      lastRoundWinner: roomState.sessionStats.lastRoundWinner,
+    }))
 
     // If a round is in progress, resend round:start — reuse existing card if reconnecting
     const round = roomState.currentRound

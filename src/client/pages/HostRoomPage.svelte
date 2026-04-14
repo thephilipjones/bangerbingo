@@ -156,6 +156,8 @@
         } else if (data.type === 'session:connect') {
           game.players = data.players ?? []
           hostName = data.hostName ?? null
+          game.winsByName = (data.winsByName as Record<string, number> | undefined) ?? {}
+          game.lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
         } else if (data.type === 'song:start') {
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
@@ -220,7 +222,7 @@
 {/if}
 
 {#if game.showPlayers}
-  <PlayersOverlay players={game.players} {hostName} selfName={null} onClose={() => { game.showPlayers = false }} />
+  <PlayersOverlay players={game.players} {hostName} selfName={null} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} onClose={() => { game.showPlayers = false }} />
 {/if}
 
 {#if game.winData !== null}

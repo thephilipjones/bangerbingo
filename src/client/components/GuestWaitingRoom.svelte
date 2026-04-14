@@ -4,7 +4,7 @@
   import VinylWithTonearm from './VinylWithTonearm.svelte'
   import PlayerList from './PlayerList.svelte'
 
-  let { code, selfName, hostName, players, onLeave }: { code: string; selfName: string; hostName: string | null; players: string[]; onLeave?: () => void } = $props()
+  let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, onLeave }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; onLeave?: () => void } = $props()
 
   // Host row is always rendered (with name or generic "Host"), so always count host as +1
   const playerCount = $derived(players.length + 1)
@@ -90,7 +90,7 @@
   <!-- Player list -->
   <div class="players-section">
     <h2 class="players-label">Players here ({playerCount})</h2>
-    <PlayerList {players} {hostName} {selfName} />
+    <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} />
   </div>
 
   <!-- Trivia -->

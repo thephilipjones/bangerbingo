@@ -44,6 +44,8 @@ export function createGameState({
   code,
   getPlayerName,
   initialPlayers = [],
+  initialWinsByName = {},
+  initialLastRoundWinner = null,
   getMarksForCard,
   onTileMark,
 }: {
@@ -51,6 +53,8 @@ export function createGameState({
   /** Returns the player name to use when submitting a bingo claim. */
   getPlayerName: () => string | null
   initialPlayers?: string[]
+  initialWinsByName?: Record<string, number>
+  initialLastRoundWinner?: string | null
   /**
    * Called on round:start with the raw card array.
    * Use this to update a localStorage key and return any saved marks.
@@ -81,6 +85,10 @@ export function createGameState({
   let songIndex = $state<number | null>(null)
   let players = $state<string[]>(initialPlayers)
   const playerCount = $derived(computePlayerCount(players))
+  let winsByName = $state<Record<string, number>>({ ...initialWinsByName })
+  let lastRoundWinner = $state<string | null>(initialLastRoundWinner)
+  let highestRoundNumber = $state(0)
+  const showStats = $derived(highestRoundNumber >= 2)
 
   function handleTileClick(index: number) {
     const tile = tiles[index]
@@ -140,6 +148,10 @@ export function createGameState({
       tiles = restoreMarks(initTiles(card), getMarksForCard?.(card) ?? new Set<string>(), playedIds)
       songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
       currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
+      highestRoundNumber = Math.max(highestRoundNumber, (data.roundNumber as number | undefined) ?? 0)
+    } else if (data.type === 'stats:updated') {
+      winsByName = { ...((data.winsByName as Record<string, number> | undefined) ?? {}) }
+      lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
     } else if (data.type === 'song:start') {
       if (roundConfig) {
         tiles = applyMask(tiles, data.trackId as string, roundConfig.titleRevealDelay, data.songIndex as number)
@@ -214,6 +226,11 @@ export function createGameState({
     get players() { return players },
     set players(v: string[]) { players = v },
     get playerCount() { return playerCount },
+    get winsByName() { return winsByName },
+    set winsByName(v: Record<string, number>) { winsByName = v },
+    get lastRoundWinner() { return lastRoundWinner },
+    set lastRoundWinner(v: string | null) { lastRoundWinner = v },
+    get showStats() { return showStats },
     handleTileClick,
     handleBingoClick,
     processWsMessage,

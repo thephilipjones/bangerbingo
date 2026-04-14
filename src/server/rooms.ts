@@ -562,11 +562,20 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
   clearRoundTimers(round)
   round.active = false
 
+  roomState.sessionStats.winsByName[playerName] = (roomState.sessionStats.winsByName[playerName] ?? 0) + 1
+  roomState.sessionStats.lastRoundWinner = playerName
+
   broadcast(code, {
     type: 'round:win',
     winnerName: playerName,
     winningTileIds,
     songHistory: round.songHistory,
+  })
+
+  broadcast(code, {
+    type: 'stats:updated',
+    winsByName: { ...roomState.sessionStats.winsByName },
+    lastRoundWinner: roomState.sessionStats.lastRoundWinner,
   })
 
   persistRoomState(code)
