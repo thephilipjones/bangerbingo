@@ -6,7 +6,7 @@ import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
-import { buildPool, generateCards } from './game/cards.ts'
+import { buildPool, generateCards, shuffle } from './game/cards.ts'
 
 // ── Win detection ─────────────────────────────────────────────────────────
 
@@ -320,7 +320,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   // Fetch tracks — returns 422 if fewer than 25 (InsufficientTracksError thrown by getPlaylistTracks)
   let playlist
   try {
-    playlist = await getPlaylistTracks(playlistId, host.access_token)
+    playlist = shuffle(await getPlaylistTracks(playlistId, host.access_token))
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'InsufficientTracksError') {
       return ctx.json({ message: err.message }, 422)
