@@ -82,11 +82,30 @@ export function cardFingerprint(card: Tile[]): string {
   return (h >>> 0).toString(36)
 }
 
-export function restoreMarks(tiles: ClientTile[], markedIds: Set<string>): ClientTile[] {
+export function restoreMarks(
+  tiles: ClientTile[],
+  markedIds: Set<string>,
+  playedIds?: Set<string>,
+): ClientTile[] {
   if (markedIds.size === 0) return tiles
   return tiles.map((tile) =>
-    !tile.free && markedIds.has(tile.trackId) ? { ...tile, state: 'marked' as const } : tile,
+    !tile.free && markedIds.has(tile.trackId) && (!playedIds || playedIds.has(tile.trackId))
+      ? { ...tile, state: 'marked' as const }
+      : tile,
   )
+}
+
+export function isWinningLine(
+  tiles: ClientTile[],
+  line: number[],
+  playedIds: Set<string>,
+): boolean {
+  return line.every((i) => {
+    const t = tiles[i]
+    if (!t) return false
+    if (t.state === 'free') return true
+    return t.state === 'marked' && playedIds.has(t.trackId)
+  })
 }
 
 export function applyWinPath(tiles: ClientTile[], winningTileIds: string[]): ClientTile[] {

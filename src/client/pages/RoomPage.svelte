@@ -16,6 +16,7 @@
     applyWinPath,
     restoreMarks,
     cardFingerprint,
+    isWinningLine,
   } from '../lib/bingo.ts'
   import { applyPlayerEvent } from '../lib/ws.ts'
   import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
@@ -51,17 +52,20 @@
   let winData = $state<WinData | null>(null)
   let roundEnded = $state(false)
   let songHistory = $state<HistoryEntry[]>([])
+  const playedTrackIds = $derived(new Set(songHistory.map(e => e.trackId)))
   let showHistory = $state(false)
   let showPlayers = $state(false)
   let songIndex = $state<number | null>(null)
   let currentRevealed = $state(false)
   let players = $state<string[]>(untrack(() => initialPlayers))
   const playerCount = $derived(computePlayerCount(players))
+  let nopeIndex = $state<number | null>(null)
+  let nopeTimer: ReturnType<typeof setTimeout> | undefined
 
   const hasBingo = $derived(
     tiles.length > 0 &&
     !roundEnded &&
-    WIN_LINES.some(line => line.every(i => tiles[i]?.state === 'marked' || tiles[i]?.state === 'free'))
+    WIN_LINES.some(line => isWinningLine(tiles, line, playedTrackIds))
   )
 
   let marksKey = $state('')
@@ -82,6 +86,18 @@
   }
 
   function handleTileClick(index: number) {
+    const tile = tiles[index]
+    if (!tile || tile.free) return
+    const alreadyMarked = tile.state === 'marked'
+    if (!alreadyMarked && !playedTrackIds.has(tile.trackId)) {
+      clearTimeout(nopeTimer)
+      nopeIndex = null
+      queueMicrotask(() => { nopeIndex = index })
+      nopeTimer = setTimeout(() => { nopeIndex = null }, 450)
+      return
+    }
+    clearTimeout(nopeTimer)
+    nopeIndex = null
     tiles = toggleMark(tiles, index)
     saveMarks(tiles)
   }
@@ -118,14 +134,17 @@
     } else if (data.type === 'player:left') {
       players = applyPlayerEvent(players, { type: 'player:left', name: data.name as string })
     } else if (data.type === 'round:start') {
+      clearTimeout(nopeTimer)
+      nopeIndex = null
       marksKey = `bangerbingo:marks:${code}:${cardFingerprint(data.card as Parameters<typeof initTiles>[0])}`
-      tiles = restoreMarks(initTiles(data.card as Parameters<typeof initTiles>[0]), loadMarks())
       roundConfig = { titleRevealDelay: data.titleRevealDelay as TitleRevealDelay }
       statusLine = 'Waiting for next song…'
       roundEnded = false
       winData = null
       const rawHistory = (data.songHistory as HistoryEntry[] | undefined) ?? []
       songHistory = rawHistory.slice().reverse()
+      const playedIds = new Set(rawHistory.map(e => e.trackId))
+      tiles = restoreMarks(initTiles(data.card as Parameters<typeof initTiles>[0]), loadMarks(), playedIds)
       songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
       currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
     } else if (data.type === 'song:start') {
@@ -151,6 +170,8 @@
       isClaiming = false
       winData = { winnerName: data.winnerName as string, winningTileIds: data.winningTileIds as string[], songHistory: data.songHistory as WinData['songHistory'] }
     } else if (data.type === 'round:end') {
+      clearTimeout(nopeTimer)
+      nopeIndex = null
       tiles = []
       statusLine = 'Waiting for the host to start a round...'
       roundConfig = null
@@ -171,6 +192,7 @@
 
   onDestroy(() => {
     clearTimeout(revealTimer)
+    clearTimeout(nopeTimer)
     ws.close()
   })
 
@@ -206,7 +228,7 @@
 <main class="room-page" class:game-active={tiles.length > 0}>
   {#if tiles.length > 0}
     <GameHeader {playerCount} {code} {songIndex} historyOpen={showHistory} playersOpen={showPlayers} onPlayersClick={() => { showPlayers = !showPlayers; showHistory = false }} onHistoryClick={() => { showHistory = !showHistory; showPlayers = false }} />
-    <BingoCard {tiles} onTileClick={handleTileClick} />
+    <BingoCard {tiles} {nopeIndex} onTileClick={handleTileClick} />
     {#if hasBingo && !isClaiming}
       <button class="bingo-btn" onclick={handleBingoClick}>Bingo!</button>
     {:else if isClaiming}

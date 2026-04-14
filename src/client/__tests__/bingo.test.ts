@@ -8,8 +8,9 @@ import {
   applyWinPath,
   restoreMarks,
   cardFingerprint,
+  isWinningLine,
 } from '../lib/bingo.ts'
-import type { Tile } from '../lib/bingo.ts'
+import type { Tile, ClientTile } from '../lib/bingo.ts'
 
 function makeTiles(n = 25): Tile[] {
   return Array.from({ length: n }, (_, i) =>
@@ -183,6 +184,73 @@ describe('restoreMarks', () => {
     const result = restoreMarks(tiles, new Set(['track_0']))
     expect(result).not.toBe(tiles)
     expect(tiles[0].state).toBe('unmarked')
+  })
+})
+
+describe('restoreMarks with playedIds', () => {
+  it('restores a marked tile when its trackId is in the played set', () => {
+    const tiles = initTiles(makeTiles())
+    const result = restoreMarks(
+      tiles,
+      new Set(['track_0']),
+      new Set(['track_0', 'track_99']),
+    )
+    expect(result[0].state).toBe('marked')
+  })
+
+  it('drops a marked tile when its trackId is NOT in the played set', () => {
+    const tiles = initTiles(makeTiles())
+    const result = restoreMarks(
+      tiles,
+      new Set(['track_0', 'track_1']),
+      new Set(['track_1']),
+    )
+    expect(result[0].state).toBe('unmarked')
+    expect(result[1].state).toBe('marked')
+  })
+
+  it('behaves like the un-filtered version when playedIds is omitted', () => {
+    const tiles = initTiles(makeTiles())
+    const result = restoreMarks(tiles, new Set(['track_0', 'track_1']))
+    expect(result[0].state).toBe('marked')
+    expect(result[1].state).toBe('marked')
+  })
+})
+
+describe('isWinningLine', () => {
+  function markTiles(tiles: ClientTile[], indices: number[]): ClientTile[] {
+    let out = tiles
+    for (const i of indices) out = toggleMark(out, i)
+    return out
+  }
+
+  it('returns false when all 5 tiles are marked but none are played', () => {
+    const tiles = markTiles(initTiles(makeTiles()), [0, 1, 2, 3, 4])
+    expect(isWinningLine(tiles, [0, 1, 2, 3, 4], new Set())).toBe(false)
+  })
+
+  it('returns true for a middle-row line with FREE + 4 played-and-marked', () => {
+    const tiles = markTiles(initTiles(makeTiles()), [10, 11, 13, 14])
+    const played = new Set(['track_10', 'track_11', 'track_13', 'track_14'])
+    expect(isWinningLine(tiles, [10, 11, 12, 13, 14], played)).toBe(true)
+  })
+
+  it('returns false when one marked tile in the line has not been played', () => {
+    const tiles = markTiles(initTiles(makeTiles()), [0, 1, 2, 3, 4])
+    const played = new Set(['track_0', 'track_1', 'track_2', 'track_3']) // no track_4
+    expect(isWinningLine(tiles, [0, 1, 2, 3, 4], played)).toBe(false)
+  })
+
+  it('returns true for the TL-BR diagonal with FREE + 4 played-and-marked', () => {
+    const tiles = markTiles(initTiles(makeTiles()), [0, 6, 18, 24])
+    const played = new Set(['track_0', 'track_6', 'track_18', 'track_24'])
+    expect(isWinningLine(tiles, [0, 6, 12, 18, 24], played)).toBe(true)
+  })
+
+  it('returns false when a tile in the line is played but not marked', () => {
+    const tiles = markTiles(initTiles(makeTiles()), [0, 1, 2, 3]) // index 4 unmarked
+    const played = new Set(['track_0', 'track_1', 'track_2', 'track_3', 'track_4'])
+    expect(isWinningLine(tiles, [0, 1, 2, 3, 4], played)).toBe(false)
   })
 })
 

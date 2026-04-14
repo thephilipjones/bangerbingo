@@ -4,9 +4,11 @@
   let {
     tiles,
     onTileClick,
+    nopeIndex = null,
   }: {
     tiles: ClientTile[]
     onTileClick: (index: number) => void
+    nopeIndex?: number | null
   } = $props()
 </script>
 
@@ -31,6 +33,7 @@
         class:masked={tile.masked}
         class:revealing={tile.revealing}
         class:win-path={tile.winPath}
+        class:nope={i === nopeIndex}
         title={tile.masked ? undefined : tile.title}
         aria-label={tile.masked ? `${tile.songLabel} (masked)` : `${tile.title} by ${tile.artist}${tile.state === 'marked' ? ' (marked)' : ''}`}
         aria-pressed={tile.state === 'marked'}
@@ -158,5 +161,24 @@
   .tile.revealing .song-label {
     opacity: 0;
     transition: opacity 300ms ease-out;
+  }
+
+  @keyframes nope-wobble {
+    0%   { transform: translateX(0) rotate(0); }
+    20%  { transform: translateX(-3px) rotate(-2deg); }
+    40%  { transform: translateX(3px)  rotate(2deg);  }
+    60%  { transform: translateX(-2px) rotate(-1deg); }
+    80%  { transform: translateX(2px)  rotate(1deg);  }
+    100% { transform: translateX(0) rotate(0); }
+  }
+
+  .tile.nope {
+    animation: nope-wobble 420ms ease-out;
+    outline: 2px solid #ff6b35;
+    outline-offset: -2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile.nope { animation: none; }
   }
 </style>

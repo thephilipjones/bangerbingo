@@ -1316,6 +1316,47 @@ describe('POST /api/rooms/:code/round/claim', () => {
     expect(msg.winningTileIds).toHaveLength(5)
   })
 
+  it('200 — valid claim with FREE in winning line (middle row)', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+
+    // Build a card where the middle row is positions 10,11,12,13,14.
+    // Put 4 winning tracks at 10,11,13,14 and keep index 12 as the FREE tile.
+    const winTracks = makeTracksLocal(4)
+    const card: Tile[] = []
+    for (let i = 0; i < 25; i++) {
+      card.push({ trackId: `filler_${i}`, title: `Filler ${i}`, artist: 'A', albumArtUrl: '' })
+    }
+    card[10] = { trackId: winTracks[0].id, title: winTracks[0].title, artist: winTracks[0].artist, albumArtUrl: winTracks[0].albumArtUrl }
+    card[11] = { trackId: winTracks[1].id, title: winTracks[1].title, artist: winTracks[1].artist, albumArtUrl: winTracks[1].albumArtUrl }
+    card[13] = { trackId: winTracks[2].id, title: winTracks[2].title, artist: winTracks[2].artist, albumArtUrl: winTracks[2].albumArtUrl }
+    card[14] = { trackId: winTracks[3].id, title: winTracks[3].title, artist: winTracks[3].artist, albumArtUrl: winTracks[3].albumArtUrl }
+    card[12] = { trackId: '', title: '', artist: '', albumArtUrl: '', free: true }
+    round.cards.set('Alice', card)
+
+    winTracks.forEach((t, i) =>
+      round.songHistory.push({ trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: '', songIndex: i }),
+    )
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice', claimedTileIds: ['FREE', ...winTracks.map(t => t.id)] }),
+    })
+    expect(res.status).toBe(200)
+    expect(sent).toHaveLength(1)
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('round:win')
+    expect(msg.winningTileIds).toContain('FREE')
+    expect(msg.winningTileIds).toHaveLength(5)
+  })
+
   it('422 — claimed tile not on player card', async () => {
     seedHost()
     await seedRoom()
