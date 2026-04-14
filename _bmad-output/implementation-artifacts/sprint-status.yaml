@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-13 # story 6-6 code review
+last_updated: 2026-04-14 # epic 6 retrospective
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -82,14 +82,14 @@ development_status:
 
   # Epic 6: Deploy & Harden
   # NOTE (2026-04-05): 6-2+ hold until Epic 7 (UX Flow Restructure) ships
-  epic-6: in-progress
+  epic-6: done
   6-1-local-dev-and-tailscale-multi-device-testing: done
   6-2-production-dockerfile-and-docker-compose: done
   6-3-https-wss-via-caddy-reverse-proxy: done
   6-4-server-restart-state-recovery: done
   6-5-host-spotify-disconnect-reconnect-settings: done
   6-6-gitea-actions-cicd-branching-and-smoke-test: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # Epic 7: UX Flow Restructure
   epic-7: done
