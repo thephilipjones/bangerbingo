@@ -7,8 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Production tag to deploy (e.g. prod-2026-04-06-01)'
+        description: 'Production tag to deploy — must match prod-YYYY-MM-DD-NN (e.g. prod-2026-04-13-01)'
         required: true
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -37,6 +41,14 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     steps:
+      - name: Validate tag format
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^prod-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "Invalid tag format: '$TAG'. Expected prod-YYYY-MM-DD-NN (e.g. prod-2026-04-13-01)"
+            exit 1
+          fi
+
       - name: Deploy to production
         uses: appleboy/ssh-action@v1
         with:

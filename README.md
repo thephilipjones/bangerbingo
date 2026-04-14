@@ -218,7 +218,23 @@ Trunk-based development with a single long-lived branch:
 | `fix/<slug>` | Bug fixes | — (merge via Gitea PR) |
 | `prod-YYYY-MM-DD-NN` | Production release tag | Prod (auto on tag push) |
 
-There are no long-lived `develop`, `staging`, or `release` branches. Staging deploys on every push to `main`. Production deploys when a tag matching `prod-*` is pushed (e.g. `prod-2026-04-06-01`). The `NN` suffix is a zero-padded sequence for same-day releases.
+There are no long-lived `develop`, `staging`, or `release` branches. Staging deploys on every push to `main`. Production deploys when a tag matching `prod-*` is pushed.
+
+### Creating a production tag
+
+Tags **must** match the format `prod-YYYY-MM-DD-NN` exactly — the deploy workflow validates this and will reject anything that doesn't conform.
+
+```sh
+# First release of the day
+git tag prod-2026-04-13-01
+git push origin prod-2026-04-13-01
+
+# Second release same day
+git tag prod-2026-04-13-02
+git push origin prod-2026-04-13-02
+```
+
+`NN` is a zero-padded two-digit sequence. The deploy workflow also accepts manual dispatch with a tag input — use the same format.
 
 ### Mobile-friendly workflow
 
