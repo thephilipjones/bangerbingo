@@ -32,12 +32,7 @@
   let hostNameInput = $state('')
   let hostNameError = $state('')
 
-  // ── Tab ────────────────────────────────────────────────────────────────────
-
-  type Tab = 'genre' | 'search'
-  let activeTab = $state<Tab>('genre')
-
-  // ── Genre tab ──────────────────────────────────────────────────────────────
+  // ── Playlists (presets + search) ───────────────────────────────────────────
 
   interface Preset {
     name: string
@@ -45,10 +40,26 @@
     playlistId: string
   }
 
+  interface PlaylistResult {
+    name: string
+    owner: string
+    trackCount: number
+    playlistId: string
+  }
+
   let presets = $state<Preset[]>([])
   let presetsLoading = $state(false)
   let presetsError = $state('')
-  let selectedPresetId = $state<string | null>(null)
+
+  let searchQuery = $state('')
+  let searchResults = $state<PlaylistResult[]>([])
+  let searchLoading = $state(false)
+  let searchError = $state('')
+
+  let selectedPlaylist = $state<{ id: string; name: string } | null>(null)
+  let playlistRegionEl = $state<HTMLDivElement | null>(null)
+
+  const isSearching = $derived(searchQuery.trim().length > 0)
 
   async function loadPresets() {
     presetsLoading = true
@@ -64,42 +75,73 @@
     }
   }
 
-  // ── Search tab ─────────────────────────────────────────────────────────────
+  let searchTimer: ReturnType<typeof setTimeout> | null = null
+  let searchSeq = 0
 
-  interface PlaylistResult {
-    name: string
-    owner: string
-    trackCount: number
-    playlistId: string
-  }
-
-  let searchQuery = $state('')
-  let searchResults = $state<PlaylistResult[]>([])
-  let searchLoading = $state(false)
-  let searchError = $state('')
-  let selectedPlaylistId = $state<string | null>(null)
-
-  async function handleSearch(e: Event) {
-    e.preventDefault()
-    if (!searchQuery.trim()) return
+  $effect(() => {
+    const q = searchQuery.trim()
+    if (searchTimer) {
+      clearTimeout(searchTimer)
+      searchTimer = null
+    }
+    if (q === '') {
+      searchResults = []
+      searchError = ''
+      searchLoading = false
+      return
+    }
     searchLoading = true
     searchError = ''
-    searchResults = []
-    selectedPlaylistId = null
-    try {
-      const res = await fetch(`/api/music/search?q=${encodeURIComponent(searchQuery.trim())}`)
-      if (!res.ok) throw new Error('Search failed')
-      searchResults = await res.json()
-    } catch {
-      searchError = 'Search failed. Please try again.'
-    } finally {
-      searchLoading = false
-    }
+    const seq = ++searchSeq
+    searchTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`)
+        if (seq !== searchSeq) return
+        if (!res.ok) throw new Error('Search failed')
+        const data = await res.json()
+        if (seq !== searchSeq) return
+        searchResults = data
+        searchError = ''
+        if (playlistRegionEl) playlistRegionEl.scrollTop = 0
+      } catch {
+        if (seq !== searchSeq) return
+        searchResults = []
+        searchError = 'Search failed. Please try again.'
+      } finally {
+        if (seq === searchSeq) searchLoading = false
+      }
+    }, 250)
+  })
+
+  $effect(() => {
+    isSearching
+    if (playlistRegionEl) playlistRegionEl.scrollTop = 0
+  })
+
+  function selectPreset(p: Preset) {
+    selectedPlaylist = { id: p.playlistId, name: p.name }
   }
 
-  const selectedSource = $derived(
-    activeTab === 'genre' ? selectedPresetId : selectedPlaylistId
-  )
+  function selectResult(r: PlaylistResult) {
+    selectedPlaylist = { id: r.playlistId, name: r.name }
+  }
+
+  function clearSearch() {
+    searchQuery = ''
+  }
+
+  function clearSelection() {
+    selectedPlaylist = null
+  }
+
+  const selectionVisibleInCurrentList = $derived.by(() => {
+    if (!selectedPlaylist) return true
+    const id = selectedPlaylist.id
+    if (isSearching) return searchResults.some((r) => r.playlistId === id)
+    return presets.some((p) => p.playlistId === id)
+  })
+
+  const selectedSource = $derived(selectedPlaylist?.id ?? null)
 
   // ── Clip duration ──────────────────────────────────────────────────────────
 
@@ -201,28 +243,71 @@
 
     <div class="config-panel">
 
-      <!-- Tab bar -->
-      <div class="tab-bar" role="tablist">
-        <button
-          role="tab"
-          aria-selected={activeTab === 'genre'}
-          class="tab-btn"
-          class:active={activeTab === 'genre'}
-          onclick={() => activeTab = 'genre'}
-        >Genre</button>
-        <button
-          role="tab"
-          aria-selected={activeTab === 'search'}
-          class="tab-btn"
-          class:active={activeTab === 'search'}
-          onclick={() => activeTab = 'search'}
-        >Search</button>
-      </div>
+      <!-- Playlist picker: search input + unified grid region -->
+      <div class="playlist-picker">
+        <div class="search-bar">
+          <input
+            class="search-input"
+            type="text"
+            role="searchbox"
+            placeholder="Search playlists…"
+            aria-label="Search playlists"
+            inputmode="search"
+            enterkeyhint="search"
+            autocomplete="off"
+            bind:value={searchQuery}
+          />
+          {#if searchQuery !== ''}
+            <button
+              class="clear-btn"
+              type="button"
+              aria-label="Clear search"
+              onclick={clearSearch}
+            >✕</button>
+          {/if}
+        </div>
 
-      <!-- Genre tab -->
-      {#if activeTab === 'genre'}
-        <div class="tab-panel" role="tabpanel">
-          {#if presetsLoading}
+        {#if selectedPlaylist && !selectionVisibleInCurrentList}
+          <div class="selected-chip">
+            <span class="selected-chip-label">Selected: {selectedPlaylist.name}</span>
+            <button
+              class="selected-chip-clear"
+              type="button"
+              aria-label="Clear selection"
+              onclick={clearSelection}
+            >✕</button>
+          </div>
+        {/if}
+
+        <div
+          class="playlist-region"
+          role="region"
+          aria-live="polite"
+          bind:this={playlistRegionEl}
+        >
+          {#if isSearching}
+            {#if searchLoading}
+              <p class="status-msg">Searching…</p>
+            {:else if searchError}
+              <p class="error-msg">{searchError}</p>
+            {:else if searchResults.length === 0}
+              <p class="status-msg">No playlists found for "{searchQuery.trim()}"</p>
+            {:else}
+              <div class="preset-grid">
+                {#each searchResults as result (result.playlistId)}
+                  <button
+                    class="preset-card"
+                    class:selected={selectedPlaylist?.id === result.playlistId}
+                    aria-pressed={selectedPlaylist?.id === result.playlistId}
+                    onclick={() => selectResult(result)}
+                  >
+                    <span class="preset-name">{result.name}</span>
+                    <span class="preset-desc">{result.owner} · {result.trackCount} tracks</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          {:else if presetsLoading}
             <p class="status-msg">Loading genres…</p>
           {:else if presetsError}
             <p class="error-msg">{presetsError}</p>
@@ -231,8 +316,9 @@
               {#each presets as preset (preset.playlistId)}
                 <button
                   class="preset-card"
-                  class:selected={selectedPresetId === preset.playlistId}
-                  onclick={() => selectedPresetId = preset.playlistId}
+                  class:selected={selectedPlaylist?.id === preset.playlistId}
+                  aria-pressed={selectedPlaylist?.id === preset.playlistId}
+                  onclick={() => selectPreset(preset)}
                 >
                   <span class="preset-name">{preset.name}</span>
                   <span class="preset-desc">{preset.description}</span>
@@ -241,43 +327,7 @@
             </div>
           {/if}
         </div>
-      {/if}
-
-      <!-- Search tab -->
-      {#if activeTab === 'search'}
-        <div class="tab-panel" role="tabpanel">
-          <form class="search-form" onsubmit={handleSearch}>
-            <input
-              class="search-input"
-              type="text"
-              placeholder="Search playlists…"
-              bind:value={searchQuery}
-              aria-label="Search playlists"
-            />
-            <button class="search-btn" type="submit" disabled={searchLoading}>
-              {searchLoading ? 'Searching…' : 'Search'}
-            </button>
-          </form>
-          {#if searchError}
-            <p class="error-msg">{searchError}</p>
-          {:else if searchResults.length > 0}
-            <ul class="search-results">
-              {#each searchResults as result (result.playlistId)}
-                <li>
-                  <button
-                    class="result-card"
-                    class:selected={selectedPlaylistId === result.playlistId}
-                    onclick={() => selectedPlaylistId = result.playlistId}
-                  >
-                    <span class="result-name">{result.name}</span>
-                    <span class="result-meta">{result.owner} · {result.trackCount} tracks</span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-        </div>
-      {/if}
+      </div>
 
       <!-- Clip duration pills -->
       <section class="option-section">
@@ -403,33 +453,87 @@
     font-family: inherit;
   }
 
-  /* Tab bar */
-  .tab-bar {
+  /* Playlist picker */
+  .playlist-picker {
     display: flex;
-    border-bottom: 1px solid #333;
+    flex-direction: column;
+    gap: 0.75rem;
   }
 
-  .tab-btn {
-    flex: 1;
-    padding: 0.75rem;
+  .search-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .clear-btn {
+    position: absolute;
+    right: 0.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    min-width: 44px;
     min-height: 44px;
     background: none;
     border: none;
     color: #aaa;
     font-size: 1rem;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .tab-btn.active {
+  .clear-btn:hover {
     color: #fff;
-    border-bottom-color: #1db954;
+    background: #333;
   }
 
-  /* Tab panels */
-  .tab-panel {
-    min-height: 200px;
+  .selected-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.75rem;
+    background: #2a2a2a;
+    border: 1px solid #1db954;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 0.85rem;
+    align-self: flex-start;
+    max-width: 100%;
+  }
+
+  .selected-chip-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selected-chip-clear {
+    min-width: 28px;
+    min-height: 28px;
+    background: none;
+    border: none;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+
+  .selected-chip-clear:hover {
+    color: #fff;
+    background: #333;
+  }
+
+  .playlist-region {
+    min-height: 280px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 0.25rem;
   }
 
   .status-msg {
@@ -441,6 +545,7 @@
   .error-msg {
     color: #e05252;
     padding: 1rem 0;
+    text-align: center;
   }
 
   /* Genre preset cards */
@@ -472,23 +577,27 @@
   .preset-name {
     font-weight: 600;
     font-size: 0.95rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
   }
 
   .preset-desc {
     font-size: 0.8rem;
     opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  /* Search */
-  .search-form {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
+  /* Search input */
   .search-input {
-    flex: 1;
-    padding: 0.6rem 0.75rem;
+    width: 100%;
+    padding: 0.6rem 3rem 0.6rem 0.75rem;
     min-height: 44px;
     background: #2a2a2a;
     border: 1px solid #444;
@@ -500,60 +609,6 @@
 
   .search-input::placeholder {
     color: #888;
-  }
-
-  .search-btn {
-    padding: 0.6rem 1rem;
-    min-height: 44px;
-    min-width: 80px;
-    background: #333;
-    border: 1px solid #555;
-    border-radius: 6px;
-    color: #fff;
-    cursor: pointer;
-    font-size: 0.9rem;
-  }
-
-  .search-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .search-results {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .result-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0.75rem;
-    min-height: 60px;
-    width: 100%;
-    background: #2a2a2a;
-    border: 2px solid transparent;
-    border-radius: 8px;
-    color: #fff;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .result-card.selected {
-    background: #1db954;
-    border-color: #1db954;
-  }
-
-  .result-name {
-    font-weight: 600;
-    font-size: 0.95rem;
-  }
-
-  .result-meta {
-    font-size: 0.8rem;
-    opacity: 0.75;
   }
 
   /* Options */
