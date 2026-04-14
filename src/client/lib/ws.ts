@@ -7,7 +7,7 @@ export function determineInitialPage(
   me: MeResponse | null,
   pathname: string
 ): { page: Page; prefillCode?: string; roomCode?: string } {
-  const roomMatch = pathname.match(/^\/room\/([A-Za-z]{4})$/)
+  const roomMatch = pathname.match(/^\/([A-HJ-NP-Za-hj-np-z]{4})$/)
   if (roomMatch) {
     const code = sanitizeCode(roomMatch[1])
     if (me) return { page: 'lobby', roomCode: code }

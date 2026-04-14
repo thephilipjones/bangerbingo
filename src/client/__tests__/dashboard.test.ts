@@ -24,20 +24,20 @@ describe('determineInitialPage', () => {
   })
 
   it('routes to lobby with roomCode when authenticated and on a room URL (reload/wakeup persistence)', () => {
-    const result = determineInitialPage(user, '/room/ABCD')
+    const result = determineInitialPage(user, '/ABCD')
     expect(result.page).toBe('lobby')
     expect(result.roomCode).toBe('ABCD')
     expect(result.prefillCode).toBeUndefined()
   })
 
   it('routes to join with prefillCode when unauthenticated and on a room URL', () => {
-    const result = determineInitialPage(null, '/room/ABCD')
+    const result = determineInitialPage(null, '/ABCD')
     expect(result.page).toBe('join')
     expect(result.prefillCode).toBe('ABCD')
   })
 
   it('sanitizes the room code extracted from the URL', () => {
-    const result = determineInitialPage(null, '/room/abcd')
+    const result = determineInitialPage(null, '/abcd')
     expect(result.prefillCode).toBe('ABCD')
   })
 })

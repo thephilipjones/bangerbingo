@@ -128,7 +128,7 @@ describe('POST /api/rooms', () => {
     expect(body.code).toHaveLength(4)
     expect(/^[A-Z]+$/.test(body.code)).toBe(true)
     expect(/[OI]/.test(body.code)).toBe(false)
-    expect(body.url).toBe(`/room/${body.code}`)
+    expect(body.url).toBe(`/${body.code}`)
     expect(typeof body.created_at).toBe('number')
   })
 })

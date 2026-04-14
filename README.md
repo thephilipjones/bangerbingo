@@ -107,7 +107,7 @@ After the one-time Getting Started above, day-to-day dev is just `npm run dev`. 
 You can run a full session against your local dev server from a single machine:
 
 - Host: open `http://127.0.0.1:5173/` in **Chrome**, click **Connect Spotify**, create a room.
-- Guests: open `http://127.0.0.1:5173/room/<room-code>` in **Firefox** and **Safari** (different browsers, not tabs — each browser gets its own session cookie and WS connection).
+- Guests: open `http://127.0.0.1:5173/<room-code>` in **Firefox** and **Safari** (different browsers, not tabs — each browser gets its own session cookie and WS connection).
 
 This exercises host playback + guest card marking + real-time WS events end-to-end without any deploy.
 
@@ -116,7 +116,7 @@ This exercises host playback + guest card marking + real-time WS events end-to-e
 With your Macbook and phone on the same Tailscale tailnet, you can join a room from your phone against your local dev server:
 
 1. From your Macbook, grab your tailnet hostname (e.g. `my-macbook.tail1234.ts.net`) via `tailscale status`.
-2. On your phone, open `http://<macbook-tailnet-hostname>:5173/room/<room-code>`.
+2. On your phone, open `http://<macbook-tailnet-hostname>:5173/<room-code>`.
 3. Join with a name, receive a card, tap tiles — events should roundtrip via WS to the host's browser in real time.
 
 No extra tunnel/proxy setup is required — Vite (`server.host: true`) and Hono (`hostname: '0.0.0.0'`) already listen on all interfaces.

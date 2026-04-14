@@ -38,7 +38,7 @@
 
   async function handleCopyUrl() {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/room/${code}`)
+      await navigator.clipboard.writeText(`${window.location.origin}/${code}`)
       copiedUrl = true
       setTimeout(() => (copiedUrl = false), 1500)
     } catch {

@@ -133,12 +133,16 @@ function advanceToNext(roomCode: string, roomState: RoomState): boolean {
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ' // 24 chars: A-Z minus O and I
 
+const RESERVED_CODES = new Set(['AUTH', 'HELP', 'PLAY', 'GAME', 'CHAT', 'TEST'])
+
 export function generateRoomCode(): string {
-  let code = ''
-  for (let i = 0; i < 4; i++) {
-    code += ALPHABET[crypto.randomInt(0, ALPHABET.length)]
+  for (;;) {
+    let code = ''
+    for (let i = 0; i < 4; i++) {
+      code += ALPHABET[crypto.randomInt(0, ALPHABET.length)]
+    }
+    if (!RESERVED_CODES.has(code)) return code
   }
-  return code
 }
 
 export function createRoomWithRetry(
@@ -174,7 +178,7 @@ roomsRouter.post('/rooms', requireAuth, (ctx) => {
   const host = ctx.var.host
   try {
     const room = createRoomWithRetry(host.user_id)
-    return ctx.json({ code: room.code, url: `/room/${room.code}`, created_at: room.created_at, host_name: room.host_name })
+    return ctx.json({ code: room.code, url: `/${room.code}`, created_at: room.created_at, host_name: room.host_name })
   } catch (err) {
     return ctx.json({ error: 'Failed to generate unique room code' }, 500)
   }

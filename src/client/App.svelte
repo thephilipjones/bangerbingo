@@ -38,7 +38,7 @@
   function handleJoined(name: string, _role: string, players: string[], hostName: string | null, code: string, ws: WebSocket, pending: MessageEvent[]) {
     guestName = name
     guestRoomCode = code
-    history.pushState(null, '', `/room/${code}`)
+    history.pushState(null, '', `/${code}`)
     guestWs = ws
     guestPlayers = players
     guestHostName = hostName
@@ -48,7 +48,7 @@
 
   function handleEnterLobby(code: string) {
     currentRoomCode = code
-    history.pushState(null, '', `/room/${code}`)
+    history.pushState(null, '', `/${code}`)
     page = 'lobby'
   }
 
