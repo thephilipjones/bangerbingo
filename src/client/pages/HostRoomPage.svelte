@@ -28,7 +28,9 @@
   let authDegraded = $state(false)
   let showControls = $state(false)
   let toastVisible = $state(false)
+  let playbackError = $state(false)
   let undoTimer: ReturnType<typeof setTimeout> | undefined
+  let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
   let sessionEnded = false
   let ws: WebSocket
   let player: Spotify.Player | undefined
@@ -48,12 +50,22 @@
     onSessionEnded()
   }
 
+  function showPlaybackError() {
+    playbackError = true
+    clearTimeout(playbackErrorTimer)
+    playbackErrorTimer = setTimeout(() => { playbackError = false }, 3000)
+  }
+
   function handlePlayPause() {
     fetch(`/api/rooms/${code}/round/${isPlaying ? 'pause' : 'play'}`, { method: 'POST' })
+      .then(res => { if (!res.ok) showPlaybackError() })
+      .catch(() => showPlaybackError())
   }
 
   function handleNext() {
     fetch(`/api/rooms/${code}/round/next`, { method: 'POST' })
+      .then(res => { if (!res.ok) showPlaybackError() })
+      .catch(() => showPlaybackError())
   }
 
   function handleEndRound() {
@@ -177,6 +189,7 @@
   onDestroy(() => {
     game.cleanup()
     clearTimeout(undoTimer)
+    clearTimeout(playbackErrorTimer)
     ws?.close()
     player?.disconnect()
     if (sdkScript && document.head.contains(sdkScript)) {
@@ -192,6 +205,10 @@
 
 {#if wsError}
   <div class="error-banner" role="alert">Connection lost — please refresh the page.</div>
+{/if}
+
+{#if playbackError}
+  <div class="error-banner" role="alert">Playback control failed — check Spotify is active.</div>
 {/if}
 
 {#if sdkFailed}

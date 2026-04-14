@@ -21,6 +21,7 @@
   } = $props()
 
   let hostDisconnected = $state(false)
+  let sessionEnded = $state(false)
   let statusLine = $state('Waiting for the host to start a round...')
   let marksKey = ''
 
@@ -60,7 +61,8 @@
       game.resetRound()
       statusLine = 'Waiting for the host to start a round...'
     } else if (data.type === 'session:end') {
-      onLeave?.()
+      sessionEnded = true
+      setTimeout(() => onLeave?.(), 2500)
     } else if (data.type === 'host:disconnected') {
       hostDisconnected = true
     } else if (data.type === 'host:reconnected') {
@@ -82,6 +84,12 @@
     ws.close()
   })
 </script>
+
+{#if sessionEnded}
+  <div class="session-ended-banner" role="status">
+    This session has ended.
+  </div>
+{/if}
 
 {#if hostDisconnected}
   <div class="host-disconnected-banner" role="status">
@@ -132,6 +140,20 @@
 </main>
 
 <style>
+  .session-ended-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #555;
+    color: #fff;
+    padding: 8px 16px;
+    text-align: center;
+    z-index: 100;
+    font-size: 14px;
+    font-family: sans-serif;
+  }
+
   .host-disconnected-banner {
     position: fixed;
     top: 0;
