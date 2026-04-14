@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: code review of 8-2-session-statistics (2026-04-14)
+
+- **Display-name collision double-counts wins on both rows** — when a guest joins with the same name as `host_name`, a single win increments `winsByName[name]` once but `PlayerList` renders BOTH the host row and the guest row with `×N` and `Last round ✓`. Root cause: project-wide identity-by-display-name pattern. Spec Dev Notes explicitly defer the player-ID refactor. (src/client/components/PlayerList.svelte, src/server/rooms.ts)
+
 ## Deferred from: code review of 8-1-win-moment-hold-and-audio-presets (2026-04-14)
 
 - **`selfName` matched as raw display name, not stable player ID** — `WinOverlay` compares `selfName === winnerName` using the raw user-entered name. Pre-existing project-wide pattern: identity by name (with case/whitespace variance) runs through join/claim/tile-marking flows. Fix needs a dedicated pass, not a one-file patch.

@@ -502,7 +502,16 @@ roomsRouter.post('/rooms/:code/round/end', requireAuth, (ctx) => {
 
   clearRoundTimers(round)
   roomState!.currentRound = undefined
+
+  roomState!.sessionStats.lastRoundWinner = null
+
   broadcast(code, { type: 'round:end' })
+  broadcast(code, {
+    type: 'stats:updated',
+    winsByName: { ...roomState!.sessionStats.winsByName },
+    lastRoundWinner: roomState!.sessionStats.lastRoundWinner,
+  })
+
   deleteActiveRoom(code)
 
   return ctx.json({})

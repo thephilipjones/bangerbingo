@@ -88,7 +88,8 @@ export function createGameState({
   let winsByName = $state<Record<string, number>>({ ...initialWinsByName })
   let lastRoundWinner = $state<string | null>(initialLastRoundWinner)
   let highestRoundNumber = $state(0)
-  const showStats = $derived(highestRoundNumber >= 2)
+  let hasStats = $state(Object.keys(initialWinsByName).length > 0 || initialLastRoundWinner !== null)
+  const showStats = $derived(hasStats && highestRoundNumber >= 2)
 
   function handleTileClick(index: number) {
     const tile = tiles[index]
@@ -152,6 +153,7 @@ export function createGameState({
     } else if (data.type === 'stats:updated') {
       winsByName = { ...((data.winsByName as Record<string, number> | undefined) ?? {}) }
       lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
+      hasStats = true
     } else if (data.type === 'song:start') {
       if (roundConfig) {
         tiles = applyMask(tiles, data.trackId as string, roundConfig.titleRevealDelay, data.songIndex as number)
@@ -227,9 +229,15 @@ export function createGameState({
     set players(v: string[]) { players = v },
     get playerCount() { return playerCount },
     get winsByName() { return winsByName },
-    set winsByName(v: Record<string, number>) { winsByName = v },
+    set winsByName(v: Record<string, number>) {
+      winsByName = v
+      if (Object.keys(v).length > 0) hasStats = true
+    },
     get lastRoundWinner() { return lastRoundWinner },
-    set lastRoundWinner(v: string | null) { lastRoundWinner = v },
+    set lastRoundWinner(v: string | null) {
+      lastRoundWinner = v
+      if (v !== null) hasStats = true
+    },
     get showStats() { return showStats },
     handleTileClick,
     handleBingoClick,

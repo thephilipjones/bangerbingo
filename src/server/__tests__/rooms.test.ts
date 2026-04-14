@@ -1321,9 +1321,38 @@ describe('POST /api/rooms/:code/round/end', () => {
     expect(res.status).toBe(200)
 
     expect(roomState.currentRound).toBeUndefined()
-    expect(sent).toHaveLength(1)
+    expect(sent).toHaveLength(2)
     const msg = JSON.parse(sent[0])
     expect(msg.type).toBe('round:end')
+  })
+
+  it('clears lastRoundWinner and broadcasts stats:updated after round:end', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    // Pre-seed stats from a prior winning round
+    roomState.sessionStats.winsByName['Alice'] = 1
+    roomState.sessionStats.lastRoundWinner = 'Alice'
+    seedActiveRound()
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/end', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    expect(sent).toHaveLength(2)
+    const first = JSON.parse(sent[0])
+    const second = JSON.parse(sent[1])
+    expect(first.type).toBe('round:end')
+    expect(second.type).toBe('stats:updated')
+    expect(second.winsByName).toEqual({ Alice: 1 })
+    expect(second.lastRoundWinner).toBeNull()
+    expect(roomState.sessionStats.lastRoundWinner).toBeNull()
+    expect(roomState.sessionStats.winsByName).toEqual({ Alice: 1 })
   })
 
   it('returns 403 for non-owner host', async () => {

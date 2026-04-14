@@ -1,6 +1,6 @@
 # Story 8.2: Session Statistics
 
-Status: review
+Status: done
 
 ## Story
 
@@ -166,6 +166,12 @@ The win-detection path already exists at [rooms.ts:511-576](src/server/rooms.ts#
   - [x] Update `highestRoundNumber` from every `round:start` via `Math.max`.
   - [x] Add `showStats: boolean = false` prop to [PlayerList.svelte](src/client/components/PlayerList.svelte); gate both indicators behind it.
 
+### Review Findings
+
+- [x] [Review][Patch] Clear `lastRoundWinner` on `/round/end` when the round ends without a winner [src/server/rooms.ts] — applied: `/round/end` handler sets `sessionStats.lastRoundWinner = null` and broadcasts `stats:updated` after `round:end`. Existing `round:end` test updated to `sent.length === 2`; new test asserts `lastRoundWinner` cleared and `winsByName` preserved.
+- [x] [Review][Patch] Add client-side `hasStats` flag so the stats gate closes after rehydrate [src/client/lib/gameState.svelte.ts] — applied: `hasStats` initializes from non-empty `initialWinsByName`/`initialLastRoundWinner`, flips to true on any `stats:updated`, and is also flipped by the `winsByName`/`lastRoundWinner` setters when assigned a non-empty value (host seed path). `showStats = $derived(hasStats && highestRoundNumber >= 2)`.
+- [x] [Review][Defer] Display-name collision: guest named same as host double-counts wins on both rows [src/client/components/PlayerList.svelte:33-56] — deferred, pre-existing. If a guest joins with the same name as `host_name`, `winsByName[name]` increments once but the PlayerList renders BOTH the host row and the guest row with the same `×N` and `Last round ✓`. Root cause is the project-wide identity-by-display-name pattern, which Dev Notes explicitly defers ("No player-ID refactor — identity-by-display-name is the established project pattern; a refactor is deferred").
+
 - [ ] **Manual verification** (Philip)
   - [ ] **One-off game**: round 1 only → NO counts, NO `Last round ✓` anywhere.
   - [ ] Round 2 starts → round 1's winner immediately shows `×1` + `Last round ✓`.
@@ -262,3 +268,4 @@ claude-opus-4-6 (Claude Code)
 ### Change Log
 
 - 2026-04-14 — Story 8-2 implemented. Server-side session stats (`SessionStats` type, `stats:updated` broadcast, `session:connect` seed) plus client-side `PlayerList` win counts + "Last round ✓" pill gated behind `highestRoundNumber >= 2`. Host wins counted identically to guest wins via display-name keying. No SQLite persistence; stats reset with the room.
+- 2026-04-14 — Code review findings applied: (1) `/round/end` now clears `sessionStats.lastRoundWinner` and broadcasts `stats:updated`, preventing stale "Last round ✓" pill after a no-winner round; (2) client `showStats` gate strengthened with a `hasStats` flag so post-rehydrate reconnects no longer flip the PlayerList into misleading "all zeros" stats mode. One guest-host display-name-collision finding deferred (identity-by-display-name is a project-wide pattern, player-ID refactor explicitly deferred).

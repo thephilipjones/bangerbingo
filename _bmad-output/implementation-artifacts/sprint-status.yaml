@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-14 # story 8-1 done (review patches applied, default flipped to 'minimal')
+last_updated: 2026-04-14 # story 8-2 done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -104,7 +104,7 @@ development_status:
   # Epic 8: Relaxed Play
   epic-8: in-progress
   8-1-win-moment-hold-and-audio-presets: done
-  8-2-session-statistics: backlog
+  8-2-session-statistics: done
   8-3-continuous-mode: backlog
   8-4-casual-mode-permission-and-player-toggle: backlog
   8-5-casual-mode-auto-mark-engine: backlog
