@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review of 8-1-win-moment-hold-and-audio-presets (2026-04-14)
+
+- **`selfName` matched as raw display name, not stable player ID** — `WinOverlay` compares `selfName === winnerName` using the raw user-entered name. Pre-existing project-wide pattern: identity by name (with case/whitespace variance) runs through join/claim/tile-marking flows. Fix needs a dedicated pass, not a one-file patch.
+- **POST `/api/rooms/:code/round` with `audioPreset: null` coalesces to `'hype'`** — `body.audioPreset ?? 'hype'` treats explicit `null` as missing, inconsistent with the typeof-based handling of other fields. Low severity; no known client sends `null`.
+- **No negative test for missing `audioPreset` field on start-round POST** — the default-to-`'hype'` path is only exercised indirectly via `validPayload`; no explicit assertion locks in that a body without `audioPreset` yields a `round:start` broadcast with `audioPreset: 'hype'`. Add when next touching `rooms.test.ts`.
+
 ## Deferred from: code review of 6-6-gitea-actions-cicd-branching-and-smoke-test (2026-04-13)
 
 - **CI doesn't test the same image that deploys** — `docker compose up --build` rebuilds from source on the server; the image that passed CI tests is discarded. By-design for this stack; acceptable until image registry is introduced.
