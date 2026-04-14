@@ -63,11 +63,14 @@ export async function disconnectSpotify(): Promise<void> {
   if (!res.ok) throw new Error(`POST /api/account/spotify/disconnect failed: ${res.status}`)
 }
 
+export type AudioPreset = 'hype' | 'deadpan' | 'minimal'
+
 export interface StartRoundPayload {
   playlistId: string
   clipDuration: number | 'full'
   titleRevealDelay: number | null
   hostName?: string
+  audioPreset: AudioPreset
 }
 
 export interface StartRoundResponse {
@@ -75,6 +78,7 @@ export interface StartRoundResponse {
   playlistId: string
   clipDuration: number | 'full'
   titleRevealDelay: number | null
+  audioPreset: AudioPreset
 }
 
 export async function startRound(code: string, payload: StartRoundPayload): Promise<StartRoundResponse> {

@@ -1,7 +1,7 @@
 // Pure helpers extracted from RoundConfigOverlay so the validation + payload-building
 // logic can be unit-tested without a DOM. The overlay component imports and uses these.
 
-import type { StartRoundPayload } from './api.ts'
+import type { StartRoundPayload, AudioPreset } from './api.ts'
 
 export interface HostNameValidation {
   trimmed: string | null
@@ -24,11 +24,13 @@ export function buildStartRoundPayload(
   clipDuration: number | 'full',
   titleRevealDelay: number | null,
   hostName: string | null,
+  audioPreset: AudioPreset,
 ): StartRoundPayload {
   return {
     playlistId,
     clipDuration,
     titleRevealDelay,
+    audioPreset,
     ...(hostName ? { hostName } : {}),
   }
 }

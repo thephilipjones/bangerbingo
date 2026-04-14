@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import type { AudioPreset } from '../lib/api.ts'
 
   let {
     winnerName,
@@ -7,42 +8,73 @@
     isHost,
     onStartNextRound,
     onDismiss,
+    selfName = null,
+    audioPreset = 'minimal',
   }: {
     winnerName: string
     winningSongs: Array<{ title: string; artist: string }>
     isHost: boolean
     onStartNextRound: () => void
     onDismiss: () => void
+    selfName?: string | null
+    audioPreset?: AudioPreset
   } = $props()
 
   let showCtas = $state(false)
+  let showGuestDismiss = $state(false)
   let ctaTimer: ReturnType<typeof setTimeout> | undefined
-  let dismissTimer: ReturnType<typeof setTimeout> | undefined
+  let guestTimer: ReturnType<typeof setTimeout> | undefined
+
+  // Normalize any stray/unknown value to 'minimal' so a missing union member
+  // can't render an empty overlay.
+  const effectivePreset = $derived<AudioPreset>(
+    audioPreset === 'hype' || audioPreset === 'deadpan' ? audioPreset : 'minimal'
+  )
+  const isWinner = $derived(!isHost && selfName !== null && selfName === winnerName)
+  const isOtherGuest = $derived(!isHost && !isWinner)
 
   onMount(() => {
     if (isHost) {
       ctaTimer = setTimeout(() => { showCtas = true }, 1500)
+    } else if (isWinner) {
+      showGuestDismiss = true
     } else {
-      dismissTimer = setTimeout(() => { onDismiss() }, 5000)
+      guestTimer = setTimeout(() => { showGuestDismiss = true }, 2000)
     }
   })
 
   onDestroy(() => {
     clearTimeout(ctaTimer)
-    clearTimeout(dismissTimer)
+    clearTimeout(guestTimer)
   })
 </script>
 
-<div class="win-overlay" role="dialog" aria-modal="true" aria-label="Bingo winner">
-  <div class="confetti-container" aria-hidden="true">
-    {#each [0,1,2,3,4,5,6,7,8,9,10,11] as i}
-      <span class="confetti-piece" style="--delay: {i * 0.15}s; --hue: {(i * 30) % 360}deg; --left: {8 + (i * 7.5) % 84}%; --top: {-10 + (i % 3) * 5}%"></span>
-    {/each}
-  </div>
+<div
+  class="win-overlay"
+  class:preset-minimal={effectivePreset === 'minimal'}
+  role="dialog"
+  aria-modal="true"
+  aria-label="Bingo winner"
+>
+  {#if effectivePreset === 'hype'}
+    <div class="confetti-container" aria-hidden="true">
+      {#each [0,1,2,3,4,5,6,7,8,9,10,11] as i}
+        <span class="confetti-piece" style="--delay: {i * 0.15}s; --hue: {(i * 30) % 360}deg; --left: {8 + (i * 7.5) % 84}%; --top: {-10 + (i % 3) * 5}%"></span>
+      {/each}
+    </div>
+  {/if}
 
   <div class="content">
-    <p class="bingo-label">BINGO!</p>
-    <p class="winner-name">{winnerName} wins!</p>
+    {#if effectivePreset === 'hype'}
+      <p class="bingo-label">BINGO!</p>
+      <p class="winner-name">{winnerName} wins!</p>
+    {:else if effectivePreset === 'deadpan'}
+      <p class="bingo-label bingo-label--deadpan">...bingo.</p>
+      <p class="winner-name">{winnerName} wins.</p>
+    {:else}
+      <p class="winner-name winner-name--minimal">{winnerName}</p>
+      <p class="minimal-subtitle">Won this round</p>
+    {/if}
 
     {#if winningSongs.length > 0}
       <ul class="winning-songs">
@@ -56,6 +88,10 @@
       <div class="ctas">
         <button class="btn-primary" onclick={onStartNextRound}>Start Next Round</button>
         <button class="btn-secondary" onclick={onDismiss}>Dismiss</button>
+      </div>
+    {:else if !isHost && showGuestDismiss}
+      <div class="ctas">
+        <button class="btn-secondary" onclick={onDismiss}>{isWinner ? '🎉 Dismiss' : 'Dismiss'}</button>
       </div>
     {/if}
   </div>
@@ -72,6 +108,10 @@
     justify-content: center;
     font-family: sans-serif;
     color: #fff;
+  }
+
+  .win-overlay.preset-minimal {
+    background: rgba(0, 0, 0, 0.85);
   }
 
   .confetti-container {
@@ -113,9 +153,29 @@
     margin-bottom: 8px;
   }
 
+  .bingo-label--deadpan {
+    font-size: 32px;
+    font-weight: 400;
+    color: #aaa;
+    letter-spacing: 0;
+  }
+
   .winner-name {
     font-size: 24px;
     font-weight: 700;
+    margin-bottom: 24px;
+  }
+
+  .winner-name--minimal {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+
+  .minimal-subtitle {
+    font-size: 14px;
+    color: #666;
     margin-bottom: 24px;
   }
 

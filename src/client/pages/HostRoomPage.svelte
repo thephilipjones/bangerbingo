@@ -231,6 +231,8 @@
     isHost={true}
     onStartNextRound={onRoundEnded}
     onDismiss={() => { game.winData = null }}
+    audioPreset={game.audioPreset}
+    selfName={null}
   />
 {/if}
 

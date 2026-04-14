@@ -1,3 +1,4 @@
+import type { AudioPreset } from './api.ts'
 import { computePlayerCount } from './waitingRoom.ts'
 import {
   initTiles,
@@ -61,6 +62,7 @@ export function createGameState({
 }) {
   let tiles = $state<ClientTile[]>([])
   let roundConfig = $state<{ titleRevealDelay: TitleRevealDelay } | null>(null)
+  let audioPreset = $state<AudioPreset>('minimal')
   let winData = $state<WinData | null>(null)
   let isClaiming = $state(false)
   let songHistory = $state<HistoryEntry[]>([])
@@ -129,6 +131,7 @@ export function createGameState({
       nopeIndex = null
       const card = data.card as Tile[]
       roundConfig = { titleRevealDelay: data.titleRevealDelay as TitleRevealDelay }
+      audioPreset = (data.audioPreset as AudioPreset | undefined) ?? 'minimal'
       winData = null
       isClaiming = false
       const rawHistory = (data.songHistory as HistoryEntry[] | undefined) ?? []
@@ -195,6 +198,7 @@ export function createGameState({
 
   return {
     get tiles() { return tiles },
+    get audioPreset() { return audioPreset },
     get winData() { return winData },
     set winData(v: WinData | null) { winData = v },
     get isClaiming() { return isClaiming },

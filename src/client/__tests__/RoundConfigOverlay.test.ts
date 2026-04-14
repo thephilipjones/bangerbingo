@@ -47,21 +47,23 @@ describe('validateHostName', () => {
 
 describe('buildStartRoundPayload', () => {
   it('includes hostName when present (name field was visible on first round)', () => {
-    const payload = buildStartRoundPayload('pl_abc', 30, 5, 'Sarah')
+    const payload = buildStartRoundPayload('pl_abc', 30, 5, 'Sarah', 'minimal')
     expect(payload).toEqual({
       playlistId: 'pl_abc',
       clipDuration: 30,
       titleRevealDelay: 5,
       hostName: 'Sarah',
+      audioPreset: 'minimal',
     })
   })
 
   it('omits hostName key entirely when null (name field was hidden)', () => {
-    const payload = buildStartRoundPayload('pl_abc', 'full', null, null)
+    const payload = buildStartRoundPayload('pl_abc', 'full', null, null, 'deadpan')
     expect(payload).toEqual({
       playlistId: 'pl_abc',
       clipDuration: 'full',
       titleRevealDelay: null,
+      audioPreset: 'deadpan',
     })
     expect('hostName' in payload).toBe(false)
   })
@@ -71,7 +73,7 @@ describe('buildStartRoundPayload', () => {
 
 // Mock the api module before importing the component under test.
 vi.mock('../lib/api.ts', () => ({
-  startRound: vi.fn().mockResolvedValue({ roundNumber: 1, playlistId: 'p', clipDuration: 30, titleRevealDelay: 5 }),
+  startRound: vi.fn().mockResolvedValue({ roundNumber: 1, playlistId: 'p', clipDuration: 30, titleRevealDelay: 5, audioPreset: 'minimal' }),
 }))
 
 // Stub /api/music/presets fetch so onMount doesn't swallow the component's setup.
@@ -118,7 +120,7 @@ describe('RoundConfigOverlay (DOM)', () => {
     const { default: RoundConfigOverlay } = await import('../components/RoundConfigOverlay.svelte')
     const api = await import('../lib/api.ts')
     const startRoundMock = vi.mocked(api.startRound)
-    startRoundMock.mockResolvedValue(undefined)
+    startRoundMock.mockResolvedValue({ roundNumber: 1, playlistId: 'p', clipDuration: 30, titleRevealDelay: 5, audioPreset: 'minimal' as const })
 
     const { getByRole, findByText } = render(RoundConfigOverlay, {
       code: 'ABCD',

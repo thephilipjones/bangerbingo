@@ -428,6 +428,42 @@ describe('POST /api/rooms/:code/round', () => {
     expect(body.clipDuration).toBe('full')
     expect(body.titleRevealDelay).toBeNull()
   })
+
+  it('returns 400 when audioPreset is invalid', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validPayload, audioPreset: 'blasting' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('Invalid audioPreset')
+  })
+
+  it('round:start broadcast includes audioPreset when valid preset provided', async () => {
+    seedHost()
+    await seedRoom()
+
+    const sent: string[] = []
+    const mockWs = { readyState: WebSocket.OPEN, send: (d: string) => { sent.push(d) } }
+    roomSockets.get('ABCD')!.host = mockWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validPayload, audioPreset: 'deadpan' }),
+    })
+    expect(res.status).toBe(200)
+
+    expect(sent).toHaveLength(1)
+    const msg = JSON.parse(sent[0]) as Record<string, unknown>
+    expect(msg.type).toBe('round:start')
+    expect(msg.audioPreset).toBe('deadpan')
+  })
 })
 
 // ── POST /api/rooms/:code/round — card generation (Story 4-3) ──────────────

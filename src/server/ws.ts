@@ -12,12 +12,14 @@ import { generateCard, type Tile } from './game/cards.ts'
 
 export type ClipDuration = 20 | 30 | 45 | 60 | 'full'
 export type TitleRevealDelay = 0 | 5 | 10 | 15 | null // null = never
+export type AudioPreset = 'hype' | 'deadpan' | 'minimal'
 
 export interface RoundConfig {
   playlistId: string
   clipDuration: ClipDuration
   titleRevealDelay: TitleRevealDelay
   roundNumber: number
+  audioPreset: AudioPreset
 }
 
 export interface SongHistoryEntry {
@@ -119,6 +121,14 @@ export function rehydrateRooms(): void {
       sdkDeviceId: snap.sdkDeviceId,
       currentRound: snap.currentRound ? {
         ...snap.currentRound,
+        config: {
+          ...snap.currentRound.config,
+          audioPreset: snap.currentRound.config?.audioPreset ?? 'minimal',
+        },
+        roundStartPayload: {
+          ...snap.currentRound.roundStartPayload,
+          audioPreset: snap.currentRound.roundStartPayload?.audioPreset ?? 'minimal',
+        },
         cards: new Map(Object.entries(snap.currentRound.cards)),
         paused: true,
         timers: {},

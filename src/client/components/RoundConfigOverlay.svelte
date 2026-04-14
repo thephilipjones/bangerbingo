@@ -6,7 +6,16 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { startRound } from '../lib/api.ts'
+  import type { AudioPreset } from '../lib/api.ts'
   import { validateHostName, buildStartRoundPayload } from '../lib/roundConfig.ts'
+
+  const VIBE_OPTIONS: { value: AudioPreset; label: string }[] = [
+    { value: 'hype', label: 'Hype' },
+    { value: 'deadpan', label: 'Deadpan' },
+    { value: 'minimal', label: 'Minimal' },
+  ]
+
+  let audioPreset = $state<AudioPreset>('minimal')
 
   let {
     code,
@@ -195,6 +204,7 @@
         clipDuration,
         titleRevealDelay,
         nameResult.trimmed,
+        audioPreset,
       )
       await startRound(code, payload)
       onStarted(nameResult.trimmed)
@@ -328,6 +338,21 @@
           {/if}
         </div>
       </div>
+
+      <!-- Vibe preset pills -->
+      <section class="option-section">
+        <h2 class="option-label">Vibe</h2>
+        <div class="pill-group" role="group" aria-label="Vibe preset">
+          {#each VIBE_OPTIONS as opt (opt.value)}
+            <button
+              class="pill"
+              class:selected={audioPreset === opt.value}
+              onclick={() => audioPreset = opt.value}
+              aria-pressed={audioPreset === opt.value}
+            >{opt.label}</button>
+          {/each}
+        </div>
+      </section>
 
       <!-- Clip duration pills -->
       <section class="option-section">

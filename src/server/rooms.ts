@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 import WebSocket from 'ws'
 import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
-import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
+import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type AudioPreset, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
 import { buildPool, generateCards, shuffle } from './game/cards.ts'
@@ -268,6 +268,7 @@ roomsRouter.delete('/rooms/:code', requireAuth, (ctx) => {
 
 const VALID_CLIP_DURATIONS: ClipDuration[] = [20, 30, 45, 60, 'full']
 const VALID_TITLE_REVEAL_DELAYS: TitleRevealDelay[] = [0, 5, 10, 15, null]
+const VALID_AUDIO_PRESETS: AudioPreset[] = ['hype', 'deadpan', 'minimal']
 
 roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   let host = ctx.var.host
@@ -281,6 +282,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   if (!body) return ctx.json({ message: 'Invalid request body' }, 400)
 
   const { playlistId, clipDuration, titleRevealDelay, hostName } = body
+  const audioPreset: AudioPreset = body.audioPreset ?? 'minimal'
 
   if (!playlistId || typeof playlistId !== 'string' || !playlistId.trim())
     return ctx.json({ message: 'playlistId is required' }, 400)
@@ -288,6 +290,8 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
     return ctx.json({ message: 'Invalid clipDuration' }, 400)
   if (!VALID_TITLE_REVEAL_DELAYS.includes(titleRevealDelay))
     return ctx.json({ message: 'Invalid titleRevealDelay' }, 400)
+  if (!VALID_AUDIO_PRESETS.includes(audioPreset))
+    return ctx.json({ message: 'Invalid audioPreset' }, 400)
 
   // hostName: capture-once per room, optional.
   // If room.host_name is already set, ignore the field entirely (no validation, no overwrite).
@@ -311,7 +315,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
       ? roomState.pendingRound.roundNumber + 1
       : 1
 
-  const roundConfig: RoundConfig = { playlistId, clipDuration, titleRevealDelay, roundNumber }
+  const roundConfig: RoundConfig = { playlistId, clipDuration, titleRevealDelay, roundNumber, audioPreset }
 
   const freshHost = await withFreshToken(host)
   if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
@@ -349,6 +353,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
     playlist,
     clipDuration,
     titleRevealDelay,
+    audioPreset,
   }
 
   // Track session-played accumulation
