@@ -1,3 +1,6 @@
+# NOTE: NOT ACTIVE — companion to docker-compose.caddy.yml (cloudflared alternative).
+# See that file for activation instructions.
+#
 # Multi-domain Caddyfile for dual-stack deployment (staging + prod).
 #
 # Replace the placeholder domains below with your actual hostnames.

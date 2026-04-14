@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of 6-6-gitea-actions-cicd-branching-and-smoke-test (2026-04-13)
+
+- **CI doesn't test the same image that deploys** — `docker compose up --build` rebuilds from source on the server; the image that passed CI tests is discarded. By-design for this stack; acceptable until image registry is introduced.
+- **Staging deploy not pinned to tested commit SHA** — `git pull` runs in a separate job and may advance HEAD past the SHA that CI tested. Acceptable for staging.
+- **No approval gate on prod deploy** — any user with tag-push rights deploys immediately after CI passes. Personal project; deferred.
+- **SSH deploy key shared between staging and prod** — single key/host pair; compromise of one gives access to both. Deferred for personal project.
+- **`docker network create bangerbingo-net` is a manual prerequisite** — not automated in deploy scripts; only relevant if the Caddy dual-stack path is ever reactivated. Currently inactive (cloudflared handles ingress).
+
 ## Deferred from: code review of 6-3-https-wss-via-caddy-reverse-proxy (2026-04-06)
 
 - No firewall/NAT note for Let's Encrypt HTTP-01 — README notes domain must resolve but omits that port 80 must be publicly reachable; operators behind NAT will get silent ACME failures. Add a firewall prerequisite note to README.

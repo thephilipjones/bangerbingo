@@ -1,6 +1,6 @@
 # Story 6.6: Gitea Actions CI/CD, Branching Strategy & Smoke Test
 
-Status: review
+Status: in-progress
 
 ## Story
 
@@ -67,6 +67,17 @@ So that I can ship from anywhere and verify with a repeatable smoke test.
   - [x] 8-step happy path
   - [x] Restart-recovery variant (validates 6-4)
   - [x] Performance eyeball checkpoints (NFR1-3)
+
+### Review Findings
+
+- [x] [Review][Decision] Dead Caddy dual-stack code — retained with "NOT ACTIVE — cloudflared alternative" notes added to `docker-compose.caddy.yml`, `Caddyfile.multi`, and the commented-out block in `docker-compose.yml`
+- [ ] [Review][Patch] `github.ref_name` shell injection in prod deploy — tag name is interpolated directly into the remote shell script before quoting; a malicious tag (e.g. `; rm -rf /srv #`) would execute on the prod host [`.gitea/workflows/deploy-prod.yml`]
+- [ ] [Review][Patch] No concurrency control on deploy workflows — simultaneous pushes can trigger overlapping `docker compose up --build` runs on the same host, leaving the service in an indeterminate state [`.gitea/workflows/deploy-staging.yml`, `.gitea/workflows/deploy-prod.yml`]
+- [x] [Review][Defer] CI doesn't test the same image that deploys — `docker compose up --build` rebuilds from source on the server; the image that passed tests in CI is discarded [`.gitea/workflows/deploy-*.yml`] — deferred, by-design for this stack
+- [x] [Review][Defer] Staging deploy not pinned to tested commit SHA — `git pull` runs in a separate job/runner and may advance HEAD past the SHA that CI tested [`.gitea/workflows/deploy-staging.yml`] — deferred, acceptable for staging
+- [x] [Review][Defer] No approval gate on prod deploy — any user with tag-push rights deploys immediately after CI passes [`.gitea/workflows/deploy-prod.yml`] — deferred, personal project
+- [x] [Review][Defer] SSH deploy key shared between staging and prod — compromise of one gives access to both environments [`.gitea/workflows/deploy-*.yml`] — deferred, single host anyway
+- [x] [Review][Defer] `docker network create bangerbingo-net` not in deploy scripts — manual prerequisite step; relevant only if Caddy dual-stack is ever activated [`.gitea/workflows/deploy-*.yml`] — deferred, Caddy path not currently active
 
 ## Dev Notes
 

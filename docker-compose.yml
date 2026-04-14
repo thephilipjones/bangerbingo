@@ -53,9 +53,9 @@ volumes:
 # The -p flag gives each stack distinct volume prefixes (bb-staging_bangerbingo-data,
 # bb-prod_bangerbingo-data, etc.) so data is fully isolated without any compose changes.
 #
-# To connect app containers to the shared Caddy network, uncomment the networks
-# section below and remove the caddy service ports (Caddy from docker-compose.caddy.yml
-# owns ports 80/443 instead).
+# NOT ACTIVE (cloudflared alternative only — see docker-compose.caddy.yml).
+# To activate: uncomment the networks section below, remove caddy service ports above,
+# and start the shared Caddy stack first.
 #
 # networks:
 #   default:

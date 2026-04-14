@@ -1,14 +1,19 @@
+# NOTE: NOT ACTIVE — this file is an alternative to cloudflared tunnels.
+# Current production setup uses cloudflared (see Ansible role) which handles
+# TLS termination and routing directly to the app containers on localhost ports.
+# Use this file instead if you switch to a VPS with direct port 80/443 exposure.
+#
 # Shared Caddy reverse proxy for dual-stack (staging + prod) on one LXC.
 #
 # Prerequisites:
 #   docker network create bangerbingo-net
+#   (uncomment the networks block in docker-compose.yml for each app stack)
 #
 # Usage:
 #   docker compose -f docker-compose.caddy.yml up -d
 #
-# This Caddy instance routes by APP_DOMAIN host-matching to the correct
-# upstream app container. Both app stacks (bb-staging, bb-prod) must be
-# on the same bangerbingo-net network.
+# This Caddy instance routes by hostname to the correct upstream app container.
+# Both app stacks (bb-staging, bb-prod) must be on the bangerbingo-net network.
 
 services:
   caddy:
