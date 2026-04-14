@@ -256,6 +256,9 @@
         } else if (data.type === 'auth:restored') {
           authDegraded = false
           reinitSdk()
+        } else if (data.type === 'host:sdk-stale') {
+          console.warn('[host] server reports SDK device stale; reinitializing')
+          reinitSdk()
         } else if (data.type === 'player:joined' || data.type === 'player:left') {
           players = applyPlayerEvent(players, { type: data.type, name: data.name })
         }

@@ -1001,6 +1001,155 @@ describe('POST /api/rooms/:code/round/next', () => {
   })
 })
 
+// ── Spotify Web API device recovery (via /round/play + /round/pause) ──────
+
+describe('Spotify Web API device recovery', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+    // Real timers so vi.waitFor can poll for the fire-and-forget Spotify fetch.
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function collectSent(ws: { send: unknown }): Record<string, unknown>[] {
+    const mock = ws.send as unknown as { mock: { calls: unknown[][] } }
+    return mock.mock.calls.map((c) => JSON.parse(c[0] as string))
+  }
+
+  it('happy path — single play call, no transfer or stale broadcast', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'device_xyz'
+    seedActiveRound()
+    const hostWs = { readyState: 1, send: vi.fn() }
+    roomState.host = hostWs as unknown as WebSocket
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 200 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    const url = String(fetchSpy.mock.calls[0][0])
+    expect(url).toContain('/me/player/play')
+    expect(url).toContain('device_id=device_xyz')
+
+    const sent = collectSent(hostWs)
+    expect(sent.find((m) => m.type === 'song:start')).toBeDefined()
+    expect(sent.find((m) => m.type === 'host:sdk-stale')).toBeUndefined()
+    expect(roomState.sdkDeviceId).toBe('device_xyz')
+  })
+
+  it('404 recovery — transfers playback, retries once, keeps device', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'device_xyz'
+    seedActiveRound()
+    const hostWs = { readyState: 1, send: vi.fn() }
+    roomState.host = hostWs as unknown as WebSocket
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Device not found', { status: 404 }) as unknown as Response)
+      .mockResolvedValueOnce(new Response(null, { status: 204 }) as unknown as Response)
+      .mockResolvedValueOnce(new Response(null, { status: 200 }) as unknown as Response)
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(3)
+    })
+
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('/me/player/play')
+    const transferUrl = String(fetchSpy.mock.calls[1][0])
+    expect(transferUrl).toBe('https://api.spotify.com/v1/me/player')
+    const transferInit = fetchSpy.mock.calls[1][1] as RequestInit
+    expect(transferInit.method).toBe('PUT')
+    expect(transferInit.body).toBe(JSON.stringify({ device_ids: ['device_xyz'], play: false }))
+    expect(String(fetchSpy.mock.calls[2][0])).toContain('/me/player/play')
+
+    const sent = collectSent(hostWs)
+    expect(sent.find((m) => m.type === 'song:start')).toBeDefined()
+    expect(sent.find((m) => m.type === 'host:sdk-stale')).toBeUndefined()
+    expect(roomState.sdkDeviceId).toBe('device_xyz')
+  })
+
+  it('terminal failure — transfer also 404 clears device and broadcasts host:sdk-stale', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'device_xyz'
+    seedActiveRound()
+    const hostWs = { readyState: 1, send: vi.fn() }
+    roomState.host = hostWs as unknown as WebSocket
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('Device not found', { status: 404 }) as unknown as Response)
+      .mockResolvedValueOnce(new Response('Device not found', { status: 404 }) as unknown as Response)
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => {
+      expect(roomState.sdkDeviceId).toBeUndefined()
+    })
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+
+    const sent = collectSent(hostWs)
+    expect(sent.find((m) => m.type === 'host:sdk-stale')).toBeDefined()
+  })
+
+  it('401 — triggers refreshWithRetry and does not attempt transfer or retry', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'device_xyz'
+    seedActiveRound()
+    roomState.host = { readyState: 1, send: vi.fn() } as unknown as WebSocket
+
+    const refreshModule = await import('../refresh.ts')
+    const refreshSpy = vi.spyOn(refreshModule, 'refreshWithRetry').mockResolvedValue(undefined)
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Unauthorized', { status: 401 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+
+    await vi.waitFor(() => {
+      expect(refreshSpy).toHaveBeenCalledWith('host_1')
+    })
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
 // ── POST /api/rooms/:code/round/pause ─────────────────────────────────────
 
 describe('POST /api/rooms/:code/round/pause', () => {

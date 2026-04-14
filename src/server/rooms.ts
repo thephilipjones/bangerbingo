@@ -27,6 +27,77 @@ function clearRoundTimers(round: RoundState): void {
   round.timers.reveal = undefined
 }
 
+// Shared Spotify Web API caller for device-scoped PUTs (play, pause).
+// Handles 401 → refresh, and 404 → transfer-playback reactivation + single retry.
+// Spotify drops dormant Web Playback SDK devices from the active-devices list; a
+// transfer-playback PUT /me/player wakes the stored device_id without any client work.
+async function callSpotifyOnDevice(
+  roomCode: string,
+  roomState: RoomState,
+  label: 'play' | 'pause',
+  buildRequest: (deviceId: string, accessToken: string) => { url: string; init: RequestInit },
+): Promise<void> {
+  const sdkDevice = roomState.sdkDeviceId
+  if (!sdkDevice) return
+  const sdkHost = getHostById(roomState.hostUserId)
+  if (!sdkHost?.access_token) {
+    console.warn(`[spotify:${label}] no access_token for host`, roomState.hostUserId)
+    return
+  }
+  const accessToken = sdkHost.access_token
+
+  const attempt = (): Promise<Response> => {
+    const { url, init } = buildRequest(sdkDevice, accessToken)
+    return fetch(url, init)
+  }
+
+  try {
+    let res = await attempt()
+
+    if (res.status === 401) {
+      const body = await res.text().catch(() => '')
+      console.error(`[spotify:${label}] 401`, body)
+      refreshWithRetry(roomState.hostUserId).catch(() => {})
+      return
+    }
+
+    if (res.status === 404) {
+      const body = await res.text().catch(() => '')
+      console.warn(`[spotify:${label}] 404 — attempting device reactivation`, body)
+      const transferRes = await fetch('https://api.spotify.com/v1/me/player', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_ids: [sdkDevice], play: false }),
+      })
+      if (!transferRes.ok) {
+        const transferBody = await transferRes.text().catch(() => '')
+        console.error(`[spotify:${label}] transfer failed ${transferRes.status}`, transferBody)
+        if (transferRes.status === 404) {
+          roomState.sdkDeviceId = undefined
+          broadcast(roomCode, { type: 'host:sdk-stale' })
+        }
+        return
+      }
+      res = await attempt()
+      if (!res.ok) {
+        const retryBody = await res.text().catch(() => '')
+        console.error(`[spotify:${label}] retry ${res.status}`, retryBody)
+      }
+      return
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[spotify:${label}] ${res.status}`, body)
+    }
+  } catch (err) {
+    console.error(`[spotify:${label}]`, err)
+  }
+}
+
 function startSong(roomCode: string, roomState: RoomState, songIndex: number): void {
   const round = roomState.currentRound!
 
@@ -68,33 +139,20 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   persistRoomState(roomCode)
 
   // Fire-and-forget Spotify play via Web API (AC 5)
-  const sdkDevice = roomState.sdkDeviceId
-  if (sdkDevice) {
-    const sdkHost = getHostById(roomState.hostUserId)
-    if (sdkHost?.access_token) {
-      fetch(
-        `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(sdkDevice)}`,
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${sdkHost.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            uris: [`spotify:track:${track.id}`],
-            position_ms: SEEK_POSITION_MS,
-          }),
-        }
-      ).then((res) => {
-        if (!res.ok) {
-          res.text().then(body => console.error(`[spotify:play] ${res.status}`, body))
-          if (res.status === 401) refreshWithRetry(roomState.hostUserId).catch(() => {})
-        }
-      }).catch((err) => console.error('[spotify:play]', err))
-    } else {
-      console.warn('[spotify:play] no access_token for host', roomState.hostUserId)
-    }
-  }
+  callSpotifyOnDevice(roomCode, roomState, 'play', (deviceId, token) => ({
+    url: `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(deviceId)}`,
+    init: {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        uris: [`spotify:track:${track.id}`],
+        position_ms: SEEK_POSITION_MS,
+      }),
+    },
+  })).catch(() => {})
 
   // P4: capture roundNumber so stale timers from a previous round don't fire against a new one
   const capturedRoundNumber = round.roundNumber
@@ -396,24 +454,13 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
   broadcast(code, { type: 'song:pause', songIndex: round.currentSongIndex })
 
   // Fire-and-forget Spotify pause via Web API (AC 6)
-  const sdkDevice = roomState!.sdkDeviceId
-  if (sdkDevice) {
-    const sdkHost = getHostById(roomState!.hostUserId)
-    if (sdkHost?.access_token) {
-      fetch(
-        `https://api.spotify.com/v1/me/player/pause?device_id=${encodeURIComponent(sdkDevice)}`,
-        {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${sdkHost.access_token}` },
-        }
-      ).then((res) => {
-        if (!res.ok) {
-          res.text().then(body => console.error(`[spotify:pause] ${res.status}`, body))
-          if (res.status === 401) refreshWithRetry(roomState!.hostUserId).catch(() => {})
-        }
-      }).catch((err) => console.error('[spotify:pause]', err))
-    }
-  }
+  callSpotifyOnDevice(code, roomState!, 'pause', (deviceId, token) => ({
+    url: `https://api.spotify.com/v1/me/player/pause?device_id=${encodeURIComponent(deviceId)}`,
+    init: {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  })).catch(() => {})
 
   return ctx.json({})
 })
