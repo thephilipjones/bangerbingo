@@ -92,7 +92,7 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: UX Flow Restructure
-  epic-7: in-progress
+  epic-7: done
   7-1-root-cleanup-host-login-cookie-localstorage: done
   7-2-host-management-session-list-and-delete: done
   7-3-round-config-overlay-and-host-name: done
@@ -100,3 +100,12 @@ development_status:
   7-5-game-page-header-and-players-overlay: done
   7-6-host-mini-player-and-controls-overlay: done
   epic-7-retrospective: done
+
+  # Epic 8: Relaxed Play
+  epic-8: backlog
+  8-1-win-moment-hold-and-audio-presets: backlog
+  8-2-session-statistics: backlog
+  8-3-continuous-mode: backlog
+  8-4-casual-mode-permission-and-player-toggle: backlog
+  8-5-casual-mode-auto-mark-engine: backlog
+  epic-8-retrospective: optional

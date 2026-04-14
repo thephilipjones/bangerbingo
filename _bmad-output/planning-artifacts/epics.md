@@ -80,6 +80,30 @@ This document provides the complete epic and story breakdown for Bangerbingo, de
 - FR43: Host accounts authenticate with their own Spotify Premium via OAuth; Spotify app credentials are shared across the deployment, configured by the operator at deploy time
 - FR44: The application supports a first-run host registration flow for new deployments
 
+**Continuous Mode**
+- FR-CM1: Host can toggle Continuous Mode on/off at any time, positioned near playback controls with a visible on/off indicator
+- FR-CM2: When Continuous Mode is on and a round ends, the next round starts automatically with the same configuration after a 10-second countdown
+- FR-CM3: Playlist cursor advances server-side across rounds within a session — no reshuffling, no song duplication
+- FR-CM4: Win screen holds until manually cleared; the 10-second countdown begins only after manual clear
+
+**Win Moment & Audio Presets**
+- FR-WM1: Host selects an audio personality preset for the session: Hype, Deadpan, or Minimal
+- FR-WM2: The Bingo win screen holds until manually dismissed (no auto-dismiss timer)
+- FR-WM3: After win screen is manually cleared, a visible 10-second countdown fires before the next round begins (Continuous Mode only)
+
+**Casual Mode**
+- FR-CSM1: Host can enable or disable Casual Mode permission per round via an on/off toggle in Round Config
+- FR-CSM2: When permitted, players see and can toggle their own Casual Mode on or off
+- FR-CSM3: Players with Casual Mode on have squares auto-marked on any track_changed event (natural or skip), sweeping played_history for all songs other than current_song
+- FR-CSM4: Any track change — natural progression or host skip — triggers the Casual Mode auto-mark sweep
+- FR-CSM5: Players joining mid-session with Casual Mode on receive a toast: "Caught up on X songs"
+- FR-CSM6: Players List shows a subtle ☕ indicator next to players who have Casual Mode enabled
+
+**Session Statistics**
+- FR-SS1: System tracks win count per player for the current session (in-memory only; resets on session end)
+- FR-SS2: Players List surfaces each player's win count and a "Won last round" indicator
+- FR-SS3: Only wins are tracked — no loss counts
+
 ### Non-Functional Requirements
 
 **Performance**
@@ -151,6 +175,17 @@ This document provides the complete epic and story breakdown for Bangerbingo, de
 - UX-DR23: Room code display — large, monospace, persistent and accessible throughout session (header or info icon); copyable; never buried
 - UX-DR24: Tile long-press / hover (desktop) — reveals full title if truncated (tooltip or expand)
 
+**Relaxed Play (Epic 8)**
+- UX-DR25: Continuous Mode — on/off toggle near host playback controls; persistent visible indicator; accessible to host at all times during session
+- UX-DR26: Win screen modified — "Dismiss" CTA replaces auto-dismiss timer; screen holds until host or winner taps Dismiss
+- UX-DR27: Post-dismiss countdown — 10-second timer displayed in song-info area with "Next game starts in..." label; visually prominent
+- UX-DR28: Audio preset selector — session-level setting (Hype / Deadpan / Minimal); default Hype; accessible in host session setup
+- UX-DR29: Round Config form — "Allow Casual Mode" on/off toggle, same visual style as other round config toggles
+- UX-DR30: Player Casual Mode toggle — available in player's settings area when host permits; labeled "Casual Mode"
+- UX-DR31: Players List — ☕ icon next to player names who have Casual Mode on; subtle, non-judgmental; visible to all
+- UX-DR32: Catch-up toast — brief non-blocking "Caught up on X songs" notification shown to player enabling Casual Mode mid-session or joining with it on
+- UX-DR33: Players List — win count badge and "Last round ✓" indicator per player; session-scoped only
+
 ### FR Coverage Map
 
 | FR | Epic | Description |
@@ -199,6 +234,22 @@ This document provides the complete epic and story breakdown for Bangerbingo, de
 | FR42 | Epic 6 | Secrets via environment variables |
 | FR43 | Epic 6 | Spotify credentials configured by operator at deploy time |
 | FR44 | Epic 1 | First-run host registration flow |
+| FR-CM1 | Epic 8 | Continuous Mode toggle near playback controls |
+| FR-CM2 | Epic 8 | Auto-start next round with countdown when Continuous Mode on |
+| FR-CM3 | Epic 8 | Server-side playlist cursor — no reshuffle, no duplication |
+| FR-CM4 | Epic 8 | Win screen holds until manually cleared before countdown |
+| FR-WM1 | Epic 8 | Audio personality preset (Hype / Deadpan / Minimal) |
+| FR-WM2 | Epic 8 | Win screen holds — no auto-dismiss |
+| FR-WM3 | Epic 8 | 10-second countdown after win screen dismissed (Continuous Mode) |
+| FR-CSM1 | Epic 8 | Host enables Casual Mode permission per round in Round Config |
+| FR-CSM2 | Epic 8 | Players toggle their own Casual Mode when permitted |
+| FR-CSM3 | Epic 8 | Auto-mark on track_changed — sweeps played_history |
+| FR-CSM4 | Epic 8 | Any track change (natural or skip) triggers auto-mark sweep |
+| FR-CSM5 | Epic 8 | Catch-up toast for late joiners with Casual Mode on |
+| FR-CSM6 | Epic 8 | ☕ indicator in Players List for Casual Mode players |
+| FR-SS1 | Epic 8 | In-memory session win count per player |
+| FR-SS2 | Epic 8 | Players List: win count + "Won last round" indicator |
+| FR-SS3 | Epic 8 | Wins only — no loss tracking |
 
 ## Epic List
 
@@ -252,6 +303,22 @@ This document provides the complete epic and story breakdown for Bangerbingo, de
 **NFRs:** NFR6 (HTTPS/WSS in production), NFR13 (server restart state recovery), NFR17 (local setup command)
 **Includes:** Railway/VPS setup, Docker Compose config, env-based credential injection, SQLite volume mount, token refresh end-to-end test, smoke test (auth → room → round → bingo → next round)
 **Depends on:** Epic 5
+
+---
+
+### Epic 7: UX Flow Restructure ✅ DONE
+*Root cleanup, host session management, round config overlay, guest waiting room, game page header, host mini-player and controls overlay — full UX restructure shipping production-quality flows.*
+**Stories:** 7-1 (Root Cleanup — done), 7-2 (Host Session List & Delete — done), 7-3 (Round Config Overlay & Host Name — done), 7-4 (Guest Waiting Room & Host-as-Player — done), 7-5 (Game Page Header & Players Overlay — done), 7-6 (Host Mini-Player & Controls Overlay — done)
+**Depends on:** Epics 1–6
+
+---
+
+### Epic 8: Relaxed Play
+*Host can enable Continuous Mode for back-to-back games on the same playlist; win moment holds for celebration; players can opt into Casual Mode for automatic square marking; session win stats surface in the Players List.*
+**FRs covered:** FR-CM1, FR-CM2, FR-CM3, FR-CM4, FR-WM1, FR-WM2, FR-WM3, FR-CSM1, FR-CSM2, FR-CSM3, FR-CSM4, FR-CSM5, FR-CSM6, FR-SS1, FR-SS2, FR-SS3
+**UX-DRs:** UX-DR25, UX-DR26, UX-DR27, UX-DR28, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33
+**Depends on:** Epic 5 (game loop, win overlay), Epic 7 (Round Config overlay, Players overlay, playback controls)
+**Stories:** 8-1 (Win Moment Hold & Audio Presets), 8-2 (Session Statistics), 8-3 (Continuous Mode), 8-4 (Casual Mode Permission & Player Toggle), 8-5 (Casual Mode Auto-Mark Engine)
 
 ---
 
@@ -1193,3 +1260,196 @@ So that I can ship from anywhere and verify with a repeatable smoke test.
 **When** the developer observes the smoke test
 **Then** it flags NFR1 (host control actions < 500ms), NFR2 (WS broadcast < 200ms), and NFR3 (card loads < 2s) as eyeball checkpoints — not automated assertions, but things to notice
 
+
+---
+
+## Epic 8: Relaxed Play
+
+*Host can enable Continuous Mode for back-to-back games on the same playlist; win moment holds for celebration; players can opt into Casual Mode for automatic square marking; session win stats surface in the Players List.*
+
+---
+
+### Story 8-1: Win Moment Hold & Audio Presets
+
+As a host,
+I want the win screen to hold until someone dismisses it and for audio feedback to match the room's vibe,
+So that the celebration moment isn't steamrolled and the party tone is consistent.
+
+**Acceptance Criteria:**
+
+**Given** a player has won and the win overlay fires
+**When** it appears
+**Then** it holds indefinitely — no auto-dismiss timer — until a "Dismiss" CTA is tapped by host or the winner
+
+**Given** the win overlay is displayed
+**When** a user taps "Dismiss"
+**Then** the overlay clears and the game returns to the post-round state (Continuous Mode countdown, or idle if Continuous Mode is off)
+
+**Given** the host is configuring a session
+**When** they view session-level settings
+**Then** they see an audio preset selector with three options: Hype, Deadpan, Minimal; default is Hype
+
+**Given** a win event fires
+**When** the win overlay appears
+**Then** the audio clip corresponding to the host's selected preset plays once, non-blocking
+
+**Given** the Deadpan preset is selected
+**When** the win audio plays
+**Then** it is dry, sarcastic in tone — not celebratory, not harsh
+
+**Given** the Minimal preset is selected
+**When** the win audio plays
+**Then** it is a short subtle chime only — no voice, no personality
+
+---
+
+### Story 8-2: Session Statistics
+
+As a player,
+I want to see who has won and how many times in the Players List,
+So that the session has a sense of history without anyone feeling tracked for losses.
+
+**Acceptance Criteria:**
+
+**Given** a round completes with a verified winner
+**When** the server processes the win
+**Then** the winner's session win count increments by 1 in in-memory GameState
+
+**Given** a round completes
+**When** player state is updated
+**Then** the previous "Won last round" flag is cleared for all players, then set only for the winner of the completed round
+
+**Given** the Players List is visible
+**When** a player has at least 1 session win
+**Then** their win count is displayed next to their name (e.g. "×2")
+
+**Given** the Players List is visible
+**When** a player won the most recent round
+**Then** a "Last round ✓" indicator appears next to their name
+
+**Given** no player has won yet in the session
+**When** the Players List is displayed
+**Then** no win count or last round indicator is shown for any player
+
+**Given** the session ends or the room resets
+**When** a new session begins
+**Then** all win counts and last-round flags reset to zero — stats are session-scoped only, never persisted to SQLite
+
+**Given** a `stats:updated` WebSocket event is emitted after each win
+**When** clients receive it
+**Then** the Players List updates in real time without requiring a reload
+
+---
+
+### Story 8-3: Continuous Mode
+
+As a host,
+I want to toggle Continuous Mode to keep games rolling back-to-back on the same playlist without reshuffling,
+So that the party doesn't stall between rounds.
+
+**Acceptance Criteria:**
+
+**Given** the host is in an active session
+**When** they view the playback controls area
+**Then** a Continuous Mode toggle is visible with a clear on/off indicator
+
+**Given** Continuous Mode is toggled
+**When** the change is made
+**Then** it takes effect for the next round end — no impact on the currently running round
+
+**Given** a round ends and Continuous Mode is on and the win screen has been dismissed
+**When** the countdown begins
+**Then** a visible 10-second countdown is displayed in the song-info area with the label "Next game starts in..."
+
+**Given** the 10-second countdown elapses
+**When** time reaches zero
+**Then** the server auto-starts a new round using the same round configuration (same clip length, title reveal, Casual Mode permission, audio preset) — no host action required
+
+**Given** a new round auto-starts via Continuous Mode
+**When** the card pool is generated
+**Then** songs played in any prior round of the current session are excluded from the pool first, then down-ranked if the pool would otherwise be too small — preserving cross-round variety
+
+**Given** the host turns off Continuous Mode mid-session
+**When** the current round ends
+**Then** the game returns to the normal post-round idle state — no auto-start, no countdown
+
+**Given** Continuous Mode is on and a round ends with no active winner dismiss
+**When** the win screen has not been dismissed
+**Then** the countdown does NOT begin — the 10-second timer waits for manual dismiss regardless
+
+---
+
+### Story 8-4: Casual Mode — Host Permission & Player Toggle
+
+As a host,
+I want to control whether players can use Casual Mode per round,
+So that I can tune engagement expectations for the group.
+
+As a player,
+I want to opt into Casual Mode,
+So that I can enjoy the game socially without staring at my phone.
+
+**Acceptance Criteria:**
+
+**Given** the host is on the Round Config screen
+**When** they view the config form
+**Then** an "Allow Casual Mode" on/off toggle is present, using the same visual style as other round config toggles; it defaults to off
+
+**Given** "Allow Casual Mode" is on
+**When** a player views their session UI
+**Then** a "Casual Mode" toggle is visible and accessible in their settings area
+
+**Given** "Allow Casual Mode" is off
+**When** a player views their session UI
+**Then** no Casual Mode toggle is shown
+
+**Given** a player enables their Casual Mode toggle
+**When** the change is saved
+**Then** a `player:casual-mode-changed` event is emitted and the server updates that player's `casualMode` flag in GameState
+
+**Given** a player has Casual Mode on
+**When** any player views the Players List
+**Then** a ☕ icon appears next to that player's name — subtle, not prominent
+
+**Given** a player has Casual Mode off
+**When** any player views the Players List
+**Then** no ☕ icon is shown for that player
+
+---
+
+### Story 8-5: Casual Mode — Auto-Mark Engine
+
+As a player with Casual Mode on,
+I want my squares to be automatically marked whenever a track changes,
+So that I'm never behind just because I looked away.
+
+**Acceptance Criteria:**
+
+**Given** a `track_changed` event fires on the server (natural progression or host skip)
+**When** the event is processed
+**Then** the server sweeps `played_history` and for each player with `casualMode: true`, marks any tile whose song is in `played_history` and is not the `current_song`
+
+**Given** the auto-mark sweep runs
+**When** one or more tiles are newly marked for a player
+**Then** a `square:auto-marked` WebSocket event is emitted to that player only, with the list of newly marked tile indices
+
+**Given** a player receives a `square:auto-marked` event
+**When** their card renders
+**Then** the affected tiles animate into the marked state using a visually distinct (softer/delayed) animation compared to a manual mark
+
+**Given** a host skip triggers a track change
+**When** the auto-mark sweep runs
+**Then** it behaves identically to a natural track change — no special-casing for skips
+
+**Given** a tile was already manually marked by the player
+**When** the auto-mark sweep runs and that tile's song is in played_history
+**Then** the tile state is unchanged — no duplicate mark event emitted
+
+**Given** a player joins mid-session with Casual Mode already on (or enables it mid-session)
+**When** they toggle Casual Mode on
+**Then** the server immediately runs a catch-up sweep for that player over the full `played_history` (excluding `current_song`) and emits a `square:auto-marked` event for all unmarked matching tiles
+**And** a non-blocking toast appears on their screen: "Caught up on X songs" where X is the number of tiles swept
+
+**Given** Casual Mode auto-mark fires for a player
+**When** that marking creates a winning bingo pattern
+**Then** the standard win detection flow triggers — the auto-mark can produce a valid win
