@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, untrack } from 'svelte'
   import BingoCard from '../components/BingoCard.svelte'
   import SdkFailureBanner from '../components/SdkFailureBanner.svelte'
   import WinOverlay from '../components/WinOverlay.svelte'
@@ -9,75 +9,37 @@
   import PlayersOverlay from '../components/PlayersOverlay.svelte'
   import HostMiniPlayer from '../components/HostMiniPlayer.svelte'
   import HostControlsOverlay from '../components/HostControlsOverlay.svelte'
-  import { computePlayerCount } from '../lib/waitingRoom.ts'
-  import {
-    initTiles,
-    applyMask,
-    startReveal,
-    finishReveal,
-    toggleMark,
-    applyWinPath,
-  } from '../lib/bingo.ts'
-  import type { ClientTile, TitleRevealDelay } from '../lib/bingo.ts'
-  import { applyPlayerEvent } from '../lib/ws.ts'
+  import { createGameState } from '../lib/gameState.svelte.ts'
 
-  const WIN_LINES = [
-    [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
-    [0,5,10,15,20], [1,6,11,16,21], [2,7,12,17,22], [3,8,13,18,23], [4,9,14,19,24],
-    [0,6,12,18,24], [4,8,12,16,20],
-  ]
+  let { code, onRoundEnded, onSessionEnded }: {
+    code: string
+    onRoundEnded: () => void
+    onSessionEnded: () => void
+  } = $props()
 
-  let { code, onRoundEnded, onSessionEnded }: { code: string; onRoundEnded: () => void; onSessionEnded: () => void } = $props()
-
-  type WinData = {
-    winnerName: string
-    winningTileIds: string[]
-    songHistory: Array<{ trackId: string; title: string; artist: string; albumArtUrl: string; songIndex: number }>
-  }
-
-  type HistoryEntry = {
-    trackId: string
-    title: string
-    artist: string
-    albumArtUrl: string
-    songIndex: number
-  }
-
-  let tiles = $state<ClientTile[]>([])
-  let roundConfig = $state<{ titleRevealDelay: TitleRevealDelay } | null>(null)
+  // Host-only state
   let currentTrack = $state<{ title: string; artist: string } | null>(null)
   let isPlaying = $state(false)
-  let players = $state<string[]>([])
   let wsError = $state(false)
   let sdkReady = $state(false)
   let sdkFailed = $state(false)
   let currentTrackId = $state<string | null>(null)
-  let winData = $state<WinData | null>(null)
-  let isClaiming = $state(false)
-  const hasBingo = $derived(
-    tiles.length > 0 &&
-    winData === null &&
-    WIN_LINES.some(line => line.every(i => tiles[i]?.state === 'marked' || tiles[i]?.state === 'free'))
-  )
-  let revealTimer: ReturnType<typeof setTimeout> | undefined
-  let songHistory = $state<HistoryEntry[]>([])
-  let showHistory = $state(false)
-  let currentRevealed = $state(false)
-  let showPlayers = $state(false)
   let hostName = $state<string | null>(null)
-  let songIndex = $state<number | null>(null)
   let authDegraded = $state(false)
-  const playerCount = $derived(computePlayerCount(players))
+  let showControls = $state(false)
+  let toastVisible = $state(false)
+  let undoTimer: ReturnType<typeof setTimeout> | undefined
+  let sessionEnded = false
   let ws: WebSocket
   let player: Spotify.Player | undefined
   let sdkScript: HTMLScriptElement | undefined
   let sdkErrorFired = false
   let sdkReinitializing = false
 
-  let showControls = $state(false)
-  let toastVisible = $state(false)
-  let undoTimer: ReturnType<typeof setTimeout> | undefined
-  let sessionEnded = false
+  const game = createGameState({
+    code: untrack(() => code),
+    getPlayerName: () => hostName,
+  })
 
   function handleSessionEnd() {
     if (sessionEnded) return
@@ -86,33 +48,8 @@
     onSessionEnded()
   }
 
-  function handleTileClick(index: number) {
-    tiles = toggleMark(tiles, index)
-  }
-
-  async function handleBingoClick() {
-    if (!hostName) return
-    isClaiming = true
-    const claimedTileIds = tiles
-      .filter(t => t.state === 'marked' || t.state === 'free')
-      .map(t => t.free ? 'FREE' : t.trackId)
-    try {
-      const res = await fetch(`/api/rooms/${code}/round/claim`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerName: hostName, claimedTileIds }),
-      })
-      if (res.status !== 200) {
-        isClaiming = false
-      }
-    } catch {
-      isClaiming = false
-    }
-  }
-
   function handlePlayPause() {
-    const endpoint = isPlaying ? 'pause' : 'play'
-    fetch(`/api/rooms/${code}/round/${endpoint}`, { method: 'POST' })
+    fetch(`/api/rooms/${code}/round/${isPlaying ? 'pause' : 'play'}`, { method: 'POST' })
   }
 
   function handleNext() {
@@ -156,21 +93,15 @@
     player.addListener('not_ready', () => { sdkReady = false })
     player.addListener('initialization_error', () => {
       if (sdkErrorFired) return
-      sdkErrorFired = true
-      sdkReady = false
-      sdkFailed = true
+      sdkErrorFired = true; sdkReady = false; sdkFailed = true
     })
     player.addListener('authentication_error', () => {
       if (sdkErrorFired) return
-      sdkErrorFired = true
-      sdkReady = false
-      sdkFailed = true
+      sdkErrorFired = true; sdkReady = false; sdkFailed = true
     })
     player.addListener('account_error', () => {
       if (sdkErrorFired) return
-      sdkErrorFired = true
-      sdkReady = false
-      sdkFailed = true
+      sdkErrorFired = true; sdkReady = false; sdkFailed = true
     })
     player.connect()
   }
@@ -187,13 +118,10 @@
 
   function handleReauth() {
     const popup = window.open('/auth/login?popup=1', 'reauth', 'width=500,height=700,menubar=no,toolbar=no')
-    if (!popup) {
-      window.location.href = '/auth/login'
-    }
+    if (!popup) window.location.href = '/auth/login'
   }
 
   onMount(() => {
-    // SDK init — if already loaded (e.g. re-mount), init synchronously; otherwise inject script (AC 1)
     if ((window as any).Spotify) {
       initSdkPlayer()
     } else {
@@ -205,48 +133,25 @@
     }
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws?code=${code}`
-    ws = new WebSocket(wsUrl)
+    ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?code=${code}`)
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        if (data.type === 'session:connect') {
-          players = data.players ?? []
-          hostName = data.hostName ?? null
-        } else if (data.type === 'round:start') {
-          tiles = initTiles(data.card)
-          roundConfig = { titleRevealDelay: data.titleRevealDelay }
+        game.processWsMessage(data)
+        if (data.type === 'round:start') {
           isPlaying = false
-          winData = null
-          const rawHistory = (data.songHistory ?? []) as Array<{ trackId: string; title: string; artist: string; albumArtUrl: string; songIndex: number }>
-          songHistory = rawHistory.slice().reverse()
-          songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
-          currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
+        } else if (data.type === 'session:connect') {
+          game.players = data.players ?? []
+          hostName = data.hostName ?? null
         } else if (data.type === 'song:start') {
-          if (roundConfig) {
-            tiles = applyMask(tiles, data.trackId, roundConfig.titleRevealDelay, data.songIndex)
-          }
-          songIndex = data.songIndex
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
           isPlaying = true
-          currentRevealed = false
-          songHistory = [{ trackId: data.trackId, title: data.title, artist: data.artist, albumArtUrl: data.albumArtUrl, songIndex: data.songIndex }, ...songHistory.filter(e => e.songIndex !== data.songIndex)]
-        } else if (data.type === 'song:reveal') {
-          currentRevealed = true
-          tiles = startReveal(tiles, data.trackId)
-          clearTimeout(revealTimer)
-          revealTimer = setTimeout(() => {
-            tiles = finishReveal(tiles, data.trackId)
-          }, 300)
         } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
           isPlaying = false
         } else if (data.type === 'round:win') {
-          tiles = applyWinPath(tiles, data.winningTileIds)
           isPlaying = false
-          isClaiming = false
-          winData = { winnerName: data.winnerName, winningTileIds: data.winningTileIds, songHistory: data.songHistory }
         } else if (data.type === 'round:end') {
           onRoundEnded()
         } else if (data.type === 'session:end') {
@@ -259,8 +164,6 @@
         } else if (data.type === 'host:sdk-stale') {
           console.warn('[host] server reports SDK device stale; reinitializing')
           reinitSdk()
-        } else if (data.type === 'player:joined' || data.type === 'player:left') {
-          players = applyPlayerEvent(players, { type: data.type, name: data.name })
         }
       } catch {
         // ignore unparseable messages
@@ -272,7 +175,7 @@
   })
 
   onDestroy(() => {
-    clearTimeout(revealTimer)
+    game.cleanup()
     clearTimeout(undoTimer)
     ws?.close()
     player?.disconnect()
@@ -295,21 +198,22 @@
   <SdkFailureBanner trackId={currentTrackId} />
 {/if}
 
-{#if showHistory}
-  <SongHistoryDrawer entries={songHistory} {currentRevealed} onClose={() => { showHistory = false }} />
+{#if game.showHistory}
+  <SongHistoryDrawer entries={game.songHistory} currentRevealed={game.currentRevealed} onClose={() => { game.showHistory = false }} />
 {/if}
 
-{#if showPlayers}
-  <PlayersOverlay {players} {hostName} selfName={null} onClose={() => { showPlayers = false }} />
+{#if game.showPlayers}
+  <PlayersOverlay players={game.players} {hostName} selfName={null} onClose={() => { game.showPlayers = false }} />
 {/if}
 
-{#if winData !== null}
+{#if game.winData !== null}
+  {@const wd = game.winData}
   <WinOverlay
-    winnerName={winData.winnerName}
-    winningSongs={winData.songHistory.filter(e => winData.winningTileIds.includes(e.trackId))}
+    winnerName={wd.winnerName}
+    winningSongs={wd.songHistory.filter(e => wd.winningTileIds.includes(e.trackId))}
     isHost={true}
     onStartNextRound={onRoundEnded}
-    onDismiss={() => { winData = null }}
+    onDismiss={() => { game.winData = null }}
   />
 {/if}
 
@@ -322,12 +226,20 @@
 
 <div class="host-game">
   <div class="card-area">
-    {#if tiles.length > 0}
-      <GameHeader {playerCount} {code} {songIndex} historyOpen={showHistory} playersOpen={showPlayers} onPlayersClick={() => { showPlayers = !showPlayers; showHistory = false }} onHistoryClick={() => { showHistory = !showHistory; showPlayers = false }} />
-      <BingoCard {tiles} onTileClick={handleTileClick} />
-      {#if hasBingo && !isClaiming}
-        <button class="bingo-btn" onclick={handleBingoClick}>Bingo!</button>
-      {:else if isClaiming}
+    {#if game.tiles.length > 0}
+      <GameHeader
+        playerCount={game.playerCount}
+        {code}
+        songIndex={game.songIndex}
+        historyOpen={game.showHistory}
+        playersOpen={game.showPlayers}
+        onPlayersClick={() => { game.showPlayers = !game.showPlayers; game.showHistory = false }}
+        onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
+      />
+      <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
+      {#if game.hasBingo && !game.isClaiming}
+        <button class="bingo-btn" onclick={game.handleBingoClick}>Bingo!</button>
+      {:else if game.isClaiming}
         <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
       {/if}
     {/if}

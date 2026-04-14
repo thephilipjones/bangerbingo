@@ -30,18 +30,13 @@
         class="tile"
         class:unmarked={tile.state === 'unmarked'}
         class:marked={tile.state === 'marked'}
-        class:masked={tile.masked}
-        class:revealing={tile.revealing}
         class:win-path={tile.winPath}
         class:nope={i === nopeIndex}
-        title={tile.masked ? undefined : tile.title}
-        aria-label={tile.masked ? `${tile.songLabel} (masked)` : `${tile.title} by ${tile.artist}${tile.state === 'marked' ? ' (marked)' : ''}`}
+        title={tile.title}
+        aria-label={`${tile.title} by ${tile.artist}${tile.state === 'marked' ? ' (marked)' : ''}`}
         aria-pressed={tile.state === 'marked'}
         onclick={() => onTileClick(i)}
       >
-        {#if tile.masked || tile.revealing}
-          <span class="song-label">{tile.songLabel}</span>
-        {/if}
         <div class="tile-content">
           <span class="tile-title">{tile.title}</span>
           <span class="tile-artist">{tile.artist}</span>
@@ -108,15 +103,6 @@
     text-align: center;
   }
 
-  .tile.masked .tile-content {
-    opacity: 0;
-  }
-
-  .tile.revealing .tile-content {
-    opacity: 1;
-    transition: opacity 300ms ease-out;
-  }
-
   .tile-title {
     font-size: 11px;
     font-weight: 600;
@@ -141,26 +127,6 @@
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.05em;
-  }
-
-  .song-label {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: 11px;
-    font-weight: 700;
-    color: #fff;
-    z-index: 1;
-    white-space: nowrap;
-    opacity: 1;
-    transition: opacity 300ms ease-out;
-    pointer-events: none;
-  }
-
-  .tile.revealing .song-label {
-    opacity: 0;
-    transition: opacity 300ms ease-out;
   }
 
   @keyframes nope-wobble {
