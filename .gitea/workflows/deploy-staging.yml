@@ -15,7 +15,7 @@ jobs:
     container:
       image: node:22
     steps:
-      - uses: https://github.com/actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install native build tools
         run: apt-get update && apt-get install -y python3 make g++
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to staging
-        uses: https://github.com/appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
