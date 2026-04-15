@@ -30,6 +30,7 @@
   let toastVisible = $state(false)
   let playbackError = $state(false)
   let continuousError = $state<string | null>(null)
+  let pendingAutoPlay = $state(false)
   let undoTimer: ReturnType<typeof setTimeout> | undefined
   let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
   let continuousErrorTimer: ReturnType<typeof setTimeout> | undefined
@@ -87,6 +88,15 @@
     fetch(`/api/rooms/${code}/round/dismiss-win`, { method: 'POST' })
       .catch(() => { /* non-fatal; countdown just won't start */ })
   }
+
+  $effect(() => {
+    if (sdkReady && pendingAutoPlay && !sdkFailed) {
+      pendingAutoPlay = false
+      fetch(`/api/rooms/${code}/round/play`, { method: 'POST' })
+        .then(res => { if (!res.ok) showPlaybackError() })
+        .catch(() => showPlaybackError())
+    }
+  })
 
   let countdownSeconds = $state<number | null>(null)
   $effect(() => {
@@ -167,6 +177,7 @@
   function reinitSdk() {
     if (sdkReinitializing) return
     sdkReinitializing = true
+    pendingAutoPlay = false
     player?.disconnect()
     sdkReady = false
     sdkFailed = false
@@ -199,6 +210,16 @@
         game.processWsMessage(data)
         if (data.type === 'round:start') {
           isPlaying = false
+          const history = (data as Record<string, unknown>).songHistory as unknown[] | undefined
+          if (!history || history.length === 0) {
+            if (sdkReady && !sdkFailed) {
+              fetch(`/api/rooms/${code}/round/play`, { method: 'POST' })
+                .then(res => { if (!res.ok) showPlaybackError() })
+                .catch(() => showPlaybackError())
+            } else {
+              pendingAutoPlay = true
+            }
+          }
         } else if (data.type === 'session:connect') {
           game.players = data.players ?? []
           hostName = data.hostName ?? null
@@ -214,13 +235,16 @@
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
           isPlaying = true
+          pendingAutoPlay = false
         } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
           isPlaying = false
         } else if (data.type === 'round:win') {
           isPlaying = false
         } else if (data.type === 'round:end') {
+          pendingAutoPlay = false
           onRoundEnded()
         } else if (data.type === 'session:end') {
+          pendingAutoPlay = false
           handleSessionEnd()
         } else if (data.type === 'auth:degraded') {
           authDegraded = true
