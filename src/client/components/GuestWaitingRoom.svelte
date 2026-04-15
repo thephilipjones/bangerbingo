@@ -4,7 +4,7 @@
   import VinylWithTonearm from './VinylWithTonearm.svelte'
   import PlayerList from './PlayerList.svelte'
 
-  let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, onLeave }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; onLeave?: () => void } = $props()
+  let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, countdownSeconds = null, onLeave }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; countdownSeconds?: number | null; onLeave?: () => void } = $props()
 
   // Host row is always rendered (with name or generic "Host"), so always count host as +1
   const playerCount = $derived(players.length + 1)
@@ -85,7 +85,11 @@
   <h1 class="headline">You're in!</h1>
 
   <!-- Waiting -->
-  <p class="waiting">Waiting for host to start the round…</p>
+  {#if countdownSeconds !== null}
+    <p class="waiting countdown">Next game starts in {countdownSeconds}s</p>
+  {:else}
+    <p class="waiting">Waiting for host to start the round…</p>
+  {/if}
 
   <!-- Player list -->
   <div class="players-section">
@@ -207,6 +211,11 @@
     color: #aaa;
     text-align: center;
     margin: 0;
+  }
+
+  .waiting.countdown {
+    color: #1db954;
+    font-weight: 600;
   }
 
   .players-section {

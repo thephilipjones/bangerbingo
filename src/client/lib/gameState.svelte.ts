@@ -46,6 +46,7 @@ export function createGameState({
   initialPlayers = [],
   initialWinsByName = {},
   initialLastRoundWinner = null,
+  initialContinuousMode = false,
   getMarksForCard,
   onTileMark,
 }: {
@@ -55,6 +56,7 @@ export function createGameState({
   initialPlayers?: string[]
   initialWinsByName?: Record<string, number>
   initialLastRoundWinner?: string | null
+  initialContinuousMode?: boolean
   /**
    * Called on round:start with the raw card array.
    * Use this to update a localStorage key and return any saved marks.
@@ -90,6 +92,8 @@ export function createGameState({
   let highestRoundNumber = $state(0)
   let hasStats = $state(Object.keys(initialWinsByName).length > 0 || initialLastRoundWinner !== null)
   const showStats = $derived(hasStats && highestRoundNumber >= 2)
+  let continuousMode = $state(initialContinuousMode)
+  let countdownEndsAt = $state<number | null>(null)
 
   function handleTileClick(index: number) {
     const tile = tiles[index]
@@ -143,6 +147,7 @@ export function createGameState({
       audioPreset = (data.audioPreset as AudioPreset | undefined) ?? 'minimal'
       winData = null
       isClaiming = false
+      countdownEndsAt = null
       const rawHistory = (data.songHistory as HistoryEntry[] | undefined) ?? []
       songHistory = rawHistory.slice().reverse()
       const playedIds = new Set(rawHistory.map(e => e.trackId))
@@ -150,6 +155,14 @@ export function createGameState({
       songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
       currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
       highestRoundNumber = Math.max(highestRoundNumber, (data.roundNumber as number | undefined) ?? 0)
+    } else if (data.type === 'continuous-mode:changed') {
+      continuousMode = data.enabled as boolean
+    } else if (data.type === 'continuous:countdown-start') {
+      countdownEndsAt = Date.now() + (data.durationMs as number)
+    } else if (data.type === 'continuous:countdown-cancel') {
+      countdownEndsAt = null
+    } else if (data.type === 'round:dismissed') {
+      winData = null
     } else if (data.type === 'stats:updated') {
       winsByName = { ...((data.winsByName as Record<string, number> | undefined) ?? {}) }
       lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
@@ -239,6 +252,10 @@ export function createGameState({
       if (v !== null) hasStats = true
     },
     get showStats() { return showStats },
+    get continuousMode() { return continuousMode },
+    set continuousMode(v: boolean) { continuousMode = v },
+    get countdownEndsAt() { return countdownEndsAt },
+    set countdownEndsAt(v: number | null) { countdownEndsAt = v },
     handleTileClick,
     handleBingoClick,
     processWsMessage,

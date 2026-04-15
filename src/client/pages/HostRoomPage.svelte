@@ -29,8 +29,10 @@
   let showControls = $state(false)
   let toastVisible = $state(false)
   let playbackError = $state(false)
+  let continuousError = $state<string | null>(null)
   let undoTimer: ReturnType<typeof setTimeout> | undefined
   let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
+  let continuousErrorTimer: ReturnType<typeof setTimeout> | undefined
   let sessionEnded = false
   let ws: WebSocket
   let player: Spotify.Player | undefined
@@ -55,6 +57,50 @@
     clearTimeout(playbackErrorTimer)
     playbackErrorTimer = setTimeout(() => { playbackError = false }, 3000)
   }
+
+  function showContinuousError(message: string) {
+    continuousError = message
+    clearTimeout(continuousErrorTimer)
+    continuousErrorTimer = setTimeout(() => { continuousError = null }, 3000)
+  }
+
+  function handleContinuousToggle() {
+    const next = !game.continuousMode
+    game.continuousMode = next
+    fetch(`/api/rooms/${code}/continuous-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    }).then(res => {
+      if (!res.ok) {
+        game.continuousMode = !next
+        showContinuousError('Failed to toggle continuous mode')
+      }
+    }).catch(() => {
+      game.continuousMode = !next
+      showContinuousError('Failed to toggle continuous mode')
+    })
+  }
+
+  function handleDismissWin() {
+    game.winData = null
+    fetch(`/api/rooms/${code}/round/dismiss-win`, { method: 'POST' })
+      .catch(() => { /* non-fatal; countdown just won't start */ })
+  }
+
+  let countdownSeconds = $state<number | null>(null)
+  $effect(() => {
+    const endsAt = game.countdownEndsAt
+    if (endsAt === null) { countdownSeconds = null; return }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+      countdownSeconds = remaining
+      if (remaining === 0) clearInterval(id)
+    }
+    tick()
+    const id = setInterval(tick, 200)
+    return () => clearInterval(id)
+  })
 
   function handlePlayPause() {
     fetch(`/api/rooms/${code}/round/${isPlaying ? 'pause' : 'play'}`, { method: 'POST' })
@@ -158,6 +204,12 @@
           hostName = data.hostName ?? null
           game.winsByName = (data.winsByName as Record<string, number> | undefined) ?? {}
           game.lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
+          game.continuousMode = (data.continuousMode as boolean | undefined) ?? false
+          const remaining = data.countdownRemainingMs as number | null | undefined
+          game.countdownEndsAt = (remaining !== null && remaining !== undefined && remaining > 0) ? Date.now() + remaining : null
+        } else if (data.type === 'continuous:countdown-cancel') {
+          const reason = (data as Record<string, unknown>).reason as string | undefined
+          if (reason) showContinuousError(`Continuous round failed — ${reason}`)
         } else if (data.type === 'song:start') {
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
@@ -192,6 +244,7 @@
     game.cleanup()
     clearTimeout(undoTimer)
     clearTimeout(playbackErrorTimer)
+    clearTimeout(continuousErrorTimer)
     ws?.close()
     player?.disconnect()
     if (sdkScript && document.head.contains(sdkScript)) {
@@ -213,6 +266,10 @@
   <div class="error-banner" role="alert">Playback control failed — check Spotify is active.</div>
 {/if}
 
+{#if continuousError}
+  <div class="error-banner" role="alert">{continuousError}</div>
+{/if}
+
 {#if sdkFailed}
   <SdkFailureBanner trackId={currentTrackId} />
 {/if}
@@ -232,9 +289,10 @@
     winningSongs={wd.songHistory.filter(e => wd.winningTileIds.includes(e.trackId))}
     isHost={true}
     onStartNextRound={onRoundEnded}
-    onDismiss={() => { game.winData = null }}
+    onDismiss={handleDismissWin}
     audioPreset={game.audioPreset}
     selfName={null}
+    hideStartNextRound={game.continuousMode}
   />
 {/if}
 
@@ -280,6 +338,9 @@
   onNext={handleNext}
   onGearClick={() => { showControls = true }}
   controlsOpen={showControls}
+  continuousMode={game.continuousMode}
+  onContinuousToggle={handleContinuousToggle}
+  {countdownSeconds}
 />
 
 {#if showControls}

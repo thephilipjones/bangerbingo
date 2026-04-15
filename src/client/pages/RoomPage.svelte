@@ -10,7 +10,7 @@
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
 
-  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, pendingMessages = [], onLeave }: {
+  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialContinuousMode = false, initialCountdownRemainingMs = null, pendingMessages = [], onLeave }: {
     name: string
     code: string
     ws: WebSocket
@@ -18,6 +18,8 @@
     hostName?: string | null
     initialWinsByName?: Record<string, number>
     initialLastRoundWinner?: string | null
+    initialContinuousMode?: boolean
+    initialCountdownRemainingMs?: number | null
     pendingMessages?: MessageEvent[]
     onLeave?: () => void
   } = $props()
@@ -42,6 +44,7 @@
     initialPlayers: untrack(() => initialPlayers),
     initialWinsByName: untrack(() => initialWinsByName),
     initialLastRoundWinner: untrack(() => initialLastRoundWinner),
+    initialContinuousMode: untrack(() => initialContinuousMode),
     getMarksForCard: (card: Tile[]) => {
       marksKey = `bangerbingo:marks:${code}:${cardFingerprint(card)}`
       return loadMarks()
@@ -51,6 +54,24 @@
       const ids = tiles.filter(t => t.state === 'marked').map(t => t.trackId)
       localStorage.setItem(marksKey, JSON.stringify(ids))
     },
+  })
+
+  if (untrack(() => initialCountdownRemainingMs) !== null && (untrack(() => initialCountdownRemainingMs) as number) > 0) {
+    game.countdownEndsAt = Date.now() + (untrack(() => initialCountdownRemainingMs) as number)
+  }
+
+  let countdownSeconds = $state<number | null>(null)
+  $effect(() => {
+    const endsAt = game.countdownEndsAt
+    if (endsAt === null) { countdownSeconds = null; return }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+      countdownSeconds = remaining
+      if (remaining === 0) clearInterval(id)
+    }
+    tick()
+    const id = setInterval(tick, 200)
+    return () => clearInterval(id)
   })
 
   function handleWsData(data: Record<string, unknown>) {
@@ -139,9 +160,9 @@
     {:else if game.isClaiming}
       <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
     {/if}
-    <p class="status-line" role="status">{statusLine}</p>
+    <p class="status-line" role="status">{countdownSeconds !== null ? `Next game starts in ${countdownSeconds}s` : statusLine}</p>
   {:else}
-    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {onLeave} />
+    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {countdownSeconds} {onLeave} />
   {/if}
 </main>
 

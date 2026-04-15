@@ -10,6 +10,7 @@
     onDismiss,
     selfName = null,
     audioPreset = 'minimal',
+    hideStartNextRound = false,
   }: {
     winnerName: string
     winningSongs: Array<{ title: string; artist: string }>
@@ -18,6 +19,7 @@
     onDismiss: () => void
     selfName?: string | null
     audioPreset?: AudioPreset
+    hideStartNextRound?: boolean
   } = $props()
 
   let showCtas = $state(false)
@@ -86,7 +88,9 @@
 
     {#if isHost && showCtas}
       <div class="ctas">
-        <button class="btn-primary" onclick={onStartNextRound}>Start Next Round</button>
+        {#if !hideStartNextRound}
+          <button class="btn-primary" onclick={onStartNextRound}>Start Next Round</button>
+        {/if}
         <button class="btn-secondary" onclick={onDismiss}>Dismiss</button>
       </div>
     {:else if !isHost && showGuestDismiss}

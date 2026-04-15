@@ -1,12 +1,15 @@
 import { Hono } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
-import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room } from './db.ts'
+import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room, type Host } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type AudioPreset, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
 import { buildPool, generateCards, shuffle } from './game/cards.ts'
+
+// Continuous Mode (Story 8-3) — auto-start delay between rounds. Hardcoded by design.
+const CONTINUOUS_COUNTDOWN_MS = 10_000
 
 // ── Win detection ─────────────────────────────────────────────────────────
 
@@ -270,8 +273,128 @@ const VALID_CLIP_DURATIONS: ClipDuration[] = [20, 30, 45, 60, 'full']
 const VALID_TITLE_REVEAL_DELAYS: TitleRevealDelay[] = [0, 5, 10, 15, null]
 const VALID_AUDIO_PRESETS: AudioPreset[] = ['hype', 'deadpan', 'minimal']
 
+// Core round creation — fetches playlist, builds pool, deals cards, writes roomState,
+// broadcasts round:start, persists. Invoked from both the HTTP handler and continuous
+// auto-start (Story 8-3).
+async function startRound(
+  code: string,
+  roomState: RoomState,
+  _room: Room,
+  host: Host,
+  config: RoundConfig,
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  let playlist
+  try {
+    playlist = shuffle(await getPlaylistTracks(config.playlistId, host.access_token))
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'InsufficientTracksError') {
+      return { ok: false, status: 422, message: err.message }
+    }
+    if (err instanceof SpotifyApiError) {
+      return { ok: false, status: 502, message: 'Failed to fetch playlist from Spotify' }
+    }
+    throw err
+  }
+
+  const sessionPlayedIds = roomState.currentRound?.sessionPlayedIds ?? []
+  const historicPlayedIds = getPlayedSongs(code)
+  const pool = buildPool(playlist, sessionPlayedIds, historicPlayedIds)
+
+  const hostKey = host.user_id
+  const guestKeys = Array.from(roomState.guests.keys())
+  const playerIds = [hostKey, ...guestKeys]
+  const cards = generateCards(pool, playerIds)
+
+  const roundStartPayload = {
+    type: 'round:start',
+    roundNumber: config.roundNumber,
+    playlist,
+    clipDuration: config.clipDuration,
+    titleRevealDelay: config.titleRevealDelay,
+    audioPreset: config.audioPreset,
+  }
+
+  const dealtTrackIds = pool.slice(0, 25).map(t => t.id)
+  const newSessionPlayed = [...sessionPlayedIds, ...dealtTrackIds]
+
+  roomState.currentRound = {
+    roundNumber: config.roundNumber,
+    config,
+    playlist,
+    cards,
+    roundStartPayload,
+    sessionPlayedIds: newSessionPlayed,
+    active: true,
+    currentSongIndex: -1,
+    currentSongRevealed: false,
+    songHistory: [],
+    paused: false,
+    timers: {},
+  }
+  roomState.pendingRound = config
+
+  if (roomState.host?.readyState === WebSocket.OPEN) {
+    const hostCard = cards.get(hostKey) ?? []
+    roomState.host.send(JSON.stringify({ ...roundStartPayload, card: hostCard }))
+  }
+  for (const [guestName, ws] of roomState.guests) {
+    if (ws.readyState === WebSocket.OPEN) {
+      const guestCard = cards.get(guestName) ?? []
+      ws.send(JSON.stringify({ ...roundStartPayload, card: guestCard }))
+    }
+  }
+
+  persistRoomState(code)
+  recordPlayedSongs(code, dealtTrackIds)
+
+  return { ok: true }
+}
+
+// Continuous-mode auto-start — invoked by the countdown timer (Story 8-3).
+// Clears the countdown, resolves a fresh host token, bumps roundNumber from
+// pendingRound, delegates to startRound. Any failure broadcasts
+// continuous:countdown-cancel with a reason and bails.
+async function startContinuousRound(code: string, roomState: RoomState): Promise<void> {
+  roomState.continuousCountdown = undefined
+
+  const host = getHostById(roomState.hostUserId)
+  if (!host) {
+    broadcast(code, { type: 'continuous:countdown-cancel', reason: 'host-missing' })
+    return
+  }
+
+  const freshHost = await withFreshToken(host)
+  if (!freshHost) {
+    broadcast(code, { type: 'continuous:countdown-cancel', reason: 'auth-degraded' })
+    return
+  }
+
+  const room = getRoomByCode(code)
+  if (!room) return // session deleted mid-countdown — session:end handled elsewhere
+
+  const base = roomState.pendingRound
+  if (!base) {
+    broadcast(code, { type: 'continuous:countdown-cancel', reason: 'no-round-config' })
+    return
+  }
+
+  const nextRoundNumber = (roomState.currentRound?.roundNumber ?? base.roundNumber) + 1
+  const config: RoundConfig = {
+    playlistId: base.playlistId,
+    clipDuration: base.clipDuration,
+    titleRevealDelay: base.titleRevealDelay,
+    audioPreset: base.audioPreset,
+    roundNumber: nextRoundNumber,
+  }
+
+  const result = await startRound(code, roomState, room, freshHost, config)
+  if (!result.ok) {
+    broadcast(code, { type: 'continuous:countdown-cancel', reason: result.message })
+  }
+}
+
 roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
-  let host = ctx.var.host
+  const host = ctx.var.host
   const code = ctx.req.param('code')
 
   const room = getRoomByCode(code)
@@ -309,9 +432,11 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   }
 
   const roomState = roomSockets.get(code)
-  const roundNumber = roomState?.currentRound
+  if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
+
+  const roundNumber = roomState.currentRound
     ? roomState.currentRound.roundNumber + 1
-    : roomState?.pendingRound
+    : roomState.pendingRound
       ? roomState.pendingRound.roundNumber + 1
       : 1
 
@@ -319,84 +444,80 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
 
   const freshHost = await withFreshToken(host)
   if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
-  host = freshHost
 
-  // Fetch tracks — returns 422 if fewer than 25 (InsufficientTracksError thrown by getPlaylistTracks)
-  let playlist
-  try {
-    playlist = shuffle(await getPlaylistTracks(playlistId, host.access_token))
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'InsufficientTracksError') {
-      return ctx.json({ message: err.message }, 422)
-    }
-    if (err instanceof SpotifyApiError) {
-      return ctx.json({ message: 'Failed to fetch playlist from Spotify' }, 502)
-    }
-    throw err
-  }
-
-  // Build pool with down-ranking
-  const sessionPlayedIds = roomState?.currentRound?.sessionPlayedIds ?? []
-  const historicPlayedIds = getPlayedSongs(code)
-  const pool = buildPool(playlist, sessionPlayedIds, historicPlayedIds)
-
-  // Generate a card per player (host + all connected guests)
-  const hostKey = host.user_id
-  const guestKeys = roomState ? Array.from(roomState.guests.keys()) : []
-  const playerIds = [hostKey, ...guestKeys]
-  const cards = generateCards(pool, playerIds)
-
-  // Cache the round-start payload (without card — added per-player below)
-  const roundStartPayload = {
-    type: 'round:start',
-    roundNumber,
-    playlist,
-    clipDuration,
-    titleRevealDelay,
-    audioPreset,
-  }
-
-  // Track session-played accumulation
-  const dealtTrackIds = pool.slice(0, 25).map(t => t.id)
-  const newSessionPlayed = [...sessionPlayedIds, ...dealtTrackIds]
-
-  // Store round state
-  if (roomState) {
-    roomState.currentRound = {
-      roundNumber,
-      config: roundConfig,
-      playlist,
-      cards,
-      roundStartPayload,
-      sessionPlayedIds: newSessionPlayed,
-      active: true,
-      currentSongIndex: -1,
-      currentSongRevealed: false,
-      songHistory: [],
-      paused: false,
-      timers: {},
-    }
-    roomState.pendingRound = roundConfig
-
-    // Broadcast round:start per-client (each gets their own card)
-    if (roomState.host?.readyState === WebSocket.OPEN) {
-      const hostCard = cards.get(hostKey) ?? []
-      roomState.host.send(JSON.stringify({ ...roundStartPayload, card: hostCard }))
-    }
-    for (const [guestName, ws] of roomState.guests) {
-      if (ws.readyState === WebSocket.OPEN) {
-        const guestCard = cards.get(guestName) ?? []
-        ws.send(JSON.stringify({ ...roundStartPayload, card: guestCard }))
-      }
-    }
-
-    persistRoomState(code)
-  }
-
-  // Persist played songs to SQLite
-  recordPlayedSongs(code, dealtTrackIds)
+  const result = await startRound(code, roomState, room, freshHost, roundConfig)
+  if (!result.ok) return ctx.json({ message: result.message }, result.status as 422 | 502)
 
   return ctx.json(roundConfig)
+})
+
+// POST /continuous-mode — host toggles Continuous Mode (Story 8-3).
+roomsRouter.post('/rooms/:code/continuous-mode', requireAuth, async (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
+
+  const body = await ctx.req.json().catch(() => null)
+  if (!body || typeof body.enabled !== 'boolean') {
+    return ctx.json({ message: 'Invalid continuousMode' }, 400)
+  }
+
+  roomState.continuousMode = body.enabled
+  broadcast(code, { type: 'continuous-mode:changed', enabled: body.enabled })
+
+  // Disable mid-countdown → cancel the pending auto-start.
+  if (!body.enabled && roomState.continuousCountdown) {
+    clearTimeout(roomState.continuousCountdown.timer)
+    roomState.continuousCountdown = undefined
+    broadcast(code, { type: 'continuous:countdown-cancel' })
+  }
+
+  return ctx.json({})
+})
+
+// POST /round/dismiss-win — host-authoritative win overlay dismiss (Story 8-3).
+// Broadcasts round:dismissed to all clients; if continuous mode is on, schedules
+// the 10 s auto-start timer.
+roomsRouter.post('/rooms/:code/round/dismiss-win', requireAuth, async (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
+
+  if (!roomState.currentRound || roomState.currentRound.ended !== true) {
+    return ctx.json({ message: 'No winning round to dismiss' }, 409)
+  }
+
+  broadcast(code, { type: 'round:dismissed' })
+
+  if (roomState.continuousMode && !roomState.pendingRound) {
+    broadcast(code, { type: 'continuous:countdown-cancel', reason: 'no-round-config' })
+  } else if (roomState.continuousMode && roomState.pendingRound) {
+    // Idempotent: clicking Dismiss twice must reuse the existing timer.
+    if (!roomState.continuousCountdown) {
+      const endsAt = Date.now() + CONTINUOUS_COUNTDOWN_MS
+      const timer = setTimeout(() => {
+        const rs = roomSockets.get(code)
+        if (!rs) return
+        startContinuousRound(code, rs).catch(err => console.error('[continuous]', err))
+      }, CONTINUOUS_COUNTDOWN_MS)
+      roomState.continuousCountdown = { timer, endsAt }
+      broadcast(code, { type: 'continuous:countdown-start', durationMs: CONTINUOUS_COUNTDOWN_MS, endsAt })
+    }
+  }
+
+  return ctx.json({})
 })
 
 roomsRouter.post('/rooms/:code/round/play', requireAuth, (ctx) => {
@@ -504,6 +625,14 @@ roomsRouter.post('/rooms/:code/round/end', requireAuth, (ctx) => {
   roomState!.currentRound = undefined
 
   roomState!.sessionStats.lastRoundWinner = null
+
+  // Defensive (Story 8-3): a manual End Round mid-countdown must prevent the
+  // auto-start from firing, so cancel any in-flight continuous countdown first.
+  if (roomState!.continuousCountdown) {
+    clearTimeout(roomState!.continuousCountdown.timer)
+    roomState!.continuousCountdown = undefined
+    broadcast(code, { type: 'continuous:countdown-cancel' })
+  }
 
   broadcast(code, { type: 'round:end' })
   broadcast(code, {

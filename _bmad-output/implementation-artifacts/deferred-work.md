@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of 8-3-continuous-mode (2026-04-14)
+
+- **`handleDismissWin` silent failure when continuous on** — spec explicitly says "non-fatal; countdown just won't start"; host must re-dismiss if POST fails while continuous mode is enabled; no error shown by design. (src/client/pages/HostRoomPage.svelte)
+- **`_room` dead parameter in `startRound`** — prefixed `_` to silence unused-variable lint; either remove or add a comment explaining future intent. (src/server/rooms.ts)
+- **`initialCountdownRemainingMs` seeded outside `gameState` constructor** — works correctly but breaks the factory's initialisation contract; `initialContinuousMode` is encapsulated, `initialCountdownRemainingMs` is not. Refactor candidate. (src/client/pages/RoomPage.svelte)
+- **Duplicate `$effect` countdown ticker** — character-for-character identical in `HostRoomPage.svelte` and `RoomPage.svelte`; extract to a shared utility if countdown logic changes. (src/client/pages/HostRoomPage.svelte, src/client/pages/RoomPage.svelte)
+- **No `durationMs` type guard in `continuous:countdown-start` handler** — `countdownEndsAt = Date.now() + NaN` if server sends malformed payload; low risk since server is trusted, defensive hardening for future. (src/client/lib/gameState.svelte.ts)
+
 ## Deferred from: code review of 8-2-session-statistics (2026-04-14)
 
 - **Display-name collision double-counts wins on both rows** — when a guest joins with the same name as `host_name`, a single win increments `winsByName[name]` once but `PlayerList` renders BOTH the host row and the guest row with `×N` and `Last round ✓`. Root cause: project-wide identity-by-display-name pattern. Spec Dev Notes explicitly defer the player-ID refactor. (src/client/components/PlayerList.svelte, src/server/rooms.ts)

@@ -72,6 +72,10 @@ export interface RoomState {
   currentRound?: RoundState
   sdkDeviceId?: string
   sessionStats: SessionStats
+  // Continuous Mode (Story 8-3): not persisted — rehydrateRooms defaults to false
+  // and never has an in-flight countdown after a restart.
+  continuousMode: boolean
+  continuousCountdown?: { timer: ReturnType<typeof setTimeout>; endsAt: number }
 }
 
 export const roomSockets = new Map<string, RoomState>()
@@ -132,6 +136,7 @@ export function rehydrateRooms(): void {
       pendingRound: snap.pendingRound,
       sdkDeviceId: snap.sdkDeviceId,
       sessionStats: emptySessionStats(),
+      continuousMode: false,
       currentRound: snap.currentRound ? {
         ...snap.currentRound,
         config: {
@@ -190,6 +195,12 @@ export function destroyRoom(roomCode: string): void {
     clearTimeout(round.timers.reveal)
     round.timers.autoAdvance = undefined
     round.timers.reveal = undefined
+  }
+
+  // 1b. clear continuous-mode countdown timer if one is in flight (Story 8-3)
+  if (room.continuousCountdown) {
+    clearTimeout(room.continuousCountdown.timer)
+    room.continuousCountdown = undefined
   }
 
   // 2. broadcast session:end
@@ -274,7 +285,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     const wasInMap = roomSockets.has(code)
     if (!wasInMap) {
-      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats() })
+      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false })
     }
     const roomState = roomSockets.get(code)!
 
@@ -296,6 +307,10 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       hostName: room.host_name,
       winsByName: { ...roomState.sessionStats.winsByName },
       lastRoundWinner: roomState.sessionStats.lastRoundWinner,
+      continuousMode: roomState.continuousMode,
+      countdownRemainingMs: roomState.continuousCountdown
+        ? Math.max(0, roomState.continuousCountdown.endsAt - Date.now())
+        : null,
     }))
 
     // Send round:start if there is an active round (needed for HostRoomPage initial load)
@@ -331,7 +346,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     }
 
     if (!roomSockets.has(code)) {
-      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats() })
+      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false })
     }
     const roomState = roomSockets.get(code)!
 
@@ -352,6 +367,10 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       hostName: room.host_name,
       winsByName: { ...roomState.sessionStats.winsByName },
       lastRoundWinner: roomState.sessionStats.lastRoundWinner,
+      continuousMode: roomState.continuousMode,
+      countdownRemainingMs: roomState.continuousCountdown
+        ? Math.max(0, roomState.continuousCountdown.endsAt - Date.now())
+        : null,
     }))
 
     // If a round is in progress, resend round:start — reuse existing card if reconnecting
