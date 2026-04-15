@@ -5,6 +5,7 @@ import type { ServerType } from '@hono/node-server'
 import { authEvents } from './refresh.ts'
 import { verifySession } from './auth.ts'
 import { getRoomByCode, getHostById, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms } from './db.ts'
+import { runCasualModeSweep } from './rooms.ts'
 import type { Track } from './music/spotify.ts'
 import { generateCard, type Tile } from './game/cards.ts'
 
@@ -49,6 +50,11 @@ export interface RoundState {
     autoAdvance?: ReturnType<typeof setTimeout>
     reveal?: ReturnType<typeof setTimeout>
   }
+  // Casual Mode (Story 8-5): per-player set of already-swept tile indices.
+  // Not persisted — reset to empty Map() on rehydrate. Note: `playerCasualModes`
+  // is also not persisted, so after a server restart no sweep targets exist and
+  // players must re-toggle Casual Mode to resume auto-marking.
+  autoMarkedTileIndices: Map<string, Set<number>>
 }
 
 // ── Session stats (Story 8-2) ─────────────────────────────────────────────
@@ -154,6 +160,7 @@ export function rehydrateRooms(): void {
         cards: new Map(Object.entries(snap.currentRound.cards)),
         paused: true,
         timers: {},
+        autoMarkedTileIndices: new Map(),
       } : undefined,
     }
     roomSockets.set(row.room_code, roomState)
@@ -392,6 +399,12 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         songHistory: round.songHistory,
         currentSongRevealed: round.currentSongRevealed,
       }))
+
+      // Casual Mode (Story 8-5) — catch-up sweep on reconnect. AC #5. Must be AFTER
+      // ws.send(round:start) so the client has the card before the auto-mark event.
+      if (roomState.playerCasualModes.get(name) === true) {
+        runCasualModeSweep(code, roomState, { playerName: name, isCatchUp: true })
+      }
     }
 
     broadcast(code, { type: 'player:joined', name }, ws)
@@ -411,6 +424,14 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
           if (!r) return
           r.playerCasualModes.set(name, msg.enabled)
           broadcast(code, { type: 'player:casual-mode-changed', name, enabled: msg.enabled })
+          // Casual Mode (Story 8-5) — AC #4. On enable, run a catch-up sweep for this
+          // player so they pick up any tiles matching already-played songs. On disable,
+          // clear the per-player swept set so a later re-enable re-sweeps everything.
+          if (msg.enabled === true) {
+            runCasualModeSweep(code, r, { playerName: name, isCatchUp: true })
+          } else {
+            r.currentRound?.autoMarkedTileIndices.delete(name)
+          }
         }
       } catch { /* ignore malformed */ }
     })
@@ -420,6 +441,10 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       // Only remove if this is still the registered socket (not a reconnect)
       if (r && r.guests.get(name) === ws) {
         r.guests.delete(name)
+        // Casual Mode (Story 8-5) — AC #6. Clear the per-player swept set so the next
+        // reconnect's catch-up sweep re-emits every eligible tile (fresh-device safe).
+        // Do NOT clear r.playerCasualModes — the ☕ indicator persists across reconnects.
+        r.currentRound?.autoMarkedTileIndices.delete(name)
         broadcast(code, { type: 'player:left', name })
       }
     })

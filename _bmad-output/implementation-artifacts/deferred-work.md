@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of 8-5-casual-mode-auto-mark-engine (2026-04-15)
+
+- **Auto-claim latches permanently on failed claim** — `autoClaimFired` only resets on `round:start`, so a claim fetch failure locks out auto-claim for the rest of the round. Deferred: Epic 9 is about to minimize/remove the claim concept, so hardening this path would be wasted work. (src/client/pages/RoomPage.svelte)
+- **`playerCasualModes` not persisted across server restart** — pre-existing from Story 8-4. After a server restart, all casual-mode opt-ins silently reset for every player; the catch-up sweep cannot re-emit because its target set is empty. Real UX regression but out of this story's scope; requires extending the SQLite snapshot. (src/server/ws.ts)
+- **Sweep may fire during in-flight claim race** — tiny window where `round.ended = true` but `round.active = true`. A trivial `!round.ended` guard in `runCasualModeSweep` would close it, but no failing test demonstrates the race today. (src/server/rooms.ts)
+- **Enable Casual Mode during paused pre-reveal marks tile without clearing reveal state** — the tile flips to marked but may still render with `masked`/`revealing` flags because `applyAutoMarks` doesn't touch mask state. Interacts with Story 5-6 reveal flow. (src/client/lib/bingo.ts, src/client/lib/gameState.svelte.ts)
+- **Catch-up toast count reflects server-sent indices, not tiles actually applied** — cosmetic: post-reconnect the toast can say "Caught up on N songs" even when all N were already marked on the device. Low impact. (src/client/lib/gameState.svelte.ts)
+
 ## Deferred from: code review of 8-4-casual-mode-permission-and-player-toggle (2026-04-14)
 
 - **Server accepts `player:casual-mode-changed` regardless of `allowCasualMode` flag** — missing server-side permission enforcement; client prevents this for normal usage, but a crafted message bypasses the host's permission gate. Low priority for friends-only app. (src/server/ws.ts)

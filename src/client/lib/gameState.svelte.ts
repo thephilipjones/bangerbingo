@@ -3,6 +3,7 @@ import { computePlayerCount } from './waitingRoom.ts'
 import {
   initTiles,
   applyMask,
+  applyAutoMarks,
   startReveal,
   finishReveal,
   toggleMark,
@@ -98,6 +99,8 @@ export function createGameState({
   let countdownEndsAt = $state<number | null>(null)
   let allowCasualMode = $state(false)
   let casualModePlayers = $state<Set<string>>(new Set(initialCasualModeNames))
+  let catchUpToastCount = $state<number | null>(null)
+  let catchUpToastId = $state<number | null>(null)
 
   function handleTileClick(index: number) {
     const tile = tiles[index]
@@ -151,6 +154,8 @@ export function createGameState({
       audioPreset = (data.audioPreset as AudioPreset | undefined) ?? 'minimal'
       allowCasualMode = (data.allowCasualMode as boolean | undefined) ?? false
       casualModePlayers = new Set()
+      catchUpToastCount = null
+      catchUpToastId = null
       winData = null
       isClaiming = false
       countdownEndsAt = null
@@ -166,6 +171,15 @@ export function createGameState({
       if (data.enabled) s.add(data.name as string)
       else s.delete(data.name as string)
       casualModePlayers = s
+    } else if (data.type === 'square:auto-marked') {
+      const indices = (data.tileIndices as number[] | undefined) ?? []
+      if (indices.length === 0) return
+      tiles = applyAutoMarks(tiles, indices)
+      onTileMark?.(tiles)
+      if (data.catchUp === true) {
+        catchUpToastCount = indices.length
+        catchUpToastId = (catchUpToastId ?? 0) + 1
+      }
     } else if (data.type === 'continuous-mode:changed') {
       continuousMode = data.enabled as boolean
     } else if (data.type === 'continuous:countdown-start') {
@@ -270,6 +284,9 @@ export function createGameState({
     get allowCasualMode() { return allowCasualMode },
     get casualModePlayers() { return casualModePlayers },
     set casualModePlayers(v: Set<string>) { casualModePlayers = v },
+    get catchUpToastCount() { return catchUpToastCount },
+    get catchUpToastId() { return catchUpToastId },
+    clearCatchUpToast() { catchUpToastCount = null },
     handleTileClick,
     handleBingoClick,
     processWsMessage,

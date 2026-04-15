@@ -101,6 +101,76 @@ async function callSpotifyOnDevice(
   }
 }
 
+// Casual Mode (Story 8-5) — per-player auto-mark sweep. Scans each target player's
+// card for tiles whose trackId appears in songHistory (excluding the current song),
+// and emits `square:auto-marked` with only the newly-matched indices. Idempotent via
+// `round.autoMarkedTileIndices`. When `options.playerName` is omitted, iterates every
+// guest with casual mode on (track-change trigger). When provided, sweeps only that
+// player (used by enable-toggle and reconnect catch-up paths).
+export function runCasualModeSweep(
+  roomCode: string,
+  roomState: RoomState,
+  options: { playerName?: string; isCatchUp?: boolean; includeCurrent?: boolean } = {},
+): void {
+  void roomCode
+  const round = roomState.currentRound
+  if (!round || !round.active) return
+
+  // `includeCurrent` is used on playlist exhaustion so the final song's tile
+  // (which is still round.currentSongIndex) also gets auto-marked.
+  const currentTrackId = options.includeCurrent
+    ? null
+    : round.currentSongIndex >= 0
+      ? round.playlist[round.currentSongIndex]?.id ?? null
+      : null
+  const playedIds = new Set(
+    round.songHistory
+      .map(e => e.trackId)
+      .filter(id => currentTrackId === null || id !== currentTrackId),
+  )
+  if (playedIds.size === 0) return
+
+  const targetNames = options.playerName
+    ? [options.playerName]
+    : Array.from(roomState.playerCasualModes.entries())
+        .filter(([, v]) => v)
+        .map(([k]) => k)
+
+  for (const name of targetNames) {
+    if (roomState.playerCasualModes.get(name) !== true) continue
+    const ws = roomState.guests.get(name)
+    if (!ws || ws.readyState !== WebSocket.OPEN) continue
+
+    const card = round.cards.get(name)
+    if (!card) continue
+
+    let alreadySwept = round.autoMarkedTileIndices.get(name)
+    if (!alreadySwept) {
+      alreadySwept = new Set<number>()
+      round.autoMarkedTileIndices.set(name, alreadySwept)
+    }
+
+    const newIndices: number[] = []
+    for (let i = 0; i < card.length; i++) {
+      if (i === 12) continue // FREE space — defensive, trackId is '' so would never match anyway
+      if (alreadySwept.has(i)) continue
+      if (playedIds.has(card[i].trackId)) {
+        alreadySwept.add(i)
+        newIndices.push(i)
+      }
+    }
+
+    if (newIndices.length === 0) continue
+    try {
+      ws.send(JSON.stringify({
+        type: 'square:auto-marked',
+        tileIndices: newIndices,
+        catchUp: options.isCatchUp === true,
+      }))
+    } catch { /* ignore broken socket */ }
+  }
+}
+
 function startSong(roomCode: string, roomState: RoomState, songIndex: number): void {
   const round = roomState.currentRound!
 
@@ -112,7 +182,9 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   clearRoundTimers(round)
 
   // P1: only append to history when starting a new song, not when resuming the same one
+  let isTrackChange = false
   if (round.currentSongIndex !== songIndex) {
+    isTrackChange = true
     const entry: SongHistoryEntry = {
       trackId: track.id,
       title: track.title,
@@ -140,6 +212,11 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   })
 
   persistRoomState(roomCode)
+
+  // Casual Mode (Story 8-5) — sweep all casual-enabled players on real track changes.
+  // Not on resume-from-pause. First song (prev -1 → 0) is a track change, but the
+  // sweep excludes the new current song so no event is emitted. Correct.
+  if (isTrackChange) runCasualModeSweep(roomCode, roomState)
 
   // Fire-and-forget Spotify play via Web API (AC 5)
   callSpotifyOnDevice(roomCode, roomState, 'play', (deviceId, token) => ({
@@ -183,6 +260,9 @@ function advanceToNext(roomCode: string, roomState: RoomState): boolean {
   clearRoundTimers(round)
   const nextIndex = round.currentSongIndex + 1
   if (nextIndex >= round.playlist.length) {
+    // Final song transitions from "playing" to "done" at this point — sweep it
+    // into casual-mode players' cards so they don't miss their last tile.
+    runCasualModeSweep(roomCode, roomState, { includeCurrent: true })
     broadcast(roomCode, { type: 'songs:exhausted' })
     return true
   }
@@ -334,6 +414,7 @@ async function startRound(
     songHistory: [],
     paused: false,
     timers: {},
+    autoMarkedTileIndices: new Map(),
   }
   roomState.pendingRound = config
 

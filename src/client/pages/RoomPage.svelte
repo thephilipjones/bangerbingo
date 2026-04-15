@@ -29,6 +29,13 @@
   let sessionEnded = $state(false)
   let statusLine = $state('Waiting for the host to start a round...')
   let marksKey = ''
+  let toastMessage = $state<string | null>(null)
+  let toastTimer: ReturnType<typeof setTimeout> | undefined
+  let autoClaimFired = $state(false)
+  // Reconnect into an existing round delivers a buffered round:start whose reset
+  // would clobber `casualModeOn` seeded from session:connect. Skip the reset the
+  // first time so reconnected casual players keep their server-truth state.
+  let hasSeenRoundStart = false
 
   function loadMarks(): Set<string> {
     if (!marksKey) return new Set()
@@ -84,10 +91,40 @@
     return () => clearInterval(id)
   })
 
+  $effect(() => {
+    const id = game.catchUpToastId
+    if (id === null || id === undefined) return
+    const count = game.catchUpToastCount ?? 0
+    if (count <= 0) return
+    toastMessage = `Caught up on ${count} song${count === 1 ? '' : 's'}`
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => {
+      toastMessage = null
+      game.clearCatchUpToast()
+    }, 3000)
+  })
+
+  $effect(() => {
+    if (!casualModeOn) return
+    if (!game.hasBingo) return
+    if (autoClaimFired) return
+    if (game.isClaiming) return
+    autoClaimFired = true
+    setTimeout(() => {
+      if (!game.isClaiming && game.winData === null) game.handleBingoClick()
+    }, 600)
+  })
+
   function handleWsData(data: Record<string, unknown>) {
     game.processWsMessage(data)
     if (data.type === 'round:start') {
-      casualModeOn = false
+      if (hasSeenRoundStart) {
+        casualModeOn = false
+        autoClaimFired = false
+      }
+      hasSeenRoundStart = true
+      clearTimeout(toastTimer)
+      toastMessage = null
       statusLine = 'Waiting for next song…'
     } else if (data.type === 'song:start') {
       statusLine = `Song ${(data.songIndex as number) + 1} of this round`
@@ -116,6 +153,7 @@
   })
 
   onDestroy(() => {
+    clearTimeout(toastTimer)
     game.cleanup()
     ws.close()
   })
@@ -172,6 +210,9 @@
       <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
     {/if}
     <p class="status-line" role="status">{countdownSeconds !== null ? `Next game starts in ${countdownSeconds}s` : statusLine}</p>
+    {#if toastMessage}
+      <div class="casual-toast" role="status" aria-live="polite">{toastMessage}</div>
+    {/if}
     {#if game.allowCasualMode}
       <div class="casual-toggle-row">
         <span class="casual-label">Casual Mode</span>
@@ -289,5 +330,20 @@
     background: #2a4a2a;
     border-color: #1db954;
     color: #1db954;
+  }
+
+  .casual-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2a2a2a;
+    border: 2px solid #1db954;
+    color: #1db954;
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-size: 14px;
+    z-index: 50;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
 </style>

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-14 # story 8-4 done
+last_updated: 2026-04-15 # epic 8 retrospective complete
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -102,10 +102,15 @@ development_status:
   epic-7-retrospective: done
 
   # Epic 8: Relaxed Play
-  epic-8: in-progress
+  epic-8: done
   8-1-win-moment-hold-and-audio-presets: done
   8-2-session-statistics: done
   8-3-continuous-mode: done
   8-4-casual-mode-permission-and-player-toggle: done
-  8-5-casual-mode-auto-mark-engine: backlog
-  epic-8-retrospective: optional
+  8-5-casual-mode-auto-mark-engine: done
+  epic-8-retrospective: done
+
+  # Epic 9: Game Over Rethink
+  epic-9: backlog
+  9-1-game-over-page-state-and-auto-bingo: backlog
+  epic-9-retrospective: optional

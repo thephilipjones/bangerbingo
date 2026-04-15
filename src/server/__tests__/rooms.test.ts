@@ -14,7 +14,7 @@ vi.stubEnv('SESSION_SECRET', 'test_session_secret')
 vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
-const { generateRoomCode, createRoomWithRetry, roomsRouter } = await import('../rooms.ts')
+const { generateRoomCode, createRoomWithRetry, roomsRouter, runCasualModeSweep } = await import('../rooms.ts')
 const { roomSockets } = await import('../ws.ts')
 const { signUserId } = await import('../auth.ts')
 
@@ -710,6 +710,7 @@ function seedActiveRound(code = 'ABCD', clipDuration: ClipDuration = 30, titleRe
     paused: false,
     currentSongRevealed: false,
     timers: {},
+    autoMarkedTileIndices: new Map(),
   }
   roomState.currentRound = round
   return round
@@ -2167,3 +2168,250 @@ describe('Casual Mode — round:start includes allowCasualMode', () => {
 
 // session:connect integration coverage (casualModeNames seeding, player:casual-mode-changed
 // broadcast, non-boolean rejection) lives in ws.test.ts — that suite has a live WS server.
+
+// ── Casual Mode — Auto-Mark Engine (Story 8-5) ────────────────────────────
+
+describe('Casual Mode — Auto-Mark Engine', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // Seeds an active round with Alice as a guest, hand-plants a card for Alice whose
+  // first 12 tiles are playlist tracks 0..11 (and free space at 12), so tile-index 0
+  // is track_0, tile-index 1 is track_1, etc. Deterministic for index assertions.
+  function seedCasualRound(aliceCasualOn = true) {
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    const tracks = round.playlist
+    const card: Tile[] = tracks.slice(0, 10).map(t => ({
+      trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: t.albumArtUrl,
+    }))
+    // fill out remaining tiles to reach 25 — use repeats of track_0 won't hurt because
+    // we only assert on known indices; use placeholder ids that won't match playlist.
+    while (card.length < 25) {
+      card.push({ trackId: `pad_${card.length}`, title: '', artist: '', albumArtUrl: '' })
+    }
+    card[12] = { trackId: '', title: '', artist: '', albumArtUrl: '', free: true }
+    round.cards.set('Alice', card)
+
+    const aliceWs = makeMockWs()
+    roomState.guests.set('Alice', aliceWs as unknown as WebSocket)
+    if (aliceCasualOn) roomState.playerCasualModes.set('Alice', true)
+    return { roomState, round, aliceWs }
+  }
+
+  it('sweep emits square:auto-marked on track change for enabled player', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    // Play song 0 — songHistory=[t0], currentTrackId=t0 → sweep emits nothing
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    // Advance to song 1 — songHistory=[t0,t1], currentTrackId=t1 → should auto-mark tile at index 0 (t0)
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks).toHaveLength(1)
+    expect(autoMarks[0].tileIndices).toEqual([0])
+    expect(autoMarks[0].catchUp).toBe(false)
+    const alreadySwept = roomState.currentRound!.autoMarkedTileIndices.get('Alice')!
+    expect(Array.from(alreadySwept)).toEqual([0])
+  })
+
+  it('sweep excludes current song — no emit on first song', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks).toHaveLength(0)
+  })
+
+  it('sweep does not emit for players with casual mode off', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, aliceWs } = seedCasualRound(false)
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks).toHaveLength(0)
+  })
+
+  it('sweep is idempotent — second sweep with no song change emits nothing', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    const afterFirst = aliceWs.getSent().filter(m => m.type === 'square:auto-marked').length
+
+    // Manually invoke sweep a second time — should be a no-op
+    runCasualModeSweep('ABCD', roomState)
+    const afterSecond = aliceWs.getSent().filter(m => m.type === 'square:auto-marked').length
+    expect(afterSecond).toBe(afterFirst)
+  })
+
+  it('host skip (/round/next) triggers identical sweep', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    // First next → sweep t0 (tile 0); second next → sweep t1 (tile 1)
+    expect(autoMarks).toHaveLength(2)
+    expect(autoMarks[0].tileIndices).toEqual([0])
+    expect(autoMarks[1].tileIndices).toEqual([1])
+  })
+
+  it('newly marked indices exclude previously-swept indices', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } }) // sweeps [0]
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } }) // sweeps [1] only, not [0]
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks.map(m => m.tileIndices)).toEqual([[0], [1]])
+  })
+
+  it('FREE space (index 12) is never in tileIndices — defensive', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, round, aliceWs } = seedCasualRound()
+    // Force-match: overwrite index 12 to look like a played track (still marked free)
+    // and push that trackId into songHistory via two /next calls. But because our
+    // helper always sets index 12 to free:true, and runCasualModeSweep skips index 12
+    // explicitly, even a matching trackId would be ignored.
+    round.cards.get('Alice')![12] = { trackId: 'track_0', title: '', artist: '', albumArtUrl: '', free: true }
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    for (const m of autoMarks) {
+      expect(m.tileIndices).not.toContain(12)
+    }
+  })
+
+  it('sweep on new round resets autoMarkedTileIndices', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    // After first round: Alice's swept set contains tile 0.
+    expect(Array.from(roomState.currentRound!.autoMarkedTileIndices.get('Alice')!)).toEqual([0])
+
+    // Start a new round via the real POST /round endpoint — Spotify must be mocked
+    // so the endpoint can build a playlist without hitting the network.
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+    const startRes = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+    })
+    expect(startRes.status).toBe(200)
+
+    // New round: startRound reset playerCasualModes AND autoMarkedTileIndices to empty.
+    expect(roomState.currentRound!.autoMarkedTileIndices.has('Alice')).toBe(false)
+    expect(roomState.playerCasualModes.get('Alice')).toBeUndefined()
+
+    // Re-enable casual mode and seed history, then sweep — Alice starts from a fresh set.
+    roomState.playerCasualModes.set('Alice', true)
+    const newRound = roomState.currentRound!
+    // Plant a card on Alice for the new round so indices are deterministic.
+    const card: Tile[] = newRound.playlist.slice(0, 10).map(t => ({
+      trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: t.albumArtUrl,
+    }))
+    while (card.length < 25) card.push({ trackId: `pad_${card.length}`, title: '', artist: '', albumArtUrl: '' })
+    card[12] = { trackId: '', title: '', artist: '', albumArtUrl: '', free: true }
+    newRound.cards.set('Alice', card)
+    newRound.songHistory.push(
+      { trackId: newRound.playlist[0].id, title: '', artist: '', albumArtUrl: '', songIndex: 0 },
+      { trackId: newRound.playlist[1].id, title: '', artist: '', albumArtUrl: '', songIndex: 1 },
+    )
+    newRound.currentSongIndex = 1
+
+    const beforeCount = aliceWs.getSent().filter(m => m.type === 'square:auto-marked').length
+    runCasualModeSweep('ABCD', roomState, { playerName: 'Alice', isCatchUp: true })
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks.length).toBe(beforeCount + 1)
+    // Expect tile 0 to be newly-swept (not suppressed by the previous round's tracking).
+    expect(autoMarks[autoMarks.length - 1].tileIndices).toEqual([0])
+  })
+
+  it('sweeps final song on playlist exhaustion (songs:exhausted path)', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, round, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+    // Shrink the playlist so exhaustion is reachable in a single /next call.
+    round.playlist = round.playlist.slice(0, 2)
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } }) // to song 1 → sweeps tile 0
+    // One more /next would normally exhaust; sweep must run with includeCurrent so tile 1 (the final song) is emitted.
+    await app.request('/api/rooms/ABCD/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    // Two sweeps: first on song 0→1 transition (tile 0), second on exhaustion (tile 1).
+    expect(autoMarks.map(m => m.tileIndices)).toEqual([[0], [1]])
+  })
+
+  it('catch-up sweep emits catchUp: true when playerName + isCatchUp are provided', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, round, aliceWs } = seedCasualRound()
+    // Seed songHistory with two plays (currentSongIndex=1 → t1 is current, t0 is history)
+    round.songHistory.push(
+      { trackId: 'track_0', title: 'Song 0', artist: 'Artist 0', albumArtUrl: '', songIndex: 0 },
+      { trackId: 'track_1', title: 'Song 1', artist: 'Artist 1', albumArtUrl: '', songIndex: 1 },
+    )
+    round.currentSongIndex = 1
+
+    runCasualModeSweep('ABCD', roomState, { playerName: 'Alice', isCatchUp: true })
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks).toHaveLength(1)
+    expect(autoMarks[0].catchUp).toBe(true)
+    expect(autoMarks[0].tileIndices).toEqual([0])
+  })
+})

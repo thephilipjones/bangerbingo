@@ -19,6 +19,7 @@ export interface ClientTile {
   revealing: boolean
   winPath: boolean
   songLabel: string
+  autoMarked: boolean
 }
 
 export function initTiles(card: Tile[]): ClientTile[] {
@@ -33,7 +34,19 @@ export function initTiles(card: Tile[]): ClientTile[] {
     revealing: false,
     winPath: false,
     songLabel: '',
+    autoMarked: false,
   }))
+}
+
+export function applyAutoMarks(tiles: ClientTile[], indices: number[]): ClientTile[] {
+  if (indices.length === 0) return tiles
+  const idx = new Set(indices)
+  return tiles.map((tile, i) => {
+    if (!idx.has(i)) return tile
+    if (tile.free) return tile
+    if (tile.state === 'marked') return tile // idempotent — no duplicate re-animation
+    return { ...tile, state: 'marked' as const, autoMarked: true }
+  })
 }
 
 export function applyMask(

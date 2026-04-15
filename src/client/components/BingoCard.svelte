@@ -30,6 +30,7 @@
         class="tile"
         class:unmarked={tile.state === 'unmarked'}
         class:marked={tile.state === 'marked'}
+        class:auto-marked={tile.autoMarked}
         class:win-path={tile.winPath}
         class:nope={i === nopeIndex}
         title={tile.title}
@@ -146,5 +147,19 @@
 
   @media (prefers-reduced-motion: reduce) {
     .tile.nope { animation: none; }
+  }
+
+  @keyframes auto-mark-sweep {
+    0%   { transform: scale(1);    opacity: 1; }
+    30%  { transform: scale(0.94); opacity: 0.7; }
+    100% { transform: scale(1);    opacity: 1; }
+  }
+
+  .tile.auto-marked {
+    animation: auto-mark-sweep 520ms ease-out 120ms both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile.auto-marked { animation: none; }
   }
 </style>

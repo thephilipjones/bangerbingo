@@ -985,3 +985,217 @@ describe('player:casual-mode-changed', () => {
     bob.close()
   })
 })
+
+// ── Casual Mode — square:auto-marked (Story 8-5) ──────────────────────────
+
+describe('square:auto-marked', () => {
+  // Helper: start a round for a single guest (Alice) so we have a deterministic
+  // socket to reason about. Returns the host, alice clients and the guest card.
+  async function startCasualRound(code = 'CAS1') {
+    seedHost('host_1')
+    createRoom(code, 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' })),
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect(`/ws?code=${code}`, { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect(`/ws?code=${code}&name=Alice`)
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    const roundRes = await honoApp.request(`/api/rooms/${code}/round`, {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: 0, hostName: 'Host', allowCasualMode: true }),
+    })
+    expect(roundRes.status).toBe(200)
+
+    const aliceRoundStart = await alice.next('round:start')
+    await host.next('round:start')
+    const aliceCard = aliceRoundStart.card as Array<{ trackId: string; free?: boolean }>
+
+    return { host, alice, aliceCard, honoApp, code }
+  }
+
+  it('enabling Casual Mode mid-round triggers catch-up sweep with catchUp:true', async () => {
+    const { host, alice, aliceCard, honoApp, code } = await startCasualRound('CAS1')
+
+    // Playlist is shuffled inside startRound, so capture actual played trackIds from song:start.
+    await honoApp.request(`/api/rooms/${code}/round/play`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    const s1h = await host.next('song:start')
+    await alice.next('song:start')
+    await honoApp.request(`/api/rooms/${code}/round/next`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    const s2h = await host.next('song:start')
+    await alice.next('song:start')
+    await honoApp.request(`/api/rooms/${code}/round/next`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await host.next('song:start')
+    await alice.next('song:start')
+
+    // Played history (excluding current) = first two songs.
+    const playedIds = new Set<string>([s1h.trackId as string, s2h.trackId as string])
+    const expectedIndices: number[] = []
+    for (let i = 0; i < aliceCard.length; i++) {
+      if (i === 12) continue
+      if (playedIds.has(aliceCard[i].trackId)) expectedIndices.push(i)
+    }
+
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+    await host.next('player:casual-mode-changed')
+
+    if (expectedIndices.length > 0) {
+      const msg = await alice.next('square:auto-marked')
+      expect(msg.catchUp).toBe(true)
+      expect(new Set(msg.tileIndices as number[])).toEqual(new Set(expectedIndices))
+    }
+
+    vi.restoreAllMocks()
+    host.close()
+    alice.close()
+  })
+
+  it('reconnecting with Casual Mode on triggers catch-up sweep', async () => {
+    const { host, alice, aliceCard, honoApp, code } = await startCasualRound('CAS2')
+
+    // Enable casual mode first so it persists through reconnect.
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+    await host.next('player:casual-mode-changed')
+
+    // Play and advance a couple songs.
+    await honoApp.request(`/api/rooms/${code}/round/play`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    const s1h = await host.next('song:start')
+    await alice.next('song:start')
+    await honoApp.request(`/api/rooms/${code}/round/next`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    const s2h = await host.next('song:start')
+    await alice.next('song:start')
+    await honoApp.request(`/api/rooms/${code}/round/next`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await host.next('song:start')
+    await alice.next('song:start')
+
+    // Disconnect Alice and wait for close to propagate.
+    alice.close()
+    await delay(50)
+    // playerCasualModes still has Alice=true; autoMarkedTileIndices for Alice was cleared.
+    expect(roomSockets.get(code)!.currentRound!.autoMarkedTileIndices.has('Alice')).toBe(false)
+    expect(roomSockets.get(code)!.playerCasualModes.get('Alice')).toBe(true)
+
+    // Reconnect Alice — server should catch-up sweep after round:start.
+    const alice2 = await connect(`/ws?code=${code}&name=Alice`)
+    await alice2.next('session:connect')
+    await alice2.next('round:start')
+
+    const playedIds = new Set<string>([s1h.trackId as string, s2h.trackId as string])
+    const expectedIndices: number[] = []
+    for (let i = 0; i < aliceCard.length; i++) {
+      if (i === 12) continue
+      if (playedIds.has(aliceCard[i].trackId)) expectedIndices.push(i)
+    }
+
+    if (expectedIndices.length > 0) {
+      const msg = await alice2.next('square:auto-marked')
+      expect(msg.catchUp).toBe(true)
+      expect(new Set(msg.tileIndices as number[])).toEqual(new Set(expectedIndices))
+    }
+
+    vi.restoreAllMocks()
+    host.close()
+    alice2.close()
+  })
+
+  it('disabling Casual Mode clears autoMarkedTileIndices entry for that player', async () => {
+    const { host, alice, honoApp, code } = await startCasualRound('CAS3')
+
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+    await host.next('player:casual-mode-changed')
+
+    await honoApp.request(`/api/rooms/${code}/round/play`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await host.next('song:start')
+    await alice.next('song:start')
+    await honoApp.request(`/api/rooms/${code}/round/next`, { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await host.next('song:start')
+    await alice.next('song:start')
+    // Allow sweep to process
+    await delay(20)
+
+    // Now disable — should clear the entry.
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: false }))
+    await host.next('player:casual-mode-changed')
+    await delay(20)
+
+    expect(roomSockets.get(code)!.currentRound!.autoMarkedTileIndices.has('Alice')).toBe(false)
+
+    vi.restoreAllMocks()
+    host.close()
+    alice.close()
+  })
+
+  it('square:auto-marked is NOT sent to other players', async () => {
+    seedHost('host_1')
+    createRoom('CAS4', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' })),
+    )
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=CAS4', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=CAS4&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    const bob = await connect('/ws?code=CAS4&name=Bob')
+    await bob.next('session:connect')
+    await host.next('player:joined')
+    await alice.next('player:joined')
+
+    const roundRes = await honoApp.request('/api/rooms/CAS4/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: 0, hostName: 'Host', allowCasualMode: true }),
+    })
+    expect(roundRes.status).toBe(200)
+
+    await host.next('round:start')
+    await alice.next('round:start')
+    await bob.next('round:start')
+
+    // Attach raw listeners BEFORE the sweep to detect any leaked auto-marks.
+    const bobAll: Msg[] = []
+    const hostAll: Msg[] = []
+    bob.ws.on('message', (raw) => { bobAll.push(JSON.parse(raw.toString())) })
+    host.ws.on('message', (raw) => { hostAll.push(JSON.parse(raw.toString())) })
+
+    // Only Alice enables casual mode
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+    await host.next('player:casual-mode-changed')
+    await alice.next('player:casual-mode-changed')
+    await bob.next('player:casual-mode-changed')
+
+    // Advance songs
+    await honoApp.request('/api/rooms/CAS4/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await host.next('song:start'); await alice.next('song:start'); await bob.next('song:start')
+    await honoApp.request('/api/rooms/CAS4/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    await host.next('song:start'); await alice.next('song:start'); await bob.next('song:start')
+
+    // Alice should receive the auto-mark (proves sweep ran server-side).
+    await alice.next('square:auto-marked')
+    // Small delay in case bob/host would have gotten one in the same tick.
+    await delay(30)
+
+    expect(bobAll.some(m => m.type === 'square:auto-marked')).toBe(false)
+    expect(hostAll.some(m => m.type === 'square:auto-marked')).toBe(false)
+
+    vi.restoreAllMocks()
+    host.close()
+    alice.close()
+    bob.close()
+  })
+})
