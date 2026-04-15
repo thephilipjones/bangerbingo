@@ -47,23 +47,25 @@ describe('validateHostName', () => {
 
 describe('buildStartRoundPayload', () => {
   it('includes hostName when present (name field was visible on first round)', () => {
-    const payload = buildStartRoundPayload('pl_abc', 30, 5, 'Sarah', 'minimal')
+    const payload = buildStartRoundPayload('pl_abc', 30, 5, 'Sarah', 'minimal', false)
     expect(payload).toEqual({
       playlistId: 'pl_abc',
       clipDuration: 30,
       titleRevealDelay: 5,
       hostName: 'Sarah',
       audioPreset: 'minimal',
+      allowCasualMode: false,
     })
   })
 
   it('omits hostName key entirely when null (name field was hidden)', () => {
-    const payload = buildStartRoundPayload('pl_abc', 'full', null, null, 'deadpan')
+    const payload = buildStartRoundPayload('pl_abc', 'full', null, null, 'deadpan', true)
     expect(payload).toEqual({
       playlistId: 'pl_abc',
       clipDuration: 'full',
       titleRevealDelay: null,
       audioPreset: 'deadpan',
+      allowCasualMode: true,
     })
     expect('hostName' in payload).toBe(false)
   })

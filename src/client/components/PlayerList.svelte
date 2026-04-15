@@ -8,6 +8,7 @@
     winsByName = {},
     lastRoundWinner = null,
     showStats = false,
+    casualModeNames = new Set(),
   }: {
     players: string[]
     hostName: string | null
@@ -15,6 +16,7 @@
     winsByName?: Record<string, number>
     lastRoundWinner?: string | null
     showStats?: boolean
+    casualModeNames?: Set<string>
   } = $props()
 
   const showYouOnHost = $derived(
@@ -34,6 +36,9 @@
 <ul class="players-list">
   <li class="player-row">
     <span class="player-name">{hostName ?? 'Host'}</span>
+    {#if hostName !== null && casualModeNames?.has(hostName)}
+      <span class="casual-icon" aria-label="Casual Mode on">☕</span>
+    {/if}
     {#if winCount(hostName) > 0}
       <span class="win-count">×{winCount(hostName)}</span>
     {/if}
@@ -48,6 +53,9 @@
   {#each players as playerName (playerName)}
     <li class="player-row">
       <span class="player-name">{playerName}</span>
+      {#if casualModeNames?.has(playerName)}
+        <span class="casual-icon" aria-label="Casual Mode on">☕</span>
+      {/if}
       {#if winCount(playerName) > 0}
         <span class="win-count">×{winCount(playerName)}</span>
       {/if}
@@ -85,6 +93,10 @@
   .player-name {
     flex: 1;
     color: #fff;
+  }
+
+  .casual-icon {
+    font-size: 0.85rem;
   }
 
   .win-count {

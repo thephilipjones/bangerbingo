@@ -86,6 +86,7 @@ export interface GuestHandlers {
     lastRoundWinner: string | null,
     continuousMode: boolean,
     countdownRemainingMs: number | null,
+    casualModeNames: string[],
   ): void
   onError(message: string): void
   onMessage(event: { data: string }): void
@@ -142,6 +143,7 @@ export function connectAsGuest(name: string, code: string, handlers: GuestHandle
           data.lastRoundWinner ?? null,
           data.continuousMode ?? false,
           data.countdownRemainingMs ?? null,
+          data.casualModeNames ?? [],
         )
       } else if (data.type === 'host:disconnected') {
         handlers.onHostDisconnected?.()

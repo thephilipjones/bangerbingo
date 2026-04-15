@@ -47,6 +47,7 @@ export function createGameState({
   initialWinsByName = {},
   initialLastRoundWinner = null,
   initialContinuousMode = false,
+  initialCasualModeNames = [],
   getMarksForCard,
   onTileMark,
 }: {
@@ -57,6 +58,7 @@ export function createGameState({
   initialWinsByName?: Record<string, number>
   initialLastRoundWinner?: string | null
   initialContinuousMode?: boolean
+  initialCasualModeNames?: string[]
   /**
    * Called on round:start with the raw card array.
    * Use this to update a localStorage key and return any saved marks.
@@ -94,6 +96,8 @@ export function createGameState({
   const showStats = $derived(hasStats && highestRoundNumber >= 2)
   let continuousMode = $state(initialContinuousMode)
   let countdownEndsAt = $state<number | null>(null)
+  let allowCasualMode = $state(false)
+  let casualModePlayers = $state<Set<string>>(new Set(initialCasualModeNames))
 
   function handleTileClick(index: number) {
     const tile = tiles[index]
@@ -145,6 +149,8 @@ export function createGameState({
       const card = data.card as Tile[]
       roundConfig = { titleRevealDelay: data.titleRevealDelay as TitleRevealDelay }
       audioPreset = (data.audioPreset as AudioPreset | undefined) ?? 'minimal'
+      allowCasualMode = (data.allowCasualMode as boolean | undefined) ?? false
+      casualModePlayers = new Set()
       winData = null
       isClaiming = false
       countdownEndsAt = null
@@ -155,6 +161,11 @@ export function createGameState({
       songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
       currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
       highestRoundNumber = Math.max(highestRoundNumber, (data.roundNumber as number | undefined) ?? 0)
+    } else if (data.type === 'player:casual-mode-changed') {
+      const s = new Set(casualModePlayers)
+      if (data.enabled) s.add(data.name as string)
+      else s.delete(data.name as string)
+      casualModePlayers = s
     } else if (data.type === 'continuous-mode:changed') {
       continuousMode = data.enabled as boolean
     } else if (data.type === 'continuous:countdown-start') {
@@ -256,6 +267,9 @@ export function createGameState({
     set continuousMode(v: boolean) { continuousMode = v },
     get countdownEndsAt() { return countdownEndsAt },
     set countdownEndsAt(v: number | null) { countdownEndsAt = v },
+    get allowCasualMode() { return allowCasualMode },
+    get casualModePlayers() { return casualModePlayers },
+    set casualModePlayers(v: Set<string>) { casualModePlayers = v },
     handleTileClick,
     handleBingoClick,
     processWsMessage,

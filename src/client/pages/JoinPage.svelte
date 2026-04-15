@@ -17,6 +17,7 @@
       code: string,
       ws: WebSocket,
       pending: MessageEvent[],
+      casualModeNames: string[],
     ) => void
     onHostLogin: () => void
   } = $props()
@@ -71,14 +72,14 @@
     connecting = true
     bufferedMessages = []
     activeWs = connectAsGuest(name, code, {
-      onConnect(role, players, hostName, winsByName, lastRoundWinner, continuousMode, countdownRemainingMs) {
+      onConnect(role, players, hostName, winsByName, lastRoundWinner, continuousMode, countdownRemainingMs, casualModeNames) {
         connecting = false
         const handedOff = activeWs!
         const pending = bufferedMessages
         activeWs = undefined // prevent onDestroy from closing the handed-off socket
         bufferedMessages = []
         setStoredGuestName(name)
-        onJoined(name, role, players, hostName, winsByName, lastRoundWinner, continuousMode, countdownRemainingMs, code, handedOff, pending)
+        onJoined(name, role, players, hostName, winsByName, lastRoundWinner, continuousMode, countdownRemainingMs, code, handedOff, pending, casualModeNames)
       },
       onError(message) {
         connecting = false

@@ -10,7 +10,7 @@
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
 
-  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialContinuousMode = false, initialCountdownRemainingMs = null, pendingMessages = [], onLeave }: {
+  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialContinuousMode = false, initialCountdownRemainingMs = null, initialCasualModeNames = [], pendingMessages = [], onLeave }: {
     name: string
     code: string
     ws: WebSocket
@@ -20,6 +20,7 @@
     initialLastRoundWinner?: string | null
     initialContinuousMode?: boolean
     initialCountdownRemainingMs?: number | null
+    initialCasualModeNames?: string[]
     pendingMessages?: MessageEvent[]
     onLeave?: () => void
   } = $props()
@@ -38,6 +39,14 @@
     }
   }
 
+  let casualModeOn = $state(untrack(() => initialCasualModeNames.includes(name)))
+
+  function handleCasualToggle() {
+    const next = !casualModeOn
+    casualModeOn = next
+    ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: next }))
+  }
+
   const game = createGameState({
     code: untrack(() => code),
     getPlayerName: () => name,
@@ -45,6 +54,7 @@
     initialWinsByName: untrack(() => initialWinsByName),
     initialLastRoundWinner: untrack(() => initialLastRoundWinner),
     initialContinuousMode: untrack(() => initialContinuousMode),
+    initialCasualModeNames: untrack(() => initialCasualModeNames),
     getMarksForCard: (card: Tile[]) => {
       marksKey = `bangerbingo:marks:${code}:${cardFingerprint(card)}`
       return loadMarks()
@@ -77,6 +87,7 @@
   function handleWsData(data: Record<string, unknown>) {
     game.processWsMessage(data)
     if (data.type === 'round:start') {
+      casualModeOn = false
       statusLine = 'Waiting for next song…'
     } else if (data.type === 'song:start') {
       statusLine = `Song ${(data.songIndex as number) + 1} of this round`
@@ -140,7 +151,7 @@
 {/if}
 
 {#if game.showPlayers}
-  <PlayersOverlay players={game.players} {hostName} selfName={name} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} onClose={() => { game.showPlayers = false }} />
+  <PlayersOverlay players={game.players} {hostName} selfName={name} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} />
 {/if}
 
 <main class="room-page" class:game-active={game.tiles.length > 0}>
@@ -161,8 +172,19 @@
       <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
     {/if}
     <p class="status-line" role="status">{countdownSeconds !== null ? `Next game starts in ${countdownSeconds}s` : statusLine}</p>
+    {#if game.allowCasualMode}
+      <div class="casual-toggle-row">
+        <span class="casual-label">Casual Mode</span>
+        <button
+          class="casual-btn"
+          class:active={casualModeOn}
+          onclick={handleCasualToggle}
+          aria-pressed={casualModeOn}
+        >{casualModeOn ? 'On' : 'Off'}</button>
+      </div>
+    {/if}
   {:else}
-    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {countdownSeconds} {onLeave} />
+    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {countdownSeconds} {onLeave} allowCasualMode={game.allowCasualMode} {casualModeOn} onCasualToggle={handleCasualToggle} casualModeNames={game.casualModePlayers} />
   {/if}
 </main>
 
@@ -238,5 +260,34 @@
     background: #555;
     color: #999;
     cursor: default;
+  }
+
+  .casual-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 12px;
+  }
+
+  .casual-label {
+    font-size: 14px;
+    color: #aaa;
+  }
+
+  .casual-btn {
+    padding: 0.35rem 0.9rem;
+    min-height: 36px;
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 999px;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  .casual-btn.active {
+    background: #2a4a2a;
+    border-color: #1db954;
+    color: #1db954;
   }
 </style>

@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 8-4-casual-mode-permission-and-player-toggle (2026-04-14)
+
+- **Server accepts `player:casual-mode-changed` regardless of `allowCasualMode` flag** — missing server-side permission enforcement; client prevents this for normal usage, but a crafted message bypasses the host's permission gate. Low priority for friends-only app. (src/server/ws.ts)
+- **No dedup/rate-limit on `player:casual-mode-changed` broadcast** — a spamming client triggers a broadcast per message; pre-existing pattern across the server, friends-only app. (src/server/ws.ts)
+
 ## Deferred from: code review of 8-3-continuous-mode (2026-04-14)
 
 - **`handleDismissWin` silent failure when continuous on** — spec explicitly says "non-fatal; countdown just won't start"; host must re-dismiss if POST fails while continuous mode is enabled; no error shown by design. (src/client/pages/HostRoomPage.svelte)

@@ -305,6 +305,9 @@ async function startRound(
   const playerIds = [hostKey, ...guestKeys]
   const cards = generateCards(pool, playerIds)
 
+  // Reset per-player casual mode opt-ins on every new round
+  roomState.playerCasualModes = new Map()
+
   const roundStartPayload = {
     type: 'round:start',
     roundNumber: config.roundNumber,
@@ -312,6 +315,7 @@ async function startRound(
     clipDuration: config.clipDuration,
     titleRevealDelay: config.titleRevealDelay,
     audioPreset: config.audioPreset,
+    allowCasualMode: config.allowCasualMode,
   }
 
   const dealtTrackIds = pool.slice(0, 25).map(t => t.id)
@@ -384,6 +388,7 @@ async function startContinuousRound(code: string, roomState: RoomState): Promise
     clipDuration: base.clipDuration,
     titleRevealDelay: base.titleRevealDelay,
     audioPreset: base.audioPreset,
+    allowCasualMode: base.allowCasualMode,
     roundNumber: nextRoundNumber,
   }
 
@@ -406,6 +411,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
 
   const { playlistId, clipDuration, titleRevealDelay, hostName } = body
   const audioPreset: AudioPreset = body.audioPreset ?? 'minimal'
+  const allowCasualMode: boolean = typeof body.allowCasualMode === 'boolean' ? body.allowCasualMode : false
 
   if (!playlistId || typeof playlistId !== 'string' || !playlistId.trim())
     return ctx.json({ message: 'playlistId is required' }, 400)
@@ -440,7 +446,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
       ? roomState.pendingRound.roundNumber + 1
       : 1
 
-  const roundConfig: RoundConfig = { playlistId, clipDuration, titleRevealDelay, roundNumber, audioPreset }
+  const roundConfig: RoundConfig = { playlistId, clipDuration, titleRevealDelay, roundNumber, audioPreset, allowCasualMode }
 
   const freshHost = await withFreshToken(host)
   if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)

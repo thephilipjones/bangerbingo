@@ -228,6 +228,7 @@
           game.continuousMode = (data.continuousMode as boolean | undefined) ?? false
           const remaining = data.countdownRemainingMs as number | null | undefined
           game.countdownEndsAt = (remaining !== null && remaining !== undefined && remaining > 0) ? Date.now() + remaining : null
+          game.casualModePlayers = new Set((data.casualModeNames as string[] | undefined) ?? [])
         } else if (data.type === 'continuous:countdown-cancel') {
           const reason = (data as Record<string, unknown>).reason as string | undefined
           if (reason) showContinuousError(`Continuous round failed — ${reason}`)
@@ -303,7 +304,7 @@
 {/if}
 
 {#if game.showPlayers}
-  <PlayersOverlay players={game.players} {hostName} selfName={null} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} onClose={() => { game.showPlayers = false }} />
+  <PlayersOverlay players={game.players} {hostName} selfName={null} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} />
 {/if}
 
 {#if game.winData !== null}

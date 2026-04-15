@@ -16,6 +16,7 @@
   ]
 
   let audioPreset = $state<AudioPreset>('minimal')
+  let allowCasualMode = $state(false)
 
   let {
     code,
@@ -205,6 +206,7 @@
         titleRevealDelay,
         nameResult.trimmed,
         audioPreset,
+        allowCasualMode,
       )
       await startRound(code, payload)
       onStarted(nameResult.trimmed)
@@ -381,6 +383,25 @@
               aria-pressed={titleRevealDelay === opt.value}
             >{opt.label}</button>
           {/each}
+        </div>
+      </section>
+
+      <!-- Casual Mode toggle -->
+      <section class="option-section">
+        <h2 class="option-label">Casual Mode</h2>
+        <div class="pill-group" role="group" aria-label="Casual mode">
+          <button
+            class="pill"
+            class:selected={!allowCasualMode}
+            onclick={() => allowCasualMode = false}
+            aria-pressed={!allowCasualMode}
+          >Off</button>
+          <button
+            class="pill"
+            class:selected={allowCasualMode}
+            onclick={() => allowCasualMode = true}
+            aria-pressed={allowCasualMode}
+          >Allow</button>
         </div>
       </section>
 

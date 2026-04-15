@@ -157,7 +157,7 @@ describe('Host connect', () => {
     const c = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     const msg = await c.next()
 
-    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: null, winsByName: {}, lastRoundWinner: null, continuousMode: false, countdownRemainingMs: null })
+    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: null, winsByName: {}, lastRoundWinner: null, continuousMode: false, countdownRemainingMs: null, casualModeNames: [] })
     c.close()
   })
 
@@ -242,7 +242,7 @@ describe('session:connect with hostName set', () => {
     const c = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     const msg = await c.next()
 
-    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: 'Sarah', winsByName: {}, lastRoundWinner: null, continuousMode: false, countdownRemainingMs: null })
+    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: 'Sarah', winsByName: {}, lastRoundWinner: null, continuousMode: false, countdownRemainingMs: null, casualModeNames: [] })
     c.close()
   })
 
@@ -898,5 +898,90 @@ describe('persistRoomState triggers', () => {
 
     vi.restoreAllMocks()
     host.close()
+  })
+})
+
+// ── Casual Mode (Story 8-4) ────────────────────────────────────────────────
+
+describe('player:casual-mode-changed', () => {
+  it('guest toggle sets roomState map and broadcasts to host and guests', async () => {
+    seedHost('host_1')
+    createRoom('CASL', 'host_1')
+
+    const host = await connect('/ws?code=CASL', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=CASL&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    const bob = await connect('/ws?code=CASL&name=Bob')
+    await bob.next('session:connect')
+    await host.next('player:joined')
+    await alice.next('player:joined')
+
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+
+    const hostMsg = await host.next('player:casual-mode-changed')
+    expect(hostMsg).toEqual({ type: 'player:casual-mode-changed', name: 'Alice', enabled: true })
+
+    const bobMsg = await bob.next('player:casual-mode-changed')
+    expect(bobMsg).toEqual({ type: 'player:casual-mode-changed', name: 'Alice', enabled: true })
+
+    expect(roomSockets.get('CASL')!.playerCasualModes.get('Alice')).toBe(true)
+
+    host.close()
+    alice.close()
+    bob.close()
+  })
+
+  it('ignores non-boolean enabled — map unchanged, subsequent valid toggle still works', async () => {
+    seedHost('host_1')
+    createRoom('CASL', 'host_1')
+
+    const host = await connect('/ws?code=CASL', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=CASL&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    // Send non-boolean — should be silently ignored
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: 'yes' }))
+    // Follow with a valid message — if the invalid one was broadcast, it would arrive first
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+
+    const hostMsg = await host.next('player:casual-mode-changed')
+    expect(hostMsg).toEqual({ type: 'player:casual-mode-changed', name: 'Alice', enabled: true })
+
+    // Map reflects only the valid update
+    expect(roomSockets.get('CASL')!.playerCasualModes.get('Alice')).toBe(true)
+
+    host.close()
+    alice.close()
+  })
+
+  it('late-joining guest session:connect includes casualModeNames for opted-in players', async () => {
+    seedHost('host_1')
+    createRoom('CASL', 'host_1')
+
+    const host = await connect('/ws?code=CASL', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=CASL&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+    await host.next('player:casual-mode-changed')
+
+    const bob = await connect('/ws?code=CASL&name=Bob')
+    const bobConnect = await bob.next('session:connect')
+
+    expect(bobConnect.casualModeNames).toEqual(['Alice'])
+
+    host.close()
+    alice.close()
+    bob.close()
   })
 })

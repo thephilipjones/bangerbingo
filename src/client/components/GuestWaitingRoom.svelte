@@ -4,7 +4,7 @@
   import VinylWithTonearm from './VinylWithTonearm.svelte'
   import PlayerList from './PlayerList.svelte'
 
-  let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, countdownSeconds = null, onLeave }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; countdownSeconds?: number | null; onLeave?: () => void } = $props()
+  let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, countdownSeconds = null, onLeave, allowCasualMode = false, casualModeOn = false, onCasualToggle, casualModeNames = new Set() }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; countdownSeconds?: number | null; onLeave?: () => void; allowCasualMode?: boolean; casualModeOn?: boolean; onCasualToggle?: () => void; casualModeNames?: Set<string> } = $props()
 
   // Host row is always rendered (with name or generic "Host"), so always count host as +1
   const playerCount = $derived(players.length + 1)
@@ -94,8 +94,21 @@
   <!-- Player list -->
   <div class="players-section">
     <h2 class="players-label">Players here ({playerCount})</h2>
-    <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} />
+    <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} {casualModeNames} />
   </div>
+
+  <!-- Casual Mode toggle (waiting room) -->
+  {#if allowCasualMode}
+    <div class="casual-toggle-row">
+      <span class="casual-label">Casual Mode</span>
+      <button
+        class="casual-btn"
+        class:active={casualModeOn}
+        onclick={onCasualToggle}
+        aria-pressed={casualModeOn}
+      >{casualModeOn ? 'On' : 'Off'}</button>
+    </div>
+  {/if}
 
   <!-- Trivia -->
   <p class="fact" class:visible>{facts[factIndex]}</p>
@@ -229,6 +242,34 @@
     color: #fff;
     margin: 0 0 12px 0;
     text-align: left;
+  }
+
+  .casual-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .casual-label {
+    font-size: 14px;
+    color: #aaa;
+  }
+
+  .casual-btn {
+    padding: 0.35rem 0.9rem;
+    min-height: 36px;
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 999px;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  .casual-btn.active {
+    background: #2a4a2a;
+    border-color: #1db954;
+    color: #1db954;
   }
 
   .fact {

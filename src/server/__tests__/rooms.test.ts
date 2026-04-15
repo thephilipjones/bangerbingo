@@ -45,7 +45,7 @@ async function seedRoom(hostUserId = 'host_1', code = 'ABCD') {
   const { getDb } = await import('../db.ts')
   const db = getDb()
   db.prepare('INSERT OR IGNORE INTO rooms (code, host_user_id, created_at) VALUES (?, ?, ?)').run(code, hostUserId, Date.now())
-  roomSockets.set(code, { host: null, hostUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: { winsByName: {}, lastRoundWinner: null }, continuousMode: false })
+  roomSockets.set(code, { host: null, hostUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: { winsByName: {}, lastRoundWinner: null }, continuousMode: false, playerCasualModes: new Map() })
 }
 
 // ── Code generation ────────────────────────────────────────────────────────
@@ -699,7 +699,7 @@ function seedActiveRound(code = 'ABCD', clipDuration: ClipDuration = 30, titleRe
   const roomState = roomSockets.get(code)!
   const round: RoundState = {
     roundNumber: 1,
-    config: { playlistId: 'test_playlist', clipDuration, titleRevealDelay, roundNumber: 1 },
+    config: { playlistId: 'test_playlist', clipDuration, titleRevealDelay, roundNumber: 1, audioPreset: 'minimal', allowCasualMode: false },
     playlist: makeTracksLocal(10),
     cards: new Map(),
     roundStartPayload: {},
@@ -2094,3 +2094,76 @@ describe('POST /api/account/spotify/disconnect', () => {
     expect(host!.token_expires_at).toBe(0)
   })
 })
+
+// ── Casual Mode (Story 8-4) ───────────────────────────────────────────────
+
+describe('Casual Mode — round:start includes allowCasualMode', () => {
+  beforeEach(async () => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+  })
+
+  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
+
+  it('round:start broadcast includes allowCasualMode: true when set', async () => {
+    seedHost()
+    await seedRoom()
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validPayload, allowCasualMode: true }),
+    })
+    expect(res.status).toBe(200)
+    const msg = hostWs.getSent()[0]
+    expect(msg.type).toBe('round:start')
+    expect(msg.allowCasualMode).toBe(true)
+  })
+
+  it('round:start defaults allowCasualMode to false when omitted', async () => {
+    seedHost()
+    await seedRoom()
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+    const msg = hostWs.getSent()[0]
+    expect(msg.type).toBe('round:start')
+    expect(msg.allowCasualMode).toBe(false)
+  })
+
+  it('new round resets playerCasualModes', async () => {
+    seedHost()
+    await seedRoom()
+
+    const roomState = roomSockets.get('ABCD')!
+    roomState.playerCasualModes.set('Alice', true)
+    expect(roomState.playerCasualModes.size).toBe(1)
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+
+    expect(roomState.playerCasualModes.size).toBe(0)
+  })
+})
+
+// session:connect integration coverage (casualModeNames seeding, player:casual-mode-changed
+// broadcast, non-boolean rejection) lives in ws.test.ts — that suite has a live WS server.

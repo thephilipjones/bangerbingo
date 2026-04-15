@@ -20,6 +20,7 @@ export interface RoundConfig {
   titleRevealDelay: TitleRevealDelay
   roundNumber: number
   audioPreset: AudioPreset
+  allowCasualMode: boolean
 }
 
 export interface SongHistoryEntry {
@@ -76,6 +77,8 @@ export interface RoomState {
   // and never has an in-flight countdown after a restart.
   continuousMode: boolean
   continuousCountdown?: { timer: ReturnType<typeof setTimeout>; endsAt: number }
+  // Casual Mode (Story 8-4): not persisted — resets between sessions.
+  playerCasualModes: Map<string, boolean> // name → casual mode on
 }
 
 export const roomSockets = new Map<string, RoomState>()
@@ -137,6 +140,7 @@ export function rehydrateRooms(): void {
       sdkDeviceId: snap.sdkDeviceId,
       sessionStats: emptySessionStats(),
       continuousMode: false,
+      playerCasualModes: new Map(),
       currentRound: snap.currentRound ? {
         ...snap.currentRound,
         config: {
@@ -285,7 +289,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     const wasInMap = roomSockets.has(code)
     if (!wasInMap) {
-      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false })
+      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false, playerCasualModes: new Map() })
     }
     const roomState = roomSockets.get(code)!
 
@@ -311,6 +315,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       countdownRemainingMs: roomState.continuousCountdown
         ? Math.max(0, roomState.continuousCountdown.endsAt - Date.now())
         : null,
+      casualModeNames: Array.from(roomState.playerCasualModes.entries()).filter(([, v]) => v).map(([k]) => k),
     }))
 
     // Send round:start if there is an active round (needed for HostRoomPage initial load)
@@ -346,7 +351,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     }
 
     if (!roomSockets.has(code)) {
-      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false })
+      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false, playerCasualModes: new Map() })
     }
     const roomState = roomSockets.get(code)!
 
@@ -371,6 +376,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       countdownRemainingMs: roomState.continuousCountdown
         ? Math.max(0, roomState.continuousCountdown.endsAt - Date.now())
         : null,
+      casualModeNames: Array.from(roomState.playerCasualModes.entries()).filter(([, v]) => v).map(([k]) => k),
     }))
 
     // If a round is in progress, resend round:start — reuse existing card if reconnecting
@@ -399,6 +405,12 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
             r.guests.delete(name)
             broadcast(code, { type: 'player:left', name })
           }
+        } else if (msg.type === 'player:casual-mode-changed') {
+          if (typeof msg.enabled !== 'boolean') return
+          const r = roomSockets.get(code)
+          if (!r) return
+          r.playerCasualModes.set(name, msg.enabled)
+          broadcast(code, { type: 'player:casual-mode-changed', name, enabled: msg.enabled })
         }
       } catch { /* ignore malformed */ }
     })

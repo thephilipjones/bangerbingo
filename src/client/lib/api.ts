@@ -71,6 +71,7 @@ export interface StartRoundPayload {
   titleRevealDelay: number | null
   hostName?: string
   audioPreset: AudioPreset
+  allowCasualMode?: boolean
 }
 
 export interface StartRoundResponse {

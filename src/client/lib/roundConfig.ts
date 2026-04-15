@@ -25,12 +25,14 @@ export function buildStartRoundPayload(
   titleRevealDelay: number | null,
   hostName: string | null,
   audioPreset: AudioPreset,
+  allowCasualMode: boolean,
 ): StartRoundPayload {
   return {
     playlistId,
     clipDuration,
     titleRevealDelay,
     audioPreset,
+    allowCasualMode,
     ...(hostName ? { hostName } : {}),
   }
 }
