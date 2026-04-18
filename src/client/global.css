@@ -1,9 +1,9 @@
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@import './styles/tokens.css';
+@import './styles/reset.css';
+@import './styles/typography.css';
 
+/* Step 1: keep existing body colors so app renders unchanged.
+   Step 3 sweep replaces these with semantic tokens. */
 body {
   background: #121212;
   color: #fff;

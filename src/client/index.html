@@ -4,6 +4,39 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BangerBingo</title>
+
+    <!-- Inline theme resolver — runs before paint to prevent FOUC flash on reload.
+         Keep in sync with src/client/lib/theme.ts. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('bb-theme');
+          var mode = stored === 'light' || stored === 'dark'
+            ? stored
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.setAttribute('data-theme', mode);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <meta name="theme-color" content="#EFEBE4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)" />
+
+    <meta name="description" content="All bangers, cause why would you listen to anything else. Music bingo with your people." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="BangerBingo" />
+    <meta property="og:description" content="All bangers, cause why would you listen to anything else." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="BangerBingo" />
+    <meta name="twitter:description" content="All bangers, cause why would you listen to anything else." />
+    <meta name="twitter:image" content="/og-image.png" />
   </head>
   <body>
     <div id="app"></div>

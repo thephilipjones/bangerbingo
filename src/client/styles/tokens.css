@@ -1,0 +1,85 @@
+/* Design tokens — Minimal Editorial Rock.
+   Components must reference semantic tokens only. Never raw hex. */
+
+:root {
+  /* Raw palette (theme-agnostic) */
+  --palette-ink: #111111;
+  --palette-ink-2: #2A2A28;
+  --palette-paper: #EFEBE4;
+  --palette-paper-2: #E4DFD5;
+  --palette-signal: #D7261E;
+  --palette-muted-light: #6B6864;
+  --palette-muted-dark: #9A958D;
+  --palette-danger: #8B1E1E;
+  --palette-ok: #2F6F3E;
+
+  /* Type scale */
+  --fs-display-lg: 120px;
+  --fs-display: 96px;
+  --fs-display-sm: 64px;
+  --fs-h1: 40px;
+  --fs-h2: 28px;
+  --fs-body: 16px;
+  --fs-small: 13px;
+
+  --lh-display: 0.95;
+  --lh-body: 1.55;
+
+  --track-display: -0.02em;
+  --track-body: 0;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Rules & radii */
+  --rule-thin: 1px;
+  --rule-thick: 3px;
+  --rule-heavy: 6px;
+  --radius-0: 0;
+  --radius-1: 2px;
+  --radius-2: 4px;
+
+  /* Motion */
+  --ease-snap: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-med: 220ms;
+
+  /* Fonts — display/body locked in Step 2; both loaded in Step 1 */
+  --font-display: 'Anton', 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Light theme (default) */
+:root,
+[data-theme='light'] {
+  --bg: var(--palette-paper);
+  --bg-2: var(--palette-paper-2);
+  --fg: var(--palette-ink);
+  --fg-muted: var(--palette-muted-light);
+  --accent: var(--palette-signal);
+  --accent-fg: var(--palette-paper);
+  --rule: var(--palette-ink);
+  --danger: var(--palette-danger);
+  --ok: var(--palette-ok);
+}
+
+/* Dark theme */
+[data-theme='dark'] {
+  --bg: var(--palette-ink);
+  --bg-2: var(--palette-ink-2);
+  --fg: var(--palette-paper);
+  --fg-muted: var(--palette-muted-dark);
+  --accent: var(--palette-signal);
+  --accent-fg: var(--palette-paper);
+  --rule: var(--palette-paper);
+  --danger: var(--palette-signal);
+  --ok: var(--palette-ok);
+}

@@ -1,0 +1,83 @@
+/* Self-hosted woff2 subsets dropped into public/fonts/ (see Step 1.1).
+   Until binaries land, declarations resolve to system fallbacks via the
+   stack in tokens.css. No preloads in index.html yet — avoid 404 noise. */
+
+@font-face {
+  font-family: 'Anton';
+  src: local('Anton'), url('/fonts/Anton-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: local('Space Grotesk'), url('/fonts/SpaceGrotesk-Variable.woff2') format('woff2-variations');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: local('Inter'), url('/fonts/Inter-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('JetBrains Mono'), url('/fonts/JetBrainsMono-Variable.woff2') format('woff2-variations');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Scale utilities. Display is ALL CAPS with tight tracking; body is sentence case. */
+
+.u-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: var(--track-display);
+  line-height: var(--lh-display);
+}
+
+.u-display-lg { font-size: var(--fs-display-lg); }
+.u-display-md { font-size: var(--fs-display); }
+.u-display-sm { font-size: var(--fs-display-sm); }
+
+.u-h1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  text-transform: uppercase;
+  letter-spacing: var(--track-display);
+  line-height: var(--lh-display);
+}
+
+.u-h2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  text-transform: uppercase;
+  letter-spacing: var(--track-display);
+  line-height: var(--lh-display);
+}
+
+.u-body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  letter-spacing: var(--track-body);
+}
+
+.u-small {
+  font-family: var(--font-body);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+}
+
+.u-mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+}
