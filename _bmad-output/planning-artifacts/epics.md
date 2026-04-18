@@ -322,6 +322,14 @@ This document provides the complete epic and story breakdown for Bangerbingo, de
 
 ---
 
+### Epic 9: Game Over Rethink
+*Replace the claim button and Win Overlay modal with an auto-triggered Game Over page state. When a player marks their 5th winning tile, the room bounces into a communal Game Over view showing the winner's card (celebratory for the winner, side-by-side toggle for everyone else) and a context-aware "Start Next Round" CTA.*
+**Depends on:** Epic 5 (win detection, `round:win` broadcast, `/round/claim` endpoint), Epic 8 (Continuous Mode gating for the next-round CTA)
+**Stories:** 9-1 (Game Over Page State & Auto-Bingo)
+**Deferred (out of scope for this epic):** Countdown timer on Game Over screen; "songs that would have won it for you" near-miss visualization; host big-screen / TV layout.
+
+---
+
 ## Epic 2: Web Playback SDK Spike
 
 *Validate that a browser can load a Spotify track, seek to a position, play a timed clip, and auto-stop — de-risking the highest technical unknown before building the game loop.*
@@ -1453,3 +1461,139 @@ So that I'm never behind just because I looked away.
 **Given** Casual Mode auto-mark fires for a player
 **When** that marking creates a winning bingo pattern
 **Then** the standard win detection flow triggers — the auto-mark can produce a valid win
+
+---
+
+## Epic 9: Game Over Rethink
+
+*The current `WinOverlay` is a modal dropped over a dead card view, and requires a deliberate "Bingo!" button tap to claim a win. This epic replaces both: marking the winning tile auto-claims, and the win state is a page mode of the game screen — not an overlay — with winner and loser variants that turn the end of a round into a communal scoreboard moment.*
+
+**Design intent captured from 2026-04-14 party-mode discussion with Sally (UX), Winston (Architecture), John (PM), Amelia (Dev). Key principles:**
+- The server already sees every card; a claim button is paper-bingo ceremony with no purpose here. Marking the winning tile *is* the claim.
+- The Game Over view is a *page mode* of `RoomPage`/`HostRoomPage`, not a modal, because the cards are the content — they shouldn't hide behind a backdrop.
+- Mobile-first, responsive down to a small host laptop. No big-screen / TV layout (the host does not want to share their card on a shared display).
+- "Independent of live game state" = the Game Over page mode is a client-side view state. The server still ends the round on first valid claim (same `round.ended = true` + `round:win` broadcast as today).
+- The host is always also a player in this project.
+
+---
+
+### Story 9-1: Game Over Page State & Auto-Bingo
+
+As a player,
+I want my bingo to be auto-claimed the moment I mark my winning tile and drop the whole room into a Game Over page where everyone can see the winner's card alongside their own,
+So that the end of a round is a shared scoreboard moment instead of a dismissable notification, and so no one loses because their reflexes on the Bingo button were half a second slow.
+
+**Acceptance Criteria:**
+
+**— Auto-Bingo (replace the claim button) —**
+
+**Given** a player is in an active round with a card that does not yet form a winning line
+**When** they mark a tile that causes `hasBingo` to flip true (i.e. `WIN_LINES.some(line => isWinningLine(tiles, line, playedTrackIds))` now passes)
+**Then** the client immediately POSTs to `/api/rooms/:code/round/claim` with the full set of marked tile IDs — no user button tap required
+
+**Given** the auto-claim POST fires
+**When** it is in flight
+**Then** the old `Bingo!` button is not rendered anywhere in the UI (it is deleted from `RoomPage.svelte` and `HostRoomPage.svelte`; `handleBingoClick` and `isClaiming` are removed from `gameState`)
+
+**Given** a player's auto-claim is in flight
+**When** they mark or unmark additional tiles before the server responds
+**Then** the claim is guarded so it only fires once per round — a subsequent `hasBingo` re-flip does not produce a second POST
+
+**Given** two players in the same room auto-claim on the same song (race condition)
+**When** the server processes both POSTs
+**Then** the first POST wins (server sets `round.ended = true`, broadcasts `round:win`); the second POST receives a non-200 response and the second client does nothing on receipt — the subsequent `round:win` broadcast is what transitions both clients into Game Over
+
+**Given** a player unmarks a tile that was part of their winning line but the server has already accepted their claim
+**When** `round:win` has been broadcast
+**Then** the Game Over state persists — late unmarks do not retroactively invalidate the win
+
+**— Game Over as a page mode (not an overlay) —**
+
+**Given** a client receives a `round:win` broadcast
+**When** the game page renders
+**Then** the `WinOverlay` modal component is no longer used; instead `RoomPage`/`HostRoomPage` render a `GameOverView` branch of the page (different top-level `{#if}` branch gated on `game.winData !== null`) that fully replaces the active-round card view — no fixed-position modal, no backdrop
+
+**Given** the Game Over page mode is rendered
+**When** the round ends
+**Then** the existing header, song history drawer, and players overlay remain reachable from this page mode (their buttons/affordances are still visible and functional) — only the card area changes
+
+**Given** the Game Over page mode is rendered
+**When** the user attempts to dismiss it
+**Then** there is no generic "Dismiss" affordance — the page mode persists until the next round starts or the session ends (dismiss-to-peek-at-live-card is not needed because the card IS on the Game Over screen)
+
+**— Winner variant —**
+
+**Given** a player is the winner (the client's own player name matches `winData.winnerName`)
+**When** the Game Over page mode renders
+**Then** the top of the view shows a large celebratory "BINGO!" headline with the winner's name beneath (reuse existing Hype/Deadpan/Minimal preset styling from `audioPreset`)
+
+**Given** the winner variant is rendered
+**When** the card area renders
+**Then** the winner sees *only their own card* (no toggle, no "their card vs your card"), with the winning line highlighted via the existing `applyWinPath` treatment and non-winning tiles dimmed to ~40% opacity
+
+**Given** the winner variant is rendered
+**When** the winning songs list renders
+**Then** the 5 songs that formed the winning line are displayed in winning-line order (filtered from `winData.songHistory` by `winData.winningTileIds`)
+
+**— Loser variant —**
+
+**Given** a player is not the winner (non-host or host-as-player whose name does not match `winData.winnerName`)
+**When** the Game Over page mode renders
+**Then** the top of the view shows a smaller "{winnerName} got BINGO" headline (no confetti, no celebration styling)
+
+**Given** the loser variant is rendered
+**When** the card area renders
+**Then** a segmented toggle is visible with two options: **Their card** (default) and **Your card**
+
+**Given** the loser variant is rendered with **Their card** selected
+**When** the card area renders
+**Then** the winner's card is displayed with the winning line highlighted — the winner's card payload must be available on the client via the existing `round:win` broadcast (if it is not already sent, the server broadcast is extended to include `winnerCard: Tile[]`)
+
+**Given** the loser variant is rendered with **Your card** selected
+**When** the card area renders
+**Then** the player's own card is displayed with their own marks, no winning-line highlight, and **any tile whose song played during the round but was not manually marked by the player is rendered in an "honest card" faded state** (visually distinct dimmed/greyed treatment — this is the "scold" cue for missed marks)
+
+**Given** the loser variant is rendered
+**When** the winning songs list renders
+**Then** the 5 winning songs are displayed below the card area (same filter rule as the winner variant)
+
+**— Start Next Round CTA (continuous-mode-aware) —**
+
+**Given** the Game Over page mode is rendered **and** Continuous Mode is OFF
+**When** the CTA area renders
+**Then** *only the host* sees a "Start Next Round" CTA button; all other players (including the winner if they are not the host) see a neutral status line like "Waiting for the host to start the next round"
+
+**Given** the Game Over page mode is rendered **and** Continuous Mode is ON
+**When** the CTA area renders
+**Then** *the host and the winner* both see a "Start Next Round" CTA button; all other players see the neutral waiting status line
+
+**Given** the Game Over page mode is rendered, Continuous Mode is ON, and the host is also the winner (same human)
+**When** the CTA area renders
+**Then** a single "Start Next Round" CTA is shown (no duplicate — the two eligibility rules collapse to one button)
+
+**Given** a player with a "Start Next Round" CTA taps it
+**When** the request reaches the server
+**Then** the server starts the next round using the same round config (genre/playlist, clip length, title reveal, Continuous Mode flag, Casual Mode permission, audio preset) and broadcasts `round:start` — identical semantics to today's host-initiated next-round flow
+
+**— Reusable BingoCard variants —**
+
+**Given** the `BingoCard` component is used in three contexts (active round, Game Over winner, Game Over loser "Their card" view, Game Over loser "Your card" view)
+**When** the component renders in a Game Over context
+**Then** it accepts a `mode` prop (or equivalent) controlling the visual treatment — a second card component is not introduced; the existing component is extended with variants
+
+**— Mobile-first responsive —**
+
+**Given** the Game Over page mode is viewed on a phone (primary target)
+**When** the layout renders
+**Then** all content (headline, card, toggle if loser, winning songs list, CTA) fits within a standard mobile viewport without horizontal scroll and without requiring the user to dismiss anything to see the card
+
+**Given** the Game Over page mode is viewed on a small laptop display (secondary target — host device)
+**When** the layout renders
+**Then** the layout adapts responsively to the wider viewport but remains centered and does not assume a shared-screen / TV context
+
+**— Out of scope (explicitly deferred) —**
+
+- Countdown timer auto-advancing to the next round. *Deferred pending live-play feedback; may never ship.*
+- "Songs that would have won it for you if you had 4-in-a-row" near-miss visualization. *Deferred — acknowledged by Philip as low-priority in the original request.*
+- Big-screen / TV-shared host layout. *Out of scope indefinitely — host does not want their card visible on a shared display.*
+- Non-winner keyboard/a11y handling of the Their/Your toggle beyond what the existing project-wide a11y baseline provides.
