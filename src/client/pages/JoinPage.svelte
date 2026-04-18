@@ -2,6 +2,10 @@
   import { onMount, onDestroy, untrack } from 'svelte'
   import { connectAsGuest, sanitizeCode, validateJoin } from '../lib/ws.ts'
   import { getStoredGuestName, setStoredGuestName } from '../lib/guestName.ts'
+  import Logo from '../lib/components/Logo.svelte'
+  import Button from '../lib/components/Button.svelte'
+  import Panel from '../lib/components/Panel.svelte'
+  import ThemeToggle from '../lib/components/ThemeToggle.svelte'
 
   let { prefillCode = '', onJoined, onHostLogin }: {
     prefillCode?: string
@@ -35,7 +39,6 @@
 
   onMount(() => {
     if (prefillCode && name) {
-      // Auto-rejoin when waking up from a room URL with a stored name
       handleSubmit(new Event('submit'))
     } else {
       nameInput?.focus()
@@ -76,7 +79,7 @@
         connecting = false
         const handedOff = activeWs!
         const pending = bufferedMessages
-        activeWs = undefined // prevent onDestroy from closing the handed-off socket
+        activeWs = undefined
         bufferedMessages = []
         setStoredGuestName(name)
         onJoined(name, role, players, hostName, winsByName, lastRoundWinner, continuousMode, countdownRemainingMs, code, handedOff, pending, casualModeNames)
@@ -98,58 +101,76 @@
 </script>
 
 <div class="join-page" class:hidden={autoRejoining && !autoRejoinFailed}>
-  <button type="button" class="host-login-btn" onclick={onHostLogin} disabled={connecting}>Host Login</button>
-  <h1>BangerBingo</h1>
-  <form onsubmit={handleSubmit}>
-    <div class="field">
-      <label for="name-input">Your name</label>
-      <input
-        id="name-input"
-        type="text"
-        bind:value={name}
-        bind:this={nameInput}
-        autocomplete="off"
-        aria-describedby={nameError ? 'name-error' : undefined}
-      />
-      {#if nameError}
-        <p class="error" id="name-error">{nameError}</p>
-      {/if}
+  <header class="top-bar">
+    <Logo size={28} variant="mark-only" />
+    <div class="top-bar__actions">
+      <ThemeToggle />
+      <Button variant="ghost" size="sm" onclick={onHostLogin} disabled={connecting}>Host Login</Button>
     </div>
+  </header>
 
-    <div class="field">
-      <label for="code-input">
-        Room code
-        {#if prefillCode}
-          <span class="lock" aria-label="locked">🔒</span>
-        {/if}
-      </label>
-      {#if prefillCode}
-        <input
-          id="code-input"
-          type="text"
-          value={code}
-          readonly
-          aria-describedby={codeError ? 'code-error' : undefined}
-        />
-      {:else}
-        <input
-          id="code-input"
-          type="text"
-          value={code}
-          oninput={handleCodeInput}
-          maxlength={4}
-          aria-describedby={codeError ? 'code-error' : undefined}
-        />
-      {/if}
-      {#if codeError}
-        <p class="error" id="code-error">{codeError}</p>
-      {/if}
+  <main class="hero">
+    <div class="hero__mark">
+      <Logo size={96} variant="wordmark-only" />
     </div>
+    <p class="tagline">All bangers, cause why would you listen to anything else.</p>
 
-    <button type="submit" disabled={connecting}>
-      {connecting ? 'Joining…' : 'Join'}
-    </button>
-  </form>
+    <Panel>
+      <form onsubmit={handleSubmit} class="form">
+        <div class="field">
+          <label for="name-input" class="u-small">Your name</label>
+          <input
+            id="name-input"
+            type="text"
+            bind:value={name}
+            bind:this={nameInput}
+            autocomplete="off"
+            aria-describedby={nameError ? 'name-error' : undefined}
+          />
+          {#if nameError}
+            <p class="error u-small" id="name-error">{nameError}</p>
+          {/if}
+        </div>
+
+        <div class="field">
+          <label for="code-input" class="u-small">
+            Room code
+            {#if prefillCode}
+              <span class="lock" aria-label="locked">🔒</span>
+            {/if}
+          </label>
+          {#if prefillCode}
+            <input
+              id="code-input"
+              type="text"
+              value={code}
+              readonly
+              class="mono"
+              aria-describedby={codeError ? 'code-error' : undefined}
+            />
+          {:else}
+            <input
+              id="code-input"
+              type="text"
+              value={code}
+              oninput={handleCodeInput}
+              maxlength={4}
+              class="mono"
+              aria-describedby={codeError ? 'code-error' : undefined}
+            />
+          {/if}
+          {#if codeError}
+            <p class="error u-small" id="code-error">{codeError}</p>
+          {/if}
+        </div>
+
+        <Button type="submit" variant="primary" size="lg" disabled={connecting}>
+          {connecting ? 'Joining…' : "I'm in"}
+        </Button>
+      </form>
+    </Panel>
+  </main>
+
 </div>
 
 <style>
@@ -161,51 +182,90 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
     min-height: 100dvh;
-    gap: 1rem;
-    font-family: sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
   }
 
-  h1 {
-    margin-bottom: 1rem;
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5);
+    border-bottom: var(--rule-thick) solid var(--rule);
+  }
+  .top-bar__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
   }
 
-  form {
+  .hero {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    align-items: center;
+    gap: var(--space-5);
+    padding: var(--space-7) var(--space-5);
+    max-width: 640px;
     width: 100%;
-    max-width: 320px;
+    margin: 0 auto;
+  }
+
+  .hero__mark {
+    display: flex;
+    justify-content: center;
+  }
+
+  .tagline {
+    font-family: var(--font-body);
+    font-size: 20px;
+    line-height: 1.4;
+    text-align: center;
+    max-width: 36ch;
+    color: var(--fg);
+    margin: 0;
+  }
+
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+    min-width: 280px;
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-2);
   }
 
   label {
-    font-size: 0.875rem;
-    color: #ccc;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
 
   input {
-    background: #1e1e1e;
-    border: 1px solid #444;
-    border-radius: 0.375rem;
-    color: #fff;
-    font-size: 1rem;
-    padding: 0 0.75rem;
-    min-height: 44px;
-    min-width: 44px;
+    background: var(--bg);
+    border: var(--rule-thin) solid var(--rule);
+    border-radius: var(--radius-0);
+    color: var(--fg);
+    font-size: var(--fs-body);
+    padding: 0 var(--space-4);
+    min-height: 48px;
     width: 100%;
   }
+  input.mono {
+    font-family: var(--font-mono);
+    letter-spacing: 0.08em;
+    font-size: 20px;
+  }
 
-  input:focus {
-    outline: 2px solid #1db954;
-    outline-offset: 1px;
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   input[readonly] {
@@ -213,31 +273,8 @@
     cursor: default;
   }
 
-  button {
-    background: #1db954;
-    border: none;
-    border-radius: 2rem;
-    color: #000;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 600;
-    min-height: 44px;
-    min-width: 44px;
-    padding: 0 2rem;
-  }
-
-  button:hover:not(:disabled) {
-    background: #1ed760;
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
   .error {
-    color: #e74c3c;
-    font-size: 0.8125rem;
+    color: var(--danger);
     margin: 0;
   }
 
@@ -245,34 +282,4 @@
     font-size: 0.75rem;
   }
 
-  .host-login-btn {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    background: transparent;
-    border: 1px solid #444;
-    border-radius: 1.25rem;
-    color: #888;
-    cursor: pointer;
-    font-size: 0.8125rem;
-    font-weight: 400;
-    min-height: 44px;
-    min-width: 44px;
-    padding: 0 1rem;
-  }
-
-  .host-login-btn:hover:not(:disabled) {
-    color: #ccc;
-    border-color: #666;
-  }
-
-  .host-login-btn:focus-visible {
-    outline: 2px solid #1db954;
-    outline-offset: 2px;
-  }
-
-  .host-login-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 </style>

@@ -51,9 +51,9 @@
   --dur-fast: 120ms;
   --dur-med: 220ms;
 
-  /* Fonts — display/body locked in Step 2; both loaded in Step 1 */
-  --font-display: 'Anton', 'Space Grotesk', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, sans-serif;
+  /* Fonts — locked at Step 2: Space Grotesk display + body (single-family editorial grotesk) */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Space Grotesk', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
