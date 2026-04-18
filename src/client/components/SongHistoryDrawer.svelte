@@ -68,11 +68,11 @@
     right: 0;
     height: 70vh;
     z-index: 150;
-    background: #1a1a1a;
-    border-radius: 12px 12px 0 0;
+    background: var(--bg);
+    border-top: var(--rule-thick) solid var(--rule);
     display: flex;
     flex-direction: column;
-    font-family: sans-serif;
+    color: var(--fg);
   }
 
   .sheet-header {
@@ -80,12 +80,12 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 16px 12px;
-    border-bottom: 1px solid #333;
+    border-bottom: var(--rule-thin) solid var(--rule);
     flex-shrink: 0;
   }
 
   .sheet-title {
-    color: #fff;
+    color: var(--fg);
     font-size: 16px;
     font-weight: 700;
   }
@@ -93,7 +93,7 @@
   .close-btn {
     background: none;
     border: none;
-    color: #aaa;
+    color: var(--fg-muted);
     font-size: 24px;
     cursor: pointer;
     padding: 0;
@@ -104,10 +104,8 @@
     justify-content: center;
     line-height: 1;
   }
-
-  .close-btn:hover {
-    color: #fff;
-  }
+  .close-btn:hover { color: var(--fg); }
+  .close-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .sheet-body {
     overflow-y: auto;
@@ -116,7 +114,7 @@
   }
 
   .empty {
-    color: #888;
+    color: var(--fg-muted);
     text-align: center;
     padding: 24px 16px;
     font-size: 14px;
@@ -127,11 +125,11 @@
     align-items: center;
     gap: 12px;
     padding: 10px 16px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: var(--rule-thin) solid var(--rule);
   }
 
   .song-number {
-    color: #888;
+    color: var(--fg-muted);
     font-size: 12px;
     min-width: 28px;
     text-align: right;
@@ -158,12 +156,12 @@
   .art-fallback {
     width: 40px;
     height: 40px;
-    background: #333;
-    border-radius: 4px;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #888;
+    color: var(--fg-muted);
     font-size: 18px;
     transition: opacity 400ms ease-out;
   }
@@ -176,15 +174,14 @@
   .mystery-art {
     position: absolute;
     inset: 0;
-    border-radius: 4px;
-    background: #242424;
-    border: 1px solid #333;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 22px;
     font-weight: 700;
-    color: #1db954;
+    color: var(--accent);
     opacity: 0;
     transition: opacity 400ms ease-out;
     pointer-events: none;
@@ -211,7 +208,7 @@
   }
 
   .track-title {
-    color: #fff;
+    color: var(--fg);
     font-size: 14px;
     font-weight: 600;
     white-space: nowrap;
@@ -220,7 +217,7 @@
   }
 
   .track-artist {
-    color: #aaa;
+    color: var(--fg-muted);
     font-size: 13px;
     white-space: nowrap;
     overflow: hidden;

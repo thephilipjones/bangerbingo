@@ -14,14 +14,13 @@
     left: 0;
     right: 0;
     z-index: 210;
-    background: #c0392b;
-    color: #fff;
+    background: var(--danger);
+    color: var(--accent-fg);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
     padding: 8px 16px;
-    font-family: sans-serif;
     font-size: 14px;
     flex-wrap: wrap;
   }
@@ -32,21 +31,20 @@
   }
 
   .reauth-btn {
-    background: #fff;
-    color: #c0392b;
-    border: none;
-    border-radius: 4px;
+    background: var(--accent-fg);
+    color: var(--danger);
+    border: var(--rule-thin) solid var(--accent-fg);
     padding: 6px 14px;
     font-size: 13px;
     font-weight: 700;
-    font-family: sans-serif;
     cursor: pointer;
     white-space: nowrap;
     min-height: 44px;
     min-width: 44px;
   }
+  .reauth-btn:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
 
   .reauth-btn:hover {
-    background: #f0f0f0;
+    background: var(--bg-2);
   }
 </style>

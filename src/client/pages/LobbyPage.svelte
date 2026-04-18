@@ -6,6 +6,8 @@
   import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
   import VinylWithTonearm from '../components/VinylWithTonearm.svelte'
   import PlayerList from '../components/PlayerList.svelte'
+  import Button from '../lib/components/Button.svelte'
+  import ThemeToggle from '../lib/components/ThemeToggle.svelte'
 
   let {
     code,
@@ -142,7 +144,9 @@
         {copied ? 'Copied!' : code}
       </button>
     </div>
-    <div class="header-spacer"></div>
+    <div class="header-right">
+      <ThemeToggle />
+    </div>
   </header>
 
   <!-- WS disconnected banner -->
@@ -162,7 +166,7 @@
   <VinylWithTonearm />
 
   <!-- Start a Round CTA -->
-  <button class="configure-btn" onclick={() => { isConfigOpen = true; hasEverOpenedConfig = true }}>Start a Round</button>
+  <Button variant="primary" size="lg" onclick={() => { isConfigOpen = true; hasEverOpenedConfig = true }}>Start a Round</Button>
 
   <p class="waiting">Waiting for you…</p>
 
@@ -197,12 +201,11 @@
     align-items: center;
     justify-content: center;
     min-height: 100dvh;
-    gap: 1.5rem;
-    font-family: sans-serif;
-    padding: 6rem 1.5rem 3rem;
+    gap: var(--space-5);
+    padding: 6rem var(--space-5) var(--space-7);
     box-sizing: border-box;
-    background: #121212;
-    color: #fff;
+    background: var(--bg);
+    color: var(--fg);
   }
 
   .lobby-header {
@@ -213,27 +216,31 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1.5rem;
-    background: #1a1a1a;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    padding: var(--space-3) var(--space-5);
+    background: var(--bg);
+    border-bottom: var(--rule-thick) solid var(--rule);
+    z-index: 20;
   }
 
   .back-btn {
     background: none;
     border: none;
-    color: #aaa;
-    font-size: 0.875rem;
+    color: var(--fg-muted);
+    font-size: var(--fs-small);
     cursor: pointer;
-    padding: 0.25rem 0;
+    padding: var(--space-1) 0;
     min-width: 6rem;
+    text-align: left;
   }
 
-  .back-btn:hover {
-    color: #fff;
-  }
+  .back-btn:hover { color: var(--fg); }
+  .back-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .header-spacer {
+  .header-right {
     min-width: 6rem;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
   }
 
   .header-center {
@@ -246,9 +253,9 @@
   .room-invite {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 0.75rem;
-    color: #666;
+    gap: var(--space-1);
+    font-size: var(--fs-small);
+    color: var(--fg-muted);
   }
 
   .url-copy-btn {
@@ -257,68 +264,61 @@
     gap: 0.2rem;
     background: none;
     border: none;
-    color: #666;
-    font-size: 0.75rem;
+    color: var(--fg-muted);
+    font-size: var(--fs-small);
     cursor: pointer;
     padding: 0;
-    font-family: sans-serif;
+    font-family: inherit;
   }
 
-  .url-copy-btn:hover {
-    color: #aaa;
-  }
+  .url-copy-btn:hover { color: var(--fg); }
 
   .room-code {
     font-size: 2rem;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
     background: none;
     border: none;
-    color: #fff;
+    color: var(--fg);
     cursor: pointer;
     letter-spacing: 0.1em;
     padding: 0;
     line-height: 1;
   }
 
-  .room-code:hover {
-    color: #1db954;
-  }
+  .room-code:hover { color: var(--accent); }
 
   .disconnected-banner {
-    background: #1a1a2a;
-    border: 1px solid #555;
-    color: #aaa;
-    padding: 0.5rem 1rem;
-    border-radius: 0.25rem;
-    font-size: 0.875rem;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg-muted);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--fs-small);
   }
 
   .degraded-banner {
-    background: #3a1a1a;
-    border: 1px solid #c0392b;
-    color: #e74c3c;
-    padding: 0.5rem 1rem;
-    border-radius: 0.25rem;
-    font-size: 0.875rem;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--danger);
+    color: var(--danger);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--fs-small);
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .degraded-banner button {
     background: none;
-    border: 1px solid #e74c3c;
-    color: #e74c3c;
+    border: var(--rule-thin) solid currentColor;
+    color: inherit;
     cursor: pointer;
-    padding: 0.15rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.8rem;
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--fs-small);
   }
 
   .waiting {
-    font-size: 0.8rem;
-    color: #444;
+    font-size: var(--fs-small);
+    color: var(--fg-muted);
     text-align: center;
     margin: 0;
   }
@@ -331,7 +331,7 @@
   .players-label {
     font-size: 1rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--fg);
     margin: 0 0 12px 0;
     text-align: left;
   }
@@ -341,28 +341,25 @@
     min-height: 4.5rem;
     text-align: center;
     font-size: 0.95rem;
-    color: #666;
+    color: var(--fg-muted);
     line-height: 1.5;
     transition: opacity 0.4s;
     opacity: 0;
   }
 
-  .fact.visible {
-    opacity: 1;
+  @media (prefers-reduced-motion: reduce) {
+    .fact { transition: none; }
   }
 
-  .configure-btn {
-    background: #1db954;
-    color: #000;
-    border: none;
-    padding: 0.875rem 2.5rem;
-    border-radius: 2rem;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
+  .fact.visible { opacity: 1; }
 
-  .configure-btn:hover {
-    background: #1ed760;
+  @media (min-width: 768px) {
+    .lobby {
+      gap: var(--space-6);
+      padding: 7rem var(--space-7) var(--space-8);
+    }
+    .lobby-header { padding: var(--space-4) var(--space-7); }
+    .players-section,
+    .fact { max-width: 32rem; }
   }
 </style>

@@ -51,8 +51,9 @@
     width: 36px;
     height: 36px;
     color: var(--fg);
-    border: var(--rule-thin) solid var(--rule);
+    border: none;
     background: transparent;
+    cursor: pointer;
   }
   .toggle:focus-visible {
     outline: 2px solid var(--accent);

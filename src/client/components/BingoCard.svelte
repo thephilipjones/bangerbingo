@@ -74,25 +74,56 @@
   }
 
   .tile.unmarked {
-    background: #1a1a1a;
-    color: #fff;
+    background: var(--bg);
+    color: var(--fg);
+    border: var(--rule-thin) solid var(--rule);
   }
 
   .tile.marked {
-    background: #1db954;
-    color: #000;
+    background: var(--fg);
+    color: var(--bg);
+    border: var(--rule-thin) solid var(--fg);
   }
 
   .tile.free {
-    background: #178a3e;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
     cursor: default;
     pointer-events: none;
+    border: var(--rule-thin) solid var(--accent);
   }
 
+  /* Win path: thick accent outline + stamp + rotation — distinct from `.free`
+     without relying on color alone (survives colorblind viewing). */
   .tile.win-path {
-    box-shadow: inset 0 0 0 2px #f5a623;
+    outline: var(--rule-thick) solid var(--accent);
+    outline-offset: -3px;
+    transform: rotate(-1.5deg);
+    position: relative;
   }
+  .tile.win-path::after {
+    content: 'BB';
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: -0.05em;
+    color: var(--accent);
+    background: var(--bg);
+    padding: 0 2px;
+    pointer-events: none;
+  }
+  .tile.marked.win-path::after {
+    color: var(--accent);
+    background: var(--bg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tile.win-path { transform: none; }
+  }
+
+  .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .tile-content {
     display: flex;
@@ -141,8 +172,9 @@
 
   .tile.nope {
     animation: nope-wobble 420ms ease-out;
-    outline: 2px solid #ff6b35;
+    outline: 2px solid var(--accent);
     outline-offset: -2px;
+    text-decoration: line-through;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -161,5 +193,20 @@
 
   @media (prefers-reduced-motion: reduce) {
     .tile.auto-marked { animation: none; }
+  }
+
+  @media (min-width: 768px) {
+    .bingo-grid {
+      max-width: 640px;
+      gap: 6px;
+    }
+    .tile { padding: 6px; }
+    .tile-title {
+      font-size: 13px;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+    }
+    .tile-artist { font-size: 11px; }
+    .free-label { font-size: 15px; }
   }
 </style>

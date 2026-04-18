@@ -2,9 +2,12 @@
 @import './styles/reset.css';
 @import './styles/typography.css';
 
-/* Step 1: keep existing body colors so app renders unchanged.
-   Step 3 sweep replaces these with semantic tokens. */
+html {
+  font-size: 16px;
+}
+
 body {
-  background: #121212;
-  color: #fff;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
 }

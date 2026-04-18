@@ -252,15 +252,15 @@
     border: var(--rule-thin) solid var(--rule);
     border-radius: var(--radius-0);
     color: var(--fg);
-    font-size: var(--fs-body);
-    padding: 0 var(--space-4);
-    min-height: 48px;
+    font-size: 22px;
+    padding: 0 var(--space-5);
+    min-height: 60px;
     width: 100%;
   }
   input.mono {
     font-family: var(--font-mono);
     letter-spacing: 0.08em;
-    font-size: 20px;
+    font-size: 22px;
   }
 
   input:focus-visible {
@@ -280,6 +280,15 @@
 
   .lock {
     font-size: 0.75rem;
+  }
+
+  @media (min-width: 768px) {
+    .top-bar { padding: var(--space-5) var(--space-7); }
+    .hero {
+      gap: var(--space-6);
+      padding: var(--space-8) var(--space-7);
+    }
+    .form { gap: var(--space-5); }
   }
 
 </style>

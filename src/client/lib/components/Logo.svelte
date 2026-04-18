@@ -28,7 +28,7 @@
     </svg>
   {/if}
   {#if variant !== 'mark-only'}
-    <span class="wordmark">BANGER<span class="accent">B</span>INGO</span>
+    <span class="wordmark"><span class="accent">B</span>ANGER<span class="accent">B</span>INGO</span>
   {/if}
 </span>
 

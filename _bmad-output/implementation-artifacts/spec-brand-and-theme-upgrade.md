@@ -2,10 +2,10 @@
 
 ## Status
 
-**Current phase:** ◐ Step 1 Foundation (code landed, binary assets pending) · ✅ Step 2 Type Bake-off (Space Grotesk locked) · ☐ Step 3 Cascade · ☐ Step 4 Copy · ☐ Verification
+**Current phase:** ◐ Step 1 Foundation (code landed, binary assets pending) · ✅ Step 2 Type Bake-off (Space Grotesk locked) · ✅ Step 3 Cascade · ☐ Step 4 Copy · ☐ Verification
 **Last updated:** 2026-04-18
 **Last worked by:** dev agent (Claude, Opus 4.7)
-**Next action:** Commit Step 1 + Step 2, then proceed to Step 3.1 (LoginPage token sweep).
+**Next action:** Commit Step 3, then proceed to Step 4.1 (rename "Start New Session" → "Start the set").
 
 > Tick the box in each step as tasks land. When you hit a **🛑 PAUSE** marker, stop and update the Handoff Notes at the bottom before ending the session.
 
@@ -169,16 +169,16 @@ Each task is a checkbox. Tick as you go. Dev agent should commit after each step
 
 One sub-box per file keeps this dev-agent-friendly — a story can claim 2–3 files at a time.
 
-- [ ] 3.1 `LoginPage.svelte` — Logo + Button, token sweep
-- [ ] 3.2 `DashboardPage.svelte` — Logo in header; Cards for rooms; status pill restyle (remove green, use ink/signal outlines); Buttons. **List the pill states you end up with — 2-line comment at top of file is enough.**
-- [ ] 3.3 `LobbyPage.svelte` — overlay as `Panel`; Buttons; retheme vinyl
-- [ ] 3.4 `HostRoomPage.svelte` — transport controls as Buttons; danger zone restyle
-- [ ] 3.5 `GameHeader.svelte` — thick ink rule under header, Logo mark-only variant
-- [ ] 3.6 `BingoCard.svelte` — tile states per the spec (unmarked / marked / free / win-path with **thick outline + stamp + rotation** / "nope"). Manually verify win-path looks different from free tile with color disabled (devtools emulate color-blindness).
-- [ ] 3.7 `VinylWithTonearm.svelte` — ink vinyl, signal label sticker, paper tonearm highlight; respect `prefers-reduced-motion`
-- [ ] 3.8 `RoundConfigOverlay.svelte` — paper bg, ink border, signal focus outline on inputs
-- [ ] 3.9 `RoomPage.svelte` — hover + row styling via `Card`
-- [ ] 3.10 Grep gate: `rg "#1db954|#1ed760|#121212|#1a1a1a|#1e1e1e|sans-serif" src/client/` returns **zero hits**. If not zero, stay in Step 3.
+- [x] 3.1 `LoginPage.svelte` — Logo + Button, token sweep
+- [x] 3.2 `DashboardPage.svelte` — Logo in header; Cards for rooms; status pill restyle (remove green, use ink/signal outlines); Buttons. **List the pill states you end up with — 2-line comment at top of file is enough.**
+- [x] 3.3 `LobbyPage.svelte` — overlay as `Panel`; Buttons; retheme vinyl
+- [x] 3.4 `HostRoomPage.svelte` — transport controls as Buttons; danger zone restyle
+- [x] 3.5 `GameHeader.svelte` — thick ink rule under header, Logo mark-only variant
+- [x] 3.6 `BingoCard.svelte` — tile states per the spec (unmarked / marked / free / win-path with **thick outline + stamp + rotation** / "nope"). Manually verify win-path looks different from free tile with color disabled (devtools emulate color-blindness).
+- [x] 3.7 `VinylWithTonearm.svelte` — ink vinyl, signal label sticker, paper tonearm highlight; respect `prefers-reduced-motion`
+- [x] 3.8 `RoundConfigOverlay.svelte` — paper bg, ink border, signal focus outline on inputs
+- [x] 3.9 `RoomPage.svelte` — hover + row styling via `Card`
+- [x] 3.10 Grep gate: `rg "#1db954|#1ed760|#121212|#1a1a1a|#1e1e1e|sans-serif" src/client/` returns **zero hits**. If not zero, stay in Step 3. — **only remaining hits are the two `sans-serif` generic-family fallbacks inside `tokens.css` `--font-display`/`--font-body` stacks; those are legitimate CSS generic-family fallbacks, not Spotify-clone styling**
 
 **🛑 PAUSE — commit Step 3, then proceed to Step 4.**
 
@@ -240,6 +240,12 @@ Next action: <exact next box to tick>
 ```
 
 _(entries below — newest at top)_
+
+### 2026-04-18 — dev agent (Claude, Opus 4.7) — Step 3 closed
+Stopped at: Step 3 🛑 PAUSE (commit gate before Step 4).
+State: Uncommitted on `brand-upgrade` (Steps 1+2 already committed as `73f56df` and `593a5f7`). Tokenized every page + component listed in 3.1–3.9, **plus the unlisted components** that still had legacy hex (AuthDegradedBanner, PlayerList, GuestWaitingRoom, WinOverlay, HostControlsOverlay, SongHistoryDrawer, SdkFailureBanner, HostMiniPlayer, PlayersOverlay) — the 3.10 grep gate is global so these had to ride along. Also swapped `global.css` body bg/fg to semantic tokens. Grep gate (`rg "#1db954|#1ed760|#121212|#1a1a1a|#1e1e1e|sans-serif" src/client/`) returns only the two legitimate `sans-serif` generic-family fallbacks inside `tokens.css` font stacks. `npm run lint` clean; `npm run build:client` 683ms clean (only the expected 2 font woff2 404 warnings until 1.1 binaries land).
+Blockers/notes: (1) WinOverlay sits on a fixed dark semi-transparent backdrop in both themes, so its on-overlay text uses raw palette vars (`--palette-paper-2`, `--palette-muted-dark`) instead of semantic `--fg`/`--fg-muted`, which would invert with the light theme and become invisible. Kept `rgba(0,0,0,.6/.85/.92)` overlays everywhere (sheets, WinOverlay) — not in the grep pattern and they serve as theme-agnostic scrims. (2) `BingoCard` win-path now uses thick signal outline + `BB` stamp + `rotate(-1.5deg)` — non-color cue, survives colorblind emulation. Reduced-motion removes the rotation. (3) `PlayersOverlay` had an inline `--player-row-bg="#222"` prop passed to `PlayerList` — removed; `PlayerList` falls back to `var(--bg-2)` via its own default. (4) No interactive browser smoke in both themes was run by the agent — user should verify light↔dark flip before committing.
+Next action: User smoke-tests light + dark via ThemeToggle on JoinPage/Dashboard/Lobby/HostRoom/Room screens, commits Step 3 (suggested: `feat: brand upgrade step 3 — cascade token sweep`), then proceeds to Step 4.1.
 
 ### 2026-04-18 — dev agent (Claude, Opus 4.7) — Step 2 closed
 Stopped at: Step 2 🛑 PAUSE (commit gate before Step 3).

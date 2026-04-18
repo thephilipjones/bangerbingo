@@ -95,11 +95,11 @@
     right: 0;
     height: 40vh;
     z-index: 150;
-    background: #1a1a1a;
-    border-radius: 12px 12px 0 0;
+    background: var(--bg);
+    border-top: var(--rule-thick) solid var(--rule);
     display: flex;
     flex-direction: column;
-    font-family: sans-serif;
+    color: var(--fg);
   }
 
   .sheet-header {
@@ -107,12 +107,12 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 16px 12px;
-    border-bottom: 1px solid #333;
+    border-bottom: var(--rule-thin) solid var(--rule);
     flex-shrink: 0;
   }
 
   .sheet-title {
-    color: #fff;
+    color: var(--fg);
     font-size: 16px;
     font-weight: 700;
   }
@@ -120,7 +120,7 @@
   .close-btn {
     background: none;
     border: none;
-    color: #aaa;
+    color: var(--fg-muted);
     font-size: 24px;
     cursor: pointer;
     padding: 0;
@@ -131,10 +131,8 @@
     justify-content: center;
     line-height: 1;
   }
-
-  .close-btn:hover {
-    color: #fff;
-  }
+  .close-btn:hover { color: var(--fg); }
+  .close-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .sheet-body {
     overflow-y: auto;
@@ -146,49 +144,44 @@
   }
 
   .action-btn {
-    background: #333;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
+    background: var(--bg-2);
+    color: var(--fg);
+    border: var(--rule-thin) solid var(--rule);
     padding: 14px 16px;
     font-size: 15px;
     font-weight: 600;
-    font-family: sans-serif;
     cursor: pointer;
     text-align: left;
     min-height: 44px;
   }
-
-  .action-btn:hover {
-    background: #444;
-  }
+  .action-btn:hover { background: var(--fg); color: var(--bg); }
+  .action-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .action-icon {
     margin-right: 8px;
   }
 
   .confirm-dialog {
-    background: #242424;
-    border: 1px solid #333;
-    border-radius: 10px;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
     padding: 16px;
   }
 
   .confirm-title {
-    color: #fff;
+    color: var(--fg);
     font-size: 15px;
     font-weight: 600;
     margin: 0 0 4px;
   }
 
   .confirm-sub {
-    color: #aaa;
+    color: var(--fg-muted);
     font-size: 13px;
     margin: 0 0 12px;
   }
 
   .error-text {
-    color: #e74c3c;
+    color: var(--danger);
     font-size: 13px;
     margin: 0 0 8px;
   }
@@ -203,8 +196,7 @@
   .confirm-end {
     min-width: 44px;
     min-height: 44px;
-    border-radius: 8px;
-    border: none;
+    border: var(--rule-thin) solid var(--rule);
     cursor: pointer;
     font-size: 14px;
     font-weight: 600;
@@ -212,13 +204,14 @@
   }
 
   .confirm-cancel {
-    background: #333;
-    color: #fff;
+    background: var(--bg);
+    color: var(--fg);
   }
 
   .confirm-end {
-    background: #e74c3c;
-    color: #fff;
+    background: var(--danger);
+    color: var(--accent-fg);
+    border-color: var(--danger);
   }
 
   .confirm-cancel:disabled,
@@ -229,25 +222,22 @@
 
   .divider {
     height: 1px;
-    background: #333;
+    background: var(--rule);
     margin: 4px 0;
   }
 
   .mgmt-link {
     background: none;
     border: none;
-    color: #888;
+    color: var(--fg-muted);
     font-size: 14px;
-    font-family: sans-serif;
     cursor: pointer;
     text-align: left;
     padding: 10px 0;
     min-height: 44px;
   }
-
-  .mgmt-link:hover {
-    color: #ccc;
-  }
+  .mgmt-link:hover { color: var(--fg); }
+  .mgmt-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   @media (min-width: 768px) {
     .overlay {

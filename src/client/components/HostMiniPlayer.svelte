@@ -76,15 +76,14 @@
     left: 0;
     right: 0;
     height: 64px;
-    background: #1a1a1a;
-    border-top: 1px solid #333;
+    background: var(--bg);
+    border-top: var(--rule-thick) solid var(--rule);
     z-index: 20;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 12px;
-    font-family: sans-serif;
-    color: #fff;
+    color: var(--fg);
     gap: 12px;
   }
 
@@ -104,7 +103,7 @@
   }
 
   .track-text.waiting {
-    color: #888;
+    color: var(--fg-muted);
     font-weight: 400;
   }
 
@@ -118,18 +117,18 @@
   .ctrl-btn {
     min-width: 44px;
     min-height: 44px;
-    border-radius: 8px;
-    border: none;
+    border: var(--rule-thin) solid var(--rule);
     cursor: pointer;
     font-size: 16px;
     font-weight: 600;
-    background: #333;
-    color: #fff;
+    background: var(--bg-2);
+    color: var(--fg);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
   }
+  .ctrl-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .ctrl-btn:disabled {
     opacity: 0.4;
@@ -142,35 +141,37 @@
 
   .play-pause-btn {
     width: 44px;
-    background: #1db954;
-    color: #000;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
   }
 
   .next-btn {
     width: 44px;
-    background: #1db954;
-    color: #000;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
     font-size: 14px;
   }
 
   .continuous-btn {
     width: 44px;
-    background: #333;
-    color: #aaa;
-    border: 1px solid #444;
+    background: var(--bg-2);
+    color: var(--fg);
+    border: var(--rule-thin) solid var(--rule);
     font-size: 20px;
   }
 
   .continuous-btn.active {
-    background: #1db954;
-    color: #000;
-    border-color: #1db954;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
   }
 
   .countdown-text {
     font-size: 14px;
     font-weight: 600;
-    color: #1db954;
+    color: var(--accent);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -180,26 +181,27 @@
   .gear-btn {
     width: 44px;
     background: none;
-    border: 1px solid #444;
-    color: #aaa;
-    border-radius: 6px;
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
     font-size: 20px;
   }
 
   .gear-btn:hover {
-    color: #fff;
-    border-color: #666;
+    background: var(--fg);
+    color: var(--bg);
   }
 
   .gear-btn.active {
-    color: #fff;
-    border-color: #1db954;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
   }
 
   .spotify-link {
     text-decoration: none;
-    background: #1db954;
-    color: #000;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
     padding: 0 12px;
     font-size: 13px;
     width: auto;

@@ -384,12 +384,11 @@
     top: 0;
     left: 0;
     right: 0;
-    background: #c0392b;
-    color: #fff;
-    padding: 8px 16px;
+    background: var(--danger);
+    color: var(--accent-fg);
+    padding: var(--space-2) var(--space-4);
     text-align: center;
     z-index: 200;
-    font-family: sans-serif;
     font-size: 14px;
   }
 
@@ -397,8 +396,8 @@
     display: flex;
     flex-direction: column;
     min-height: 100dvh;
-    background: #121212;
-    font-family: sans-serif;
+    background: var(--bg);
+    color: var(--fg);
   }
 
   .card-area {
@@ -410,21 +409,23 @@
 
   .bingo-btn {
     margin-top: 16px;
-    background: #1db954;
-    color: #000;
-    border: none;
-    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: var(--rule-thick) solid var(--accent);
     padding: 14px 40px;
     font-size: 18px;
     font-weight: 700;
-    font-family: sans-serif;
+    font-family: var(--font-display);
+    text-transform: uppercase;
     cursor: pointer;
-    letter-spacing: 1px;
+    letter-spacing: var(--track-display);
   }
+  .bingo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .bingo-btn--disabled {
-    background: #555;
-    color: #999;
+    background: var(--bg-2);
+    color: var(--fg-muted);
+    border-color: var(--rule);
     cursor: default;
   }
 
@@ -433,22 +434,21 @@
     top: 16px;
     left: 50%;
     transform: translateX(-50%);
-    background: #333;
-    color: #fff;
+    background: var(--fg);
+    color: var(--bg);
     padding: 10px 16px;
-    border-radius: 8px;
     display: flex;
     align-items: center;
     gap: 12px;
     z-index: 200;
     white-space: nowrap;
+    border: var(--rule-thin) solid var(--rule);
   }
 
   .undo-btn {
     background: none;
-    border: 1px solid #fff;
-    color: #fff;
-    border-radius: 4px;
+    border: var(--rule-thin) solid currentColor;
+    color: inherit;
     padding: 4px 10px;
     cursor: pointer;
     font-size: 13px;
@@ -457,19 +457,23 @@
   .sdk-status {
     margin-top: 8px;
     font-size: 13px;
-    color: #888;
+    color: var(--fg-muted);
     text-align: center;
   }
 
   @media (min-width: 768px) {
     .host-game {
-      max-width: 640px;
+      max-width: 720px;
       margin: 0 auto;
-      padding: 16px;
+      padding: var(--space-6) var(--space-7);
     }
     .card-area {
-      padding-top: 80px;
-      padding-bottom: 64px;
+      padding: 96px var(--space-5) 96px;
+      gap: var(--space-5);
+    }
+    .bingo-btn {
+      margin-top: var(--space-5);
+      padding: 16px 56px;
     }
   }
 </style>

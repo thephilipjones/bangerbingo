@@ -235,13 +235,12 @@
     top: 0;
     left: 0;
     right: 0;
-    background: #555;
-    color: #fff;
+    background: var(--fg);
+    color: var(--bg);
     padding: 8px 16px;
     text-align: center;
     z-index: 100;
     font-size: 14px;
-    font-family: sans-serif;
   }
 
   .host-disconnected-banner {
@@ -249,13 +248,12 @@
     top: 0;
     left: 0;
     right: 0;
-    background: #ff6b35;
-    color: #fff;
+    background: var(--accent);
+    color: var(--accent-fg);
     padding: 8px 16px;
     text-align: center;
     z-index: 100;
     font-size: 14px;
-    font-family: sans-serif;
   }
 
   .room-page {
@@ -264,7 +262,8 @@
     align-items: center;
     justify-content: center;
     min-height: 100dvh;
-    font-family: sans-serif;
+    background: var(--bg);
+    color: var(--fg);
     padding: 16px;
     box-sizing: border-box;
   }
@@ -277,29 +276,31 @@
   .status-line {
     margin-top: 12px;
     font-size: 14px;
-    color: #aaa;
+    color: var(--fg-muted);
     text-align: center;
   }
 
   .bingo-btn {
     margin-top: 16px;
-    background: #1db954;
-    color: #000;
-    border: none;
-    border-radius: 24px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: var(--rule-thick) solid var(--accent);
     padding: 14px 36px;
     font-size: 20px;
     font-weight: 900;
-    font-family: sans-serif;
+    font-family: var(--font-display);
+    text-transform: uppercase;
     cursor: pointer;
     min-height: 44px;
     min-width: 44px;
-    letter-spacing: 1px;
+    letter-spacing: var(--track-display);
   }
+  .bingo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .bingo-btn--disabled {
-    background: #555;
-    color: #999;
+    background: var(--bg-2);
+    color: var(--fg-muted);
+    border-color: var(--rule);
     cursor: default;
   }
 
@@ -312,38 +313,51 @@
 
   .casual-label {
     font-size: 14px;
-    color: #aaa;
+    color: var(--fg-muted);
   }
 
   .casual-btn {
     padding: 0.35rem 0.9rem;
     min-height: 36px;
-    background: #2a2a2a;
-    border: 2px solid #444;
-    border-radius: 999px;
-    color: #aaa;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
     cursor: pointer;
     font-size: 0.85rem;
   }
 
   .casual-btn.active {
-    background: #2a4a2a;
-    border-color: #1db954;
-    color: #1db954;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-fg);
   }
+  .casual-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .casual-toast {
     position: fixed;
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%);
-    background: #2a2a2a;
-    border: 2px solid #1db954;
-    color: #1db954;
+    background: var(--bg);
+    border: var(--rule-thick) solid var(--accent);
+    color: var(--accent);
     padding: 10px 18px;
-    border-radius: 999px;
     font-size: 14px;
     z-index: 50;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+
+  @media (min-width: 768px) {
+    .room-page {
+      padding: var(--space-6) var(--space-7);
+      gap: var(--space-4);
+    }
+    .room-page.game-active {
+      padding-top: 96px;
+    }
+    .bingo-btn {
+      margin-top: var(--space-5);
+      padding: 16px 56px;
+    }
+    .casual-toggle-row { margin-top: var(--space-4); }
   }
 </style>

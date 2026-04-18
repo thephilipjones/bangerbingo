@@ -121,9 +121,8 @@
     align-items: center;
     justify-content: center;
     min-height: 100dvh;
-    background: #121212;
-    color: #fff;
-    font-family: sans-serif;
+    background: var(--bg);
+    color: var(--fg);
     padding: 6rem 1.5rem 3rem;
     box-sizing: border-box;
     gap: 1.5rem;
@@ -138,25 +137,24 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 24px;
-    background: #1a1a1a;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    background: var(--bg);
+    border-bottom: var(--rule-thick) solid var(--rule);
     z-index: 10;
   }
 
   .back-btn {
     background: none;
     border: none;
-    color: #aaa;
+    color: var(--fg-muted);
     font-size: 0.875rem;
     cursor: pointer;
     padding: 0.25rem 0;
     min-width: 5rem;
-    font-family: sans-serif;
+    text-align: left;
   }
 
-  .back-btn:hover {
-    color: #fff;
-  }
+  .back-btn:hover { color: var(--fg); }
+  .back-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .header-spacer {
     min-width: 5rem;
@@ -174,7 +172,7 @@
     align-items: center;
     gap: 0.3rem;
     font-size: 0.75rem;
-    color: #666;
+    color: var(--fg-muted);
   }
 
   .url-copy-btn {
@@ -183,24 +181,22 @@
     gap: 0.2rem;
     background: none;
     border: none;
-    color: #666;
+    color: var(--fg-muted);
     font-size: 0.75rem;
     cursor: pointer;
     padding: 0;
-    font-family: sans-serif;
+    font-family: inherit;
   }
 
-  .url-copy-btn:hover {
-    color: #aaa;
-  }
+  .url-copy-btn:hover { color: var(--fg); }
 
   .room-code {
     font-size: 2rem;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-weight: 700;
     background: none;
     border: none;
-    color: #fff;
+    color: var(--fg);
     cursor: pointer;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -208,26 +204,27 @@
     line-height: 1;
   }
 
-  .room-code:hover {
-    color: #1db954;
-  }
+  .room-code:hover { color: var(--accent); }
 
   .headline {
+    font-family: var(--font-display);
     font-size: 1.75rem;
     font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: var(--track-display);
     text-align: center;
     margin: 0;
   }
 
   .waiting {
     font-size: 0.95rem;
-    color: #aaa;
+    color: var(--fg-muted);
     text-align: center;
     margin: 0;
   }
 
   .waiting.countdown {
-    color: #1db954;
+    color: var(--accent);
     font-weight: 600;
   }
 
@@ -239,7 +236,7 @@
   .players-label {
     font-size: 1rem;
     font-weight: 600;
-    color: #fff;
+    color: var(--fg);
     margin: 0 0 12px 0;
     text-align: left;
   }
@@ -252,38 +249,40 @@
 
   .casual-label {
     font-size: 14px;
-    color: #aaa;
+    color: var(--fg-muted);
   }
 
   .casual-btn {
     padding: 0.35rem 0.9rem;
     min-height: 36px;
-    background: #2a2a2a;
-    border: 2px solid #444;
-    border-radius: 999px;
-    color: #aaa;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
     cursor: pointer;
     font-size: 0.85rem;
   }
 
   .casual-btn.active {
-    background: #2a4a2a;
-    border-color: #1db954;
-    color: #1db954;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-fg);
   }
+  .casual-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .fact {
     max-width: 24rem;
     min-height: 4.5rem;
     text-align: center;
     font-size: 0.95rem;
-    color: #666;
+    color: var(--fg-muted);
     line-height: 1.5;
     transition: opacity 0.4s;
     opacity: 0;
   }
 
-  .fact.visible {
-    opacity: 1;
+  @media (prefers-reduced-motion: reduce) {
+    .fact { transition: none; }
   }
+
+  .fact.visible { opacity: 1; }
 </style>

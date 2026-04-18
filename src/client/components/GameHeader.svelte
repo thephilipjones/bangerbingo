@@ -1,6 +1,8 @@
 <script lang="ts">
   import { formatSongOrdinal } from '../lib/gameHeader.ts'
   import { copyRoomCode } from '../lib/ws.ts'
+  import Logo from '../lib/components/Logo.svelte'
+  import ThemeToggle from '../lib/components/ThemeToggle.svelte'
 
   let {
     playerCount,
@@ -48,13 +50,18 @@
     {#if copied}
       <span class="copied-flash">Copied!</span>
     {:else}
-      {code}
+      <Logo size={18} variant="mark-only" title="BangerBingo" />
+      <span class="slash" aria-hidden="true">/</span>
+      <span class="code-text">{code}</span>
     {/if}
   </button>
 
-  <button class="header-btn" class:active={playersOpen} onclick={onPlayersClick}>
-    {playerCount} {playerCount === 1 ? 'Player' : 'Players'}
-  </button>
+  <div class="right-cluster">
+    <ThemeToggle />
+    <button class="header-btn" class:active={playersOpen} onclick={onPlayersClick}>
+      {playerCount} {playerCount === 1 ? 'Player' : 'Players'}
+    </button>
+  </div>
 </div>
 
 <style>
@@ -67,20 +74,25 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #1a1a1a;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    background: var(--bg);
+    border-bottom: var(--rule-thick) solid var(--rule);
     padding: 6px 8px;
     box-sizing: border-box;
   }
 
+  .right-cluster {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .header-btn {
     background: none;
-    border: 1px solid #444;
-    color: #aaa;
-    border-radius: 6px;
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
     padding: 6px 14px;
     font-size: 13px;
-    font-family: sans-serif;
+    font-family: var(--font-body);
     cursor: pointer;
     min-height: 44px;
     min-width: 44px;
@@ -88,20 +100,23 @@
   }
 
   .header-btn:hover {
-    color: #fff;
-    border-color: #666;
+    background: var(--fg);
+    color: var(--bg);
   }
 
   .header-btn.active {
-    color: #fff;
-    border-color: #1db954;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
   }
+
+  .header-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .room-code {
     background: none;
     border: none;
-    color: #888;
-    font-family: monospace;
+    color: var(--fg);
+    font-family: var(--font-mono);
     font-size: 15px;
     font-weight: 700;
     letter-spacing: 0.1em;
@@ -113,11 +128,19 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 8px;
+  }
+  .room-code:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .slash {
+    color: var(--fg-muted);
+    font-weight: 400;
+    letter-spacing: 0;
   }
 
   .copied-flash {
-    color: #1db954;
-    font-family: sans-serif;
+    color: var(--accent);
+    font-family: var(--font-body);
     font-size: 13px;
     font-weight: 600;
     letter-spacing: normal;

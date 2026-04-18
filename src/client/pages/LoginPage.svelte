@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { getMe } from '../lib/api.ts'
+  import Logo from '../lib/components/Logo.svelte'
+  import Button from '../lib/components/Button.svelte'
+  import ThemeToggle from '../lib/components/ThemeToggle.svelte'
 
   let { onAuthenticated }: { onAuthenticated: () => void } = $props()
 
@@ -18,48 +21,53 @@
 </script>
 
 <div class="login-page">
-  <h1>BangerBingo</h1>
-  <a href="/auth/login" class="connect-btn">Connect Spotify</a>
+  <div class="top-right">
+    <ThemeToggle />
+  </div>
+  <Logo size={72} variant="full" />
+  <Button variant="primary" size="lg" onclick={() => (window.location.href = '/auth/login')}>
+    Connect Spotify
+  </Button>
   {#if loginError}
-    <p class="error">Login failed. Please try again.</p>
+    <p class="error u-small">Login failed. Try again.</p>
   {/if}
-  <p class="ios-disclaimer">⚠ Use desktop Chrome or Firefox for audio</p>
+  <p class="disclaimer u-small">Use desktop Chrome or Firefox for audio</p>
 </div>
 
 <style>
   .login-page {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 100dvh;
-    gap: 1rem;
-    font-family: sans-serif;
+    gap: var(--space-5);
+    padding: var(--space-6);
+    background: var(--bg);
+    color: var(--fg);
   }
 
-  .connect-btn {
-    display: inline-block;
-    background: #1db954;
-    color: #000;
-    padding: 0.75rem 2rem;
-    border-radius: 2rem;
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 1rem;
+  .top-right {
+    position: absolute;
+    top: var(--space-4);
+    right: var(--space-5);
   }
 
-  .connect-btn:hover {
-    background: #1ed760;
-  }
-
-  .ios-disclaimer {
-    font-size: 0.75rem;
-    color: #888;
-    margin-top: 0.5rem;
+  .disclaimer {
+    color: var(--fg-muted);
+    margin-top: var(--space-2);
   }
 
   .error {
-    color: #e74c3c;
-    font-size: 0.875rem;
+    color: var(--danger);
+    margin: 0;
+  }
+
+  @media (min-width: 768px) {
+    .login-page {
+      gap: var(--space-6);
+      padding: var(--space-8);
+    }
   }
 </style>

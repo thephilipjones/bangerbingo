@@ -83,16 +83,15 @@
     display: flex;
     align-items: center;
     padding: 12px;
-    background: var(--player-row-bg, #1a1a1a);
-    border: 1px solid #333;
-    border-radius: 6px;
+    background: var(--player-row-bg, var(--bg-2));
+    border: var(--rule-thin) solid var(--rule);
     font-size: 0.95rem;
     gap: 8px;
   }
 
   .player-name {
     flex: 1;
-    color: #fff;
+    color: var(--fg);
   }
 
   .casual-icon {
@@ -101,37 +100,35 @@
 
   .win-count {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--fg-muted);
     padding: 0 6px;
   }
 
   .last-round-pill {
     padding: 2px 8px;
-    background: #2a2a2a;
-    color: #1db954;
+    background: transparent;
+    color: var(--accent);
+    border: var(--rule-thin) solid var(--accent);
     font-size: 0.6875rem;
     font-weight: 700;
-    border-radius: 9999px;
     letter-spacing: 0.02em;
   }
 
   .host-pill {
     padding: 2px 8px;
-    background: #1db954;
-    color: #000;
+    background: var(--accent);
+    color: var(--accent-fg);
     font-size: 0.6875rem;
     font-weight: 700;
-    border-radius: 9999px;
     letter-spacing: 0.02em;
   }
 
   .you-pill {
     padding: 2px 8px;
-    background: #333;
-    color: #ccc;
+    background: var(--fg);
+    color: var(--bg);
     font-size: 0.6875rem;
     font-weight: 700;
-    border-radius: 9999px;
     letter-spacing: 0.02em;
   }
 </style>

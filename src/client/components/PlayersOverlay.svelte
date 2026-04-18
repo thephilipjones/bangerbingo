@@ -38,7 +38,7 @@
     {#if players.length === 0 && hostName === null}
       <p class="empty">No players yet.</p>
     {:else}
-      <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} {casualModeNames} --player-row-bg="#222" />
+      <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} {casualModeNames} />
     {/if}
   </div>
 </div>
@@ -58,11 +58,11 @@
     right: 0;
     height: 70vh;
     z-index: 150;
-    background: #1a1a1a;
-    border-radius: 12px 12px 0 0;
+    background: var(--bg);
+    border-top: var(--rule-thick) solid var(--rule);
     display: flex;
     flex-direction: column;
-    font-family: sans-serif;
+    color: var(--fg);
   }
 
   .sheet-header {
@@ -70,12 +70,12 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 16px 12px;
-    border-bottom: 1px solid #333;
+    border-bottom: var(--rule-thin) solid var(--rule);
     flex-shrink: 0;
   }
 
   .sheet-title {
-    color: #fff;
+    color: var(--fg);
     font-size: 16px;
     font-weight: 700;
   }
@@ -83,7 +83,7 @@
   .close-btn {
     background: none;
     border: none;
-    color: #aaa;
+    color: var(--fg-muted);
     font-size: 24px;
     cursor: pointer;
     padding: 0;
@@ -94,10 +94,8 @@
     justify-content: center;
     line-height: 1;
   }
-
-  .close-btn:hover {
-    color: #fff;
-  }
+  .close-btn:hover { color: var(--fg); }
+  .close-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .sheet-body {
     overflow-y: auto;
@@ -106,7 +104,7 @@
   }
 
   .empty {
-    color: #888;
+    color: var(--fg-muted);
     text-align: center;
     padding: 24px 16px;
     font-size: 14px;

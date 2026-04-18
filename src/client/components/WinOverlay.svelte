@@ -110,8 +110,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: sans-serif;
-    color: #fff;
+    color: var(--accent-fg);
   }
 
   .win-overlay.preset-minimal {
@@ -150,18 +149,21 @@
   }
 
   .bingo-label {
+    font-family: var(--font-display);
     font-size: 48px;
     font-weight: 900;
-    color: #1db954;
+    color: var(--accent);
     letter-spacing: 4px;
+    text-transform: uppercase;
     margin-bottom: 8px;
   }
 
   .bingo-label--deadpan {
     font-size: 32px;
     font-weight: 400;
-    color: #aaa;
+    color: var(--palette-muted-dark);
     letter-spacing: 0;
+    text-transform: none;
   }
 
   .winner-name {
@@ -173,13 +175,13 @@
   .winner-name--minimal {
     font-size: 20px;
     font-weight: 700;
-    color: #fff;
+    color: var(--accent-fg);
     margin-bottom: 4px;
   }
 
   .minimal-subtitle {
     font-size: 14px;
-    color: #666;
+    color: var(--palette-muted-dark);
     margin-bottom: 24px;
   }
 
@@ -188,7 +190,7 @@
     margin: 0 0 28px;
     padding: 0;
     font-size: 14px;
-    color: #ccc;
+    color: var(--palette-paper-2);
   }
 
   .winning-songs li {
@@ -202,27 +204,28 @@
   }
 
   .btn-primary {
-    background: #1db954;
-    color: #000;
-    border: none;
-    border-radius: 24px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: var(--rule-thick) solid var(--accent);
     padding: 14px 24px;
     font-size: 16px;
     font-weight: 700;
-    font-family: sans-serif;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: var(--track-display);
     cursor: pointer;
     min-height: 44px;
   }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .btn-secondary {
     background: transparent;
-    color: #aaa;
-    border: 1px solid #555;
-    border-radius: 24px;
+    color: var(--palette-paper-2);
+    border: var(--rule-thin) solid var(--palette-muted-dark);
     padding: 12px 24px;
     font-size: 15px;
-    font-family: sans-serif;
     cursor: pointer;
     min-height: 44px;
   }
+  .btn-secondary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

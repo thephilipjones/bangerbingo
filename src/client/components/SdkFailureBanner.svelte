@@ -18,12 +18,11 @@
     top: 0;
     left: 0;
     right: 0;
-    background: #c0392b;
-    color: #fff;
+    background: var(--danger);
+    color: var(--accent-fg);
     padding: 8px 16px;
     text-align: center;
     z-index: 190;
-    font-family: sans-serif;
     font-size: 14px;
     display: flex;
     align-items: center;
@@ -33,7 +32,7 @@
   }
 
   .open-link {
-    color: #fff;
+    color: var(--accent-fg);
     font-weight: 600;
     text-decoration: underline;
   }
