@@ -1635,7 +1635,7 @@ describe('POST /api/rooms/:code/round/dismiss-win', () => {
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
     roomState.continuousMode = true
-    roomState.pendingRound = { playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1, audioPreset: 'minimal' }
+    roomState.pendingRound = { playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1, audioPreset: 'minimal', allowCasualMode: false }
     const round = seedActiveRound()
     round.active = false
     round.ended = true
@@ -1663,7 +1663,7 @@ describe('POST /api/rooms/:code/round/dismiss-win', () => {
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
     roomState.continuousMode = true
-    roomState.pendingRound = { playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1, audioPreset: 'minimal' }
+    roomState.pendingRound = { playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1, audioPreset: 'minimal', allowCasualMode: false }
     const round = seedActiveRound()
     round.active = false
     round.ended = true
@@ -1694,7 +1694,7 @@ describe('POST /api/rooms/:code/round/dismiss-win', () => {
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
     roomState.continuousMode = true
-    roomState.pendingRound = { playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5, roundNumber: 3, audioPreset: 'hype' }
+    roomState.pendingRound = { playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5, roundNumber: 3, audioPreset: 'hype', allowCasualMode: false }
     const round = seedActiveRound()
     round.roundNumber = 3
     round.active = false
