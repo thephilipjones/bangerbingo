@@ -138,8 +138,6 @@
       nextRoundError = null
       clearTimeout(nextRoundErrorTimer)
       statusLine = 'Waiting for next song…'
-    } else if (data.type === 'song:start') {
-      statusLine = `Song ${(data.songIndex as number) + 1} of this round`
     } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
       statusLine = 'Waiting for next song…'
     } else if (data.type === 'round:end') {

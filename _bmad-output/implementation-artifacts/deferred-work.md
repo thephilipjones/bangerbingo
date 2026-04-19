@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of host-casual-toggle-and-status-line-trim (2026-04-19)
+
+- **Guest with a name equal to `room.host_name` collides on `playerCasualModes` and sweep keys** — pre-existing throughout (the bingo-claim path at `src/server/rooms.ts:761` already coerces such a guest onto the host's card); this story extends the collision surface to casual-mode state. Low likelihood in friends-only flows but worth guarding later (e.g. reserve the host's name at guest-join time). (src/server/ws.ts, src/server/rooms.ts)
+- **Orphaned casual-mode state if `room.host_name` is ever cleared after toggles** — `playerCasualModes[oldHostName]` and `autoMarkedTileIndices[oldHostName]` persist; the ☕ indicator would stay lit against a name nobody uses. Host-name clearing doesn't happen in any current flow, so this is theoretical. (src/server/ws.ts)
+
 ## Deferred from: code review of 9-1-game-over-page-state-and-auto-bingo (2026-04-19)
 
 - **Reconnect after a win loses Game Over view** — `session:connect` replay in `src/server/ws.ts` does not re-broadcast `round:win` when `round.ended === true`. A reconnecting winner sees an empty active-round shell and can't access the Start Next Round CTA. Already flagged as a known pre-existing limitation in story 9-1's Dev Notes. (src/server/ws.ts)

@@ -137,12 +137,18 @@ export function runCasualModeSweep(
         .filter(([, v]) => v)
         .map(([k]) => k)
 
+  const hostName = getRoomByCode(roomCode)?.host_name ?? null
+
   for (const name of targetNames) {
     if (roomState.playerCasualModes.get(name) !== true) continue
-    const ws = roomState.guests.get(name)
+
+    // Host plays with a card keyed by hostUserId on a dedicated socket.
+    const isHost = hostName !== null && name === hostName
+    const ws = isHost ? roomState.host : roomState.guests.get(name)
     if (!ws || ws.readyState !== WebSocket.OPEN) continue
 
-    const card = round.cards.get(name)
+    const cardKey = isHost ? roomState.hostUserId : name
+    const card = round.cards.get(cardKey)
     if (!card) continue
 
     let alreadySwept = round.autoMarkedTileIndices.get(name)

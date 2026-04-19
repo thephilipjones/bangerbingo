@@ -984,6 +984,59 @@ describe('player:casual-mode-changed', () => {
     alice.close()
     bob.close()
   })
+
+  it('host toggle broadcasts name=host_name and sets roomState map', async () => {
+    seedHost('host_1')
+    createRoom('CASL', 'host_1')
+    setRoomHostName('CASL', 'Pat')
+
+    const host = await connect('/ws?code=CASL', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=CASL&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    host.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+
+    const aliceMsg = await alice.next('player:casual-mode-changed')
+    expect(aliceMsg).toEqual({ type: 'player:casual-mode-changed', name: 'Pat', enabled: true })
+
+    const hostEcho = await host.next('player:casual-mode-changed')
+    expect(hostEcho).toEqual({ type: 'player:casual-mode-changed', name: 'Pat', enabled: true })
+
+    expect(roomSockets.get('CASL')!.playerCasualModes.get('Pat')).toBe(true)
+
+    host.close()
+    alice.close()
+  })
+
+  it('host toggle is ignored when host_name is null (no broadcast, no state change)', async () => {
+    seedHost('host_1')
+    createRoom('CASL', 'host_1') // host_name intentionally not set
+
+    const host = await connect('/ws?code=CASL', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=CASL&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    // Invalid host toggle (host_name === null) — should be silently dropped
+    host.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+    // Follow with a guest toggle — if the invalid one was broadcast, it would arrive first
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+
+    const aliceFirst = await host.next('player:casual-mode-changed')
+    expect(aliceFirst).toEqual({ type: 'player:casual-mode-changed', name: 'Alice', enabled: true })
+
+    const map = roomSockets.get('CASL')!.playerCasualModes
+    expect(map.size).toBe(1)
+    expect(map.get('Alice')).toBe(true)
+
+    host.close()
+    alice.close()
+  })
 })
 
 // ── Casual Mode — square:auto-marked (Story 8-5) ──────────────────────────

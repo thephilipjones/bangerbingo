@@ -338,6 +338,28 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       broadcast(code, { type: 'host:reconnected' }, ws)
     }
 
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString())
+        if (msg.type === 'player:casual-mode-changed') {
+          if (typeof msg.enabled !== 'boolean') return
+          const r = roomSockets.get(code)
+          if (!r) return
+          // Host uses host_name as the casual-mode key so the existing PlayerList
+          // ☕ indicator (keyed on hostName) lights up without extra client wiring.
+          const currentHostName = getRoomByCode(code)?.host_name
+          if (!currentHostName) return
+          r.playerCasualModes.set(currentHostName, msg.enabled)
+          broadcast(code, { type: 'player:casual-mode-changed', name: currentHostName, enabled: msg.enabled })
+          if (msg.enabled === true) {
+            runCasualModeSweep(code, r, { playerName: currentHostName, isCatchUp: true })
+          } else {
+            r.currentRound?.autoMarkedTileIndices.delete(currentHostName)
+          }
+        }
+      } catch { /* ignore malformed */ }
+    })
+
     ws.on('close', () => {
       const r = roomSockets.get(code)
       if (r && r.host === ws) {

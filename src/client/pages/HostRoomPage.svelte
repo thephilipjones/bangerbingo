@@ -49,6 +49,18 @@
     getPlayerName: () => hostName,
   })
 
+  let casualModeOn = $state(false)
+  // Mirrors guest RoomPage — skip the first round:start after session:connect so a
+  // reconnect-into-active-round doesn't clobber casualModeOn seeded from session:connect.
+  let hasSeenRoundStart = false
+
+  function handleCasualToggle() {
+    if (!hostName) return
+    const next = !casualModeOn
+    casualModeOn = next
+    ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: next }))
+  }
+
   function handleSessionEnd() {
     if (sessionEnded) return
     sessionEnded = true
@@ -226,6 +238,10 @@
         const data = JSON.parse(event.data)
         game.processWsMessage(data)
         if (data.type === 'round:start') {
+          if (hasSeenRoundStart) {
+            casualModeOn = false
+          }
+          hasSeenRoundStart = true
           isPlaying = false
           nextRoundError = null
           clearTimeout(nextRoundErrorTimer)
@@ -247,7 +263,9 @@
           game.continuousMode = (data.continuousMode as boolean | undefined) ?? false
           const remaining = data.countdownRemainingMs as number | null | undefined
           game.countdownEndsAt = (remaining !== null && remaining !== undefined && remaining > 0) ? Date.now() + remaining : null
-          game.casualModePlayers = new Set((data.casualModeNames as string[] | undefined) ?? [])
+          const casualNames = (data.casualModeNames as string[] | undefined) ?? []
+          game.casualModePlayers = new Set(casualNames)
+          if (hostName !== null) casualModeOn = casualNames.includes(hostName)
         } else if (data.type === 'continuous:countdown-cancel') {
           const reason = (data as Record<string, unknown>).reason as string | undefined
           if (reason) showContinuousError(`Continuous round failed — ${reason}`)
@@ -367,6 +385,17 @@
         onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
       />
       <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
+      {#if game.allowCasualMode && hostName !== null}
+        <div class="casual-toggle-row">
+          <span class="casual-label">Casual Mode</span>
+          <button
+            class="casual-btn"
+            class:active={casualModeOn}
+            onclick={handleCasualToggle}
+            aria-pressed={casualModeOn}
+          >{casualModeOn ? 'On' : 'Off'}</button>
+        </div>
+      {/if}
     {/if}
     {#if !sdkReady && !sdkFailed}
       <p class="sdk-status" role="status">Connecting to Spotify audio…</p>
@@ -459,6 +488,35 @@
     color: var(--fg-muted);
     text-align: center;
   }
+
+  .casual-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 12px;
+  }
+
+  .casual-label {
+    font-size: 14px;
+    color: var(--fg-muted);
+  }
+
+  .casual-btn {
+    padding: 0.35rem 0.9rem;
+    min-height: 36px;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  .casual-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-fg);
+  }
+  .casual-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   @media (min-width: 768px) {
     .host-game {
