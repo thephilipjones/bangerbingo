@@ -2,7 +2,7 @@
   import { onMount, onDestroy, untrack } from 'svelte'
   import BingoCard from '../components/BingoCard.svelte'
   import SdkFailureBanner from '../components/SdkFailureBanner.svelte'
-  import WinOverlay from '../components/WinOverlay.svelte'
+  import GameOverView from '../components/GameOverView.svelte'
   import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
   import AuthDegradedBanner from '../components/AuthDegradedBanner.svelte'
   import GameHeader from '../components/GameHeader.svelte'
@@ -10,6 +10,7 @@
   import HostMiniPlayer from '../components/HostMiniPlayer.svelte'
   import HostControlsOverlay from '../components/HostControlsOverlay.svelte'
   import { createGameState } from '../lib/gameState.svelte.ts'
+  import { postStartNextRound } from '../lib/api.ts'
 
   let { code, onRoundEnded, onSessionEnded }: {
     code: string
@@ -31,9 +32,11 @@
   let playbackError = $state(false)
   let continuousError = $state<string | null>(null)
   let pendingAutoPlay = $state(false)
+  let nextRoundError = $state<string | null>(null)
   let undoTimer: ReturnType<typeof setTimeout> | undefined
   let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
   let continuousErrorTimer: ReturnType<typeof setTimeout> | undefined
+  let nextRoundErrorTimer: ReturnType<typeof setTimeout> | undefined
   let sessionEnded = false
   let ws: WebSocket
   let player: Spotify.Player | undefined
@@ -83,11 +86,25 @@
     })
   }
 
-  function handleDismissWin() {
-    game.winData = null
-    fetch(`/api/rooms/${code}/round/dismiss-win`, { method: 'POST' })
-      .catch(() => { /* non-fatal; countdown just won't start */ })
+  async function handleStartNextRound() {
+    nextRoundError = null
+    try {
+      const res = await postStartNextRound(code)
+      if (!res.ok) {
+        nextRoundError = "Couldn't start next round — try again."
+        clearTimeout(nextRoundErrorTimer)
+        nextRoundErrorTimer = setTimeout(() => { nextRoundError = null }, 3000)
+      }
+    } catch {
+      nextRoundError = "Couldn't start next round — try again."
+      clearTimeout(nextRoundErrorTimer)
+      nextRoundErrorTimer = setTimeout(() => { nextRoundError = null }, 3000)
+    }
   }
+
+  $effect(() => {
+    if (game.hasBingo) game.handleBingoClick()
+  })
 
   $effect(() => {
     if (sdkReady && pendingAutoPlay && !sdkFailed) {
@@ -210,6 +227,8 @@
         game.processWsMessage(data)
         if (data.type === 'round:start') {
           isPlaying = false
+          nextRoundError = null
+          clearTimeout(nextRoundErrorTimer)
           const history = (data as Record<string, unknown>).songHistory as unknown[] | undefined
           if (!history || history.length === 0) {
             if (sdkReady && !sdkFailed) {
@@ -270,6 +289,7 @@
     clearTimeout(undoTimer)
     clearTimeout(playbackErrorTimer)
     clearTimeout(continuousErrorTimer)
+    clearTimeout(nextRoundErrorTimer)
     ws?.close()
     player?.disconnect()
     if (sdkScript && document.head.contains(sdkScript)) {
@@ -307,20 +327,6 @@
   <PlayersOverlay players={game.players} {hostName} selfName={null} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} />
 {/if}
 
-{#if game.winData !== null}
-  {@const wd = game.winData}
-  <WinOverlay
-    winnerName={wd.winnerName}
-    winningSongs={wd.songHistory.filter(e => wd.winningTileIds.includes(e.trackId))}
-    isHost={true}
-    onStartNextRound={onRoundEnded}
-    onDismiss={handleDismissWin}
-    audioPreset={game.audioPreset}
-    selfName={null}
-    hideStartNextRound={game.continuousMode}
-  />
-{/if}
-
 {#if toastVisible}
   <div class="toast" role="status">
     <span>Ending round…</span>
@@ -330,7 +336,27 @@
 
 <div class="host-game">
   <div class="card-area">
-    {#if game.tiles.length > 0}
+    {#if game.winData !== null}
+      <GameOverView
+        role="host"
+        selfName={null}
+        winData={game.winData}
+        audioPreset={game.audioPreset}
+        continuousMode={game.continuousMode}
+        ownTiles={game.tiles}
+        playedTrackIds={game.playedTrackIds}
+        playerCount={game.playerCount}
+        {code}
+        songIndex={game.songIndex}
+        historyOpen={game.showHistory}
+        playersOpen={game.showPlayers}
+        onPlayersClick={() => { game.showPlayers = !game.showPlayers; game.showHistory = false }}
+        onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
+        onStartNextRound={handleStartNextRound}
+        onReconfigure={onRoundEnded}
+        errorMessage={nextRoundError}
+      />
+    {:else if game.tiles.length > 0}
       <GameHeader
         playerCount={game.playerCount}
         {code}
@@ -341,11 +367,6 @@
         onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
       />
       <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
-      {#if game.hasBingo && !game.isClaiming}
-        <button class="bingo-btn" onclick={game.handleBingoClick}>Bingo!</button>
-      {:else if game.isClaiming}
-        <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
-      {/if}
     {/if}
     {#if !sdkReady && !sdkFailed}
       <p class="sdk-status" role="status">Connecting to Spotify audio…</p>
@@ -407,28 +428,6 @@
     padding: 80px 16px 64px;
   }
 
-  .bingo-btn {
-    margin-top: 16px;
-    background: var(--accent);
-    color: var(--accent-fg);
-    border: var(--rule-thick) solid var(--accent);
-    padding: 14px 40px;
-    font-size: 18px;
-    font-weight: 700;
-    font-family: var(--font-display);
-    text-transform: uppercase;
-    cursor: pointer;
-    letter-spacing: var(--track-display);
-  }
-  .bingo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-  .bingo-btn--disabled {
-    background: var(--bg-2);
-    color: var(--fg-muted);
-    border-color: var(--rule);
-    cursor: default;
-  }
-
   .toast {
     position: fixed;
     top: 16px;
@@ -470,10 +469,6 @@
     .card-area {
       padding: 96px var(--space-5) 96px;
       gap: var(--space-5);
-    }
-    .bingo-btn {
-      margin-top: var(--space-5);
-      padding: 16px 56px;
     }
   }
 </style>

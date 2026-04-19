@@ -46,6 +46,7 @@ export interface RoundState {
   songHistory: SongHistoryEntry[] // append-only; used by 5-5 win validation + 5-6 drawer
   paused: boolean                 // true after /pause; cleared on /play
   ended?: boolean                 // true after a valid win claim
+  winnerName?: string             // set on valid claim; persisted for /round/next-round winner-auth after restart
   timers: {
     autoAdvance?: ReturnType<typeof setTimeout>
     reveal?: ReturnType<typeof setTimeout>
@@ -113,6 +114,7 @@ export function persistRoomState(code: string): void {
       songHistory: round.songHistory,
       paused: round.paused,
       ended: round.ended,
+      winnerName: round.winnerName,
     } : undefined,
   }
   upsertActiveRoom(code, JSON.stringify(snapshot))

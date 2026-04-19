@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Deferred from: code review of 9-1-game-over-page-state-and-auto-bingo (2026-04-19)
+
+- **Reconnect after a win loses Game Over view** — `session:connect` replay in `src/server/ws.ts` does not re-broadcast `round:win` when `round.ended === true`. A reconnecting winner sees an empty active-round shell and can't access the Start Next Round CTA. Already flagged as a known pre-existing limitation in story 9-1's Dev Notes. (src/server/ws.ts)
+- **No CSRF / origin check / rate-limit on `POST /round/next-round`** — endpoint is intentionally unauthenticated (guest-callable) and gated only by `playerName === round.winnerName`. Consistent with the project's friends-only model and documented in the story's Dev Notes. Would need revisiting if the model ever widens beyond friends. (src/server/rooms.ts)
+- **`handleStartNextRound` error copy is generic for permanent failures** — 403/409 responses (wrong name, no pending round) display "Couldn't start next round — try again." where retry will never succeed. UX polish; correctness unaffected. (src/client/pages/RoomPage.svelte, src/client/pages/HostRoomPage.svelte)
+- **No server-side debounce when host + winning guest tap Start Next Round near-simultaneously** — both authorized callers pass their auth branch and both run `startContinuousRound`, which could double-broadcast `round:start`. Worth observing in real play before adding a guard. (src/server/rooms.ts)
+
 ## Deferred from: code review of 8-5-casual-mode-auto-mark-engine (2026-04-15)
 
 - **Auto-claim latches permanently on failed claim** — `autoClaimFired` only resets on `round:start`, so a claim fetch failure locks out auto-claim for the rest of the round. Deferred: Epic 9 is about to minimize/remove the claim concept, so hardening this path would be wasted work. (src/client/pages/RoomPage.svelte)

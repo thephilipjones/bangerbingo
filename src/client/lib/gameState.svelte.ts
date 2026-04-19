@@ -32,6 +32,7 @@ export type WinData = {
   winnerName: string
   winningTileIds: string[]
   songHistory: HistoryEntry[]
+  winnerCard: Tile[]
 }
 
 /**
@@ -74,6 +75,7 @@ export function createGameState({
   let audioPreset = $state<AudioPreset>('minimal')
   let winData = $state<WinData | null>(null)
   let isClaiming = $state(false)
+  let hasAutoClaimedThisRound = false
   let songHistory = $state<HistoryEntry[]>([])
   const playedTrackIds = $derived(new Set(songHistory.map(e => e.trackId)))
   const hasBingo = $derived(
@@ -119,8 +121,10 @@ export function createGameState({
   }
 
   async function handleBingoClick() {
+    if (hasAutoClaimedThisRound) return
     const playerName = getPlayerName()
     if (!playerName) return
+    hasAutoClaimedThisRound = true
     isClaiming = true
     const claimedTileIds = tiles
       .filter(t => t.state === 'marked' || t.state === 'free')
@@ -132,9 +136,11 @@ export function createGameState({
         body: JSON.stringify({ playerName, claimedTileIds }),
       })
       if (res.status !== 200) {
+        hasAutoClaimedThisRound = false
         isClaiming = false
       }
     } catch {
+      hasAutoClaimedThisRound = false
       isClaiming = false
     }
   }
@@ -158,6 +164,7 @@ export function createGameState({
       catchUpToastId = null
       winData = null
       isClaiming = false
+      hasAutoClaimedThisRound = false
       countdownEndsAt = null
       const rawHistory = (data.songHistory as HistoryEntry[] | undefined) ?? []
       songHistory = rawHistory.slice().reverse()
@@ -222,6 +229,7 @@ export function createGameState({
         winnerName: data.winnerName as string,
         winningTileIds: data.winningTileIds as string[],
         songHistory: data.songHistory as HistoryEntry[],
+        winnerCard: (data.winnerCard as Tile[] | undefined) ?? [],
       }
     } else if (data.type === 'player:joined' || data.type === 'player:left') {
       players = applyPlayerEvent(players, {
@@ -257,6 +265,7 @@ export function createGameState({
     get hasBingo() { return hasBingo },
     get songHistory() { return songHistory },
     get currentRevealed() { return currentRevealed },
+    get playedTrackIds() { return playedTrackIds },
     get nopeIndex() { return nopeIndex },
     get showHistory() { return showHistory },
     set showHistory(v: boolean) { showHistory = v },

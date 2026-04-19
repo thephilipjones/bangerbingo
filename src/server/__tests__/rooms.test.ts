@@ -1848,11 +1848,13 @@ describe('POST /api/rooms/:code/round/claim', () => {
     expect(res.status).toBe(200)
     expect(round.active).toBe(false)
     expect(round.ended).toBe(true)
+    expect(round.winnerName).toBe('Alice')
     expect(sent).toHaveLength(2)
     const msg = JSON.parse(sent[0])
     expect(msg.type).toBe('round:win')
     expect(msg.winnerName).toBe('Alice')
     expect(msg.winningTileIds).toHaveLength(5)
+    expect(msg.winnerCard).toEqual(card)
   })
 
   it('200 — stats:updated broadcast follows round:win', async () => {
@@ -2062,6 +2064,188 @@ describe('POST /api/rooms/:code/round/claim', () => {
 
     // Only one round:win broadcast
     expect(sent.filter(m => JSON.parse(m).type === 'round:win')).toHaveLength(1)
+  })
+})
+
+// ── POST /api/rooms/:code/round/next-round (Story 9-1) ────────────────────
+
+describe('POST /api/rooms/:code/round/next-round', () => {
+  beforeEach(async () => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracksLocal(30))
+  })
+
+  function seedEndedRound(code = 'ABCD', winnerName: string | null = 'Alice'): RoundState {
+    const round = seedActiveRound(code)
+    round.active = false
+    round.ended = true
+    round.winnerName = winnerName ?? undefined
+    return round
+  }
+
+  function seedPending(code = 'ABCD') {
+    const roomState = roomSockets.get(code)!
+    roomState.pendingRound = {
+      playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5,
+      roundNumber: 2, audioPreset: 'minimal', allowCasualMode: false,
+    }
+  }
+
+  it('404 — room not found', async () => {
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ZZZZ/round/next-round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('503 — room exists but no active WS session', async () => {
+    seedHost()
+    await seedRoom()
+    roomSockets.clear()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(503)
+  })
+
+  it('409 — no ended round', async () => {
+    seedHost()
+    await seedRoom()
+    seedActiveRound() // active, not ended
+    const roomState = roomSockets.get('ABCD')!
+    roomState.pendingRound = {
+      playlistId: 'pl', clipDuration: 30, titleRevealDelay: 5,
+      roundNumber: 2, audioPreset: 'minimal', allowCasualMode: false,
+    }
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('409 — ended round but no pending config', async () => {
+    seedHost()
+    await seedRoom()
+    seedEndedRound()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('403 — anonymous caller (no session, no playerName)', async () => {
+    seedHost()
+    await seedRoom()
+    seedEndedRound()
+    seedPending()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.continuousMode = true
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('403 — playerName does not match winnerName', async () => {
+    seedHost()
+    await seedRoom()
+    seedEndedRound('ABCD', 'Alice')
+    seedPending()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.continuousMode = true
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Bob' }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('403 — winner claims but continuousMode is off', async () => {
+    seedHost()
+    await seedRoom()
+    seedEndedRound('ABCD', 'Alice')
+    seedPending()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.continuousMode = false
+    const hostWs = makeMockWs()
+    roomState.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice' }),
+    })
+    expect(res.status).toBe(403)
+    // Regression guard: a rejected caller must not still trigger a round start.
+    expect(hostWs.getSent().some(m => m.type === 'round:start')).toBe(false)
+  })
+
+  it('200 — host authorized regardless of continuousMode', async () => {
+    seedHost()
+    await seedRoom()
+    seedEndedRound()
+    seedPending()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.continuousMode = false
+    const hostWs = makeMockWs()
+    roomState.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(200)
+    const starts = hostWs.getSent().filter(m => m.type === 'round:start')
+    expect(starts).toHaveLength(1)
+  })
+
+  it('200 — winning guest authorized when continuousMode is on', async () => {
+    seedHost()
+    await seedRoom()
+    seedEndedRound('ABCD', 'Alice')
+    seedPending()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.continuousMode = true
+    const hostWs = makeMockWs()
+    roomState.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next-round', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerName: 'Alice' }),
+    })
+    expect(res.status).toBe(200)
+    const starts = hostWs.getSent().filter(m => m.type === 'round:start')
+    expect(starts).toHaveLength(1)
   })
 })
 

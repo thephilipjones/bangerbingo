@@ -2,15 +2,24 @@
   import type { ClientTile } from '../lib/bingo.ts'
   import FreeTileEmblem from './FreeTileEmblem.svelte'
 
+  export type BingoCardMode = 'active' | 'gameover-winner' | 'gameover-loser-their' | 'gameover-loser-your'
+
   let {
     tiles,
     onTileClick,
     nopeIndex = null,
+    mode = 'active',
+    playedTrackIds,
   }: {
     tiles: ClientTile[]
-    onTileClick: (index: number) => void
+    onTileClick?: (index: number) => void
     nopeIndex?: number | null
+    mode?: BingoCardMode
+    playedTrackIds?: Set<string>
   } = $props()
+
+  const isGameOver = $derived(mode !== 'active')
+  const activeNopeIndex = $derived(mode === 'active' ? nopeIndex : null)
 
   // Stable seed derived from the card's tile list — same card → same emblem;
   // a new round's card rolls a different one.
@@ -25,6 +34,25 @@
     }
     return h >>> 0
   })
+
+  function isDim(tile: ClientTile): boolean {
+    if (tile.free) return false
+    if (mode === 'gameover-winner') return !tile.winPath
+    if (mode === 'gameover-loser-their') return !tile.winPath
+    return false
+  }
+
+  function isMissed(tile: ClientTile): boolean {
+    if (mode !== 'gameover-loser-your') return false
+    if (tile.free) return false
+    if (tile.state !== 'unmarked') return false
+    return playedTrackIds?.has(tile.trackId) ?? false
+  }
+
+  function showWinPath(tile: ClientTile): boolean {
+    if (mode === 'gameover-loser-your') return false
+    return tile.winPath === true
+  }
 </script>
 
 <div class="bingo-grid" role="grid" aria-label="Bingo card">
@@ -32,12 +60,29 @@
     {#if tile.free}
       <div
         class="tile free"
-        class:win-path={tile.winPath}
+        class:win-path={showWinPath(tile)}
         aria-label="Free space"
         aria-disabled="true"
       >
         <div class="tile-content free-content">
           <FreeTileEmblem seed={emblemSeed} />
+        </div>
+      </div>
+    {:else if isGameOver}
+      <div
+        class="tile"
+        class:unmarked={tile.state === 'unmarked'}
+        class:marked={tile.state === 'marked'}
+        class:win-path={showWinPath(tile)}
+        class:gameover-dim={isDim(tile)}
+        class:gameover-dim-their={mode === 'gameover-loser-their' && !tile.winPath}
+        class:missed={isMissed(tile)}
+        role="gridcell"
+        aria-label={`${tile.title} by ${tile.artist}${tile.state === 'marked' ? ' (marked)' : ''}`}
+      >
+        <div class="tile-content">
+          <span class="tile-title">{tile.title}</span>
+          <span class="tile-artist">{tile.artist}</span>
         </div>
       </div>
     {:else}
@@ -47,11 +92,11 @@
         class:marked={tile.state === 'marked'}
         class:auto-marked={tile.autoMarked}
         class:win-path={tile.winPath}
-        class:nope={i === nopeIndex}
+        class:nope={i === activeNopeIndex}
         title={tile.title}
         aria-label={`${tile.title} by ${tile.artist}${tile.state === 'marked' ? ' (marked)' : ''}`}
         aria-pressed={tile.state === 'marked'}
-        onclick={() => onTileClick(i)}
+        onclick={() => onTileClick?.(i)}
       >
         <div class="tile-content">
           <span class="tile-title">{tile.title}</span>
@@ -208,6 +253,18 @@
 
   @media (prefers-reduced-motion: reduce) {
     .tile.auto-marked { animation: none; }
+  }
+
+  /* Game-over dimming: winner sees ~40%; their-card view sees ~60%. */
+  .tile.gameover-dim { opacity: 0.4; cursor: default; }
+  .tile.gameover-dim.gameover-dim-their { opacity: 0.6; }
+
+  /* Honest-card shading: song played, player never marked. */
+  .tile.missed {
+    background: var(--bg-2);
+    color: var(--fg-muted);
+    border: var(--rule-thin) dashed var(--rule);
+    cursor: default;
   }
 
   @media (min-width: 768px) {

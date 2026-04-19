@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
+import { getCookie } from 'hono/cookie'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
 import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room, type Host } from './db.ts'
-import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
+import { requireAuth, verifySession, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type AudioPreset, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
@@ -786,6 +787,7 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
 
   clearRoundTimers(round)
   round.active = false
+  round.winnerName = playerName
 
   roomState.sessionStats.winsByName[playerName] = (roomState.sessionStats.winsByName[playerName] ?? 0) + 1
   roomState.sessionStats.lastRoundWinner = playerName
@@ -795,6 +797,7 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
     winnerName: playerName,
     winningTileIds,
     songHistory: round.songHistory,
+    winnerCard: card,
   })
 
   broadcast(code, {
@@ -805,6 +808,48 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
 
   persistRoomState(code)
   deleteActiveRoom(code)
+
+  return ctx.json({})
+})
+
+// POST /round/next-round — host or winning guest starts the next round (Story 9-1).
+// Not behind requireAuth: the winning guest is guest-callable when continuousMode is on.
+roomsRouter.post('/rooms/:code/round/next-round', async (ctx) => {
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+
+  const roomState = roomSockets.get(code)
+  if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
+
+  if (!roomState.currentRound || roomState.currentRound.ended !== true) {
+    return ctx.json({ message: 'No completed round' }, 409)
+  }
+  if (!roomState.pendingRound) {
+    return ctx.json({ message: 'No pending round config' }, 409)
+  }
+
+  const body = await ctx.req.json().catch(() => ({} as { playerName?: unknown }))
+  const playerName = typeof (body as { playerName?: unknown }).playerName === 'string'
+    ? (body as { playerName: string }).playerName
+    : null
+
+  const sessionCookie = getCookie(ctx, 'session')
+  const sessionUserId = sessionCookie ? verifySession(sessionCookie) : null
+  const isHost = sessionUserId !== null && sessionUserId === room.host_user_id
+
+  let authorized = false
+  if (isHost) {
+    authorized = true
+  } else if (playerName !== null && roomState.continuousMode === true
+      && roomState.currentRound.winnerName === playerName) {
+    authorized = true
+  }
+
+  if (!authorized) return ctx.json({ message: 'Not allowed to start next round' }, 403)
+
+  await startContinuousRound(code, roomState)
 
   return ctx.json({})
 })

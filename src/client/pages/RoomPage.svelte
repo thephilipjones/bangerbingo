@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte'
   import BingoCard from '../components/BingoCard.svelte'
-  import WinOverlay from '../components/WinOverlay.svelte'
+  import GameOverView from '../components/GameOverView.svelte'
   import SongHistoryDrawer from '../components/SongHistoryDrawer.svelte'
   import GuestWaitingRoom from '../components/GuestWaitingRoom.svelte'
   import GameHeader from '../components/GameHeader.svelte'
@@ -9,6 +9,7 @@
   import { cardFingerprint } from '../lib/bingo.ts'
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
+  import { postStartNextRound } from '../lib/api.ts'
 
   let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialContinuousMode = false, initialCountdownRemainingMs = null, initialCasualModeNames = [], pendingMessages = [], onLeave }: {
     name: string
@@ -31,7 +32,8 @@
   let marksKey = ''
   let toastMessage = $state<string | null>(null)
   let toastTimer: ReturnType<typeof setTimeout> | undefined
-  let autoClaimFired = $state(false)
+  let nextRoundError = $state<string | null>(null)
+  let nextRoundErrorTimer: ReturnType<typeof setTimeout> | undefined
   // Reconnect into an existing round delivers a buffered round:start whose reset
   // would clobber `casualModeOn` seeded from session:connect. Skip the reset the
   // first time so reconnected casual players keep their server-truth state.
@@ -105,26 +107,36 @@
   })
 
   $effect(() => {
-    if (!casualModeOn) return
-    if (!game.hasBingo) return
-    if (autoClaimFired) return
-    if (game.isClaiming) return
-    autoClaimFired = true
-    setTimeout(() => {
-      if (!game.isClaiming && game.winData === null) game.handleBingoClick()
-    }, 600)
+    if (game.hasBingo) game.handleBingoClick()
   })
+
+  async function handleStartNextRound() {
+    nextRoundError = null
+    try {
+      const res = await postStartNextRound(code, name)
+      if (!res.ok) {
+        nextRoundError = "Couldn't start next round — try again."
+        clearTimeout(nextRoundErrorTimer)
+        nextRoundErrorTimer = setTimeout(() => { nextRoundError = null }, 3000)
+      }
+    } catch {
+      nextRoundError = "Couldn't start next round — try again."
+      clearTimeout(nextRoundErrorTimer)
+      nextRoundErrorTimer = setTimeout(() => { nextRoundError = null }, 3000)
+    }
+  }
 
   function handleWsData(data: Record<string, unknown>) {
     game.processWsMessage(data)
     if (data.type === 'round:start') {
       if (hasSeenRoundStart) {
         casualModeOn = false
-        autoClaimFired = false
       }
       hasSeenRoundStart = true
       clearTimeout(toastTimer)
       toastMessage = null
+      nextRoundError = null
+      clearTimeout(nextRoundErrorTimer)
       statusLine = 'Waiting for next song…'
     } else if (data.type === 'song:start') {
       statusLine = `Song ${(data.songIndex as number) + 1} of this round`
@@ -154,6 +166,7 @@
 
   onDestroy(() => {
     clearTimeout(toastTimer)
+    clearTimeout(nextRoundErrorTimer)
     game.cleanup()
     ws.close()
   })
@@ -171,19 +184,6 @@
   </div>
 {/if}
 
-{#if game.winData !== null}
-  {@const wd = game.winData}
-  <WinOverlay
-    winnerName={wd.winnerName}
-    winningSongs={wd.songHistory.filter(e => wd.winningTileIds.includes(e.trackId))}
-    isHost={false}
-    onStartNextRound={() => {}}
-    onDismiss={() => { game.winData = null }}
-    audioPreset={game.audioPreset}
-    selfName={name}
-  />
-{/if}
-
 {#if game.showHistory}
   <SongHistoryDrawer entries={game.songHistory} currentRevealed={game.currentRevealed} onClose={() => { game.showHistory = false }} />
 {/if}
@@ -192,8 +192,28 @@
   <PlayersOverlay players={game.players} {hostName} selfName={name} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} />
 {/if}
 
-<main class="room-page" class:game-active={game.tiles.length > 0}>
-  {#if game.tiles.length > 0}
+<main class="room-page" class:game-active={game.tiles.length > 0 || game.winData !== null}>
+  {#if game.winData !== null}
+    <GameOverView
+      role="guest"
+      selfName={name}
+      winData={game.winData}
+      audioPreset={game.audioPreset}
+      continuousMode={game.continuousMode}
+      ownTiles={game.tiles}
+      playedTrackIds={game.playedTrackIds}
+      playerCount={game.playerCount}
+      {code}
+      songIndex={game.songIndex}
+      historyOpen={game.showHistory}
+      playersOpen={game.showPlayers}
+      onPlayersClick={() => { game.showPlayers = !game.showPlayers; game.showHistory = false }}
+      onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
+      onStartNextRound={handleStartNextRound}
+      onReconfigure={() => {}}
+      errorMessage={nextRoundError}
+    />
+  {:else if game.tiles.length > 0}
     <GameHeader
       playerCount={game.playerCount}
       {code}
@@ -204,11 +224,6 @@
       onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
     />
     <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
-    {#if game.hasBingo && !game.isClaiming}
-      <button class="bingo-btn" onclick={game.handleBingoClick}>Bingo!</button>
-    {:else if game.isClaiming}
-      <button class="bingo-btn bingo-btn--disabled" disabled>Claiming…</button>
-    {/if}
     <p class="status-line" role="status">{countdownSeconds !== null ? `Next game starts in ${countdownSeconds}s` : statusLine}</p>
     {#if toastMessage}
       <div class="casual-toast" role="status" aria-live="polite">{toastMessage}</div>
@@ -280,30 +295,6 @@
     text-align: center;
   }
 
-  .bingo-btn {
-    margin-top: 16px;
-    background: var(--accent);
-    color: var(--accent-fg);
-    border: var(--rule-thick) solid var(--accent);
-    padding: 14px 36px;
-    font-size: 20px;
-    font-weight: 900;
-    font-family: var(--font-display);
-    text-transform: uppercase;
-    cursor: pointer;
-    min-height: 44px;
-    min-width: 44px;
-    letter-spacing: var(--track-display);
-  }
-  .bingo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-  .bingo-btn--disabled {
-    background: var(--bg-2);
-    color: var(--fg-muted);
-    border-color: var(--rule);
-    cursor: default;
-  }
-
   .casual-toggle-row {
     display: flex;
     align-items: center;
@@ -353,10 +344,6 @@
     }
     .room-page.game-active {
       padding-top: 96px;
-    }
-    .bingo-btn {
-      margin-top: var(--space-5);
-      padding: 16px 56px;
     }
     .casual-toggle-row { margin-top: var(--space-4); }
   }
