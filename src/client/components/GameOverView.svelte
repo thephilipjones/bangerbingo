@@ -11,7 +11,6 @@
     selfName,
     winData,
     audioPreset,
-    continuousMode,
     ownTiles,
     playedTrackIds,
     playerCount,
@@ -21,15 +20,14 @@
     playersOpen,
     onPlayersClick,
     onHistoryClick,
-    onStartNextRound,
-    onReconfigure,
-    errorMessage = null,
+    onLetItRide,
+    onChangeItUp,
+    nextRoundError = null,
   }: {
     role: 'host' | 'guest'
     selfName: string | null
     winData: WinData
     audioPreset: AudioPreset
-    continuousMode: boolean
     ownTiles: ClientTile[]
     playedTrackIds: Set<string>
     playerCount: number
@@ -39,9 +37,9 @@
     playersOpen: boolean
     onPlayersClick: () => void
     onHistoryClick: () => void
-    onStartNextRound: () => void
-    onReconfigure: () => void
-    errorMessage?: string | null
+    onLetItRide?: () => void
+    onChangeItUp?: () => void
+    nextRoundError?: string | null
   } = $props()
 
   const isWinner = $derived(role === 'guest' && selfName !== null && selfName === winData.winnerName)
@@ -57,12 +55,6 @@
     winData.winningTileIds
       .map((id) => winData.songHistory.find((e) => e.trackId === id))
       .filter((e): e is NonNullable<typeof e> => Boolean(e))
-  )
-
-  const showHostCta = $derived(role === 'host')
-  const showWinnerCta = $derived(role === 'guest' && isWinner && continuousMode)
-  const showWaitingStatus = $derived(
-    (role === 'guest' && !isWinner) || (role === 'guest' && isWinner && !continuousMode)
   )
 </script>
 
@@ -135,20 +127,15 @@
     {/if}
 
     <div class="cta-area">
-      {#if showHostCta}
-        {#if continuousMode}
-          <button class="btn-primary" onclick={onStartNextRound}>Start Next Round</button>
-        {:else}
-          <button class="btn-primary" onclick={onReconfigure}>Change Settings &amp; Start</button>
-        {/if}
-      {:else if showWinnerCta}
-        <button class="btn-primary" onclick={onStartNextRound}>Start Next Round</button>
-      {:else if showWaitingStatus}
+      {#if role === 'host'}
+        <button class="btn-primary" onclick={() => onLetItRide?.()}>Let It Ride</button>
+        <button class="btn-secondary" onclick={() => onChangeItUp?.()}>Change It Up</button>
+      {:else}
         <p class="status-line">Waiting for the host to start the next round.</p>
       {/if}
 
-      {#if errorMessage}
-        <p class="error-line" role="alert">{errorMessage}</p>
+      {#if nextRoundError}
+        <p class="error-line" role="alert">{nextRoundError}</p>
       {/if}
     </div>
   </div>
@@ -284,6 +271,21 @@
     min-height: 44px;
   }
   .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .btn-secondary {
+    background: var(--bg);
+    color: var(--fg);
+    border: var(--rule-thick) solid var(--rule);
+    padding: 14px 36px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: var(--track-display);
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .btn-secondary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .status-line {
     font-size: 14px;

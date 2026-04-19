@@ -31,7 +31,6 @@ const baseProps = {
   selfName: 'Alice',
   winData: makeWinData(),
   audioPreset: 'minimal' as const,
-  continuousMode: true,
   ownTiles: [] as ClientTile[],
   playedTrackIds: new Set<string>(),
   playerCount: 3,
@@ -41,8 +40,8 @@ const baseProps = {
   playersOpen: false,
   onPlayersClick: vi.fn(),
   onHistoryClick: vi.fn(),
-  onStartNextRound: vi.fn(),
-  onReconfigure: vi.fn(),
+  onLetItRide: vi.fn(),
+  onChangeItUp: vi.fn(),
 }
 
 afterEach(() => {
@@ -105,80 +104,58 @@ describe('GameOverView', () => {
     expect(theirTab.getAttribute('aria-selected')).toBe('false')
   })
 
-  it('host CTA — shows "Start Next Round" when continuous mode is on', async () => {
+  it('host CTA — shows both "Let It Ride" and "Change It Up" buttons', async () => {
     const { default: GameOverView } = await import('../components/GameOverView.svelte')
-    const onStartNextRound = vi.fn()
+    const onLetItRide = vi.fn()
+    const onChangeItUp = vi.fn()
     const { getByRole } = render(GameOverView, {
       ...baseProps,
       role: 'host',
       selfName: null,
-      continuousMode: true,
-      onStartNextRound,
+      onLetItRide,
+      onChangeItUp,
     })
-    const btn = getByRole('button', { name: /start next round/i })
-    await fireEvent.click(btn)
-    expect(onStartNextRound).toHaveBeenCalledOnce()
+    const rideBtn = getByRole('button', { name: /let it ride/i })
+    const changeBtn = getByRole('button', { name: /change it up/i })
+    await fireEvent.click(rideBtn)
+    expect(onLetItRide).toHaveBeenCalledOnce()
+    expect(onChangeItUp).not.toHaveBeenCalled()
+    await fireEvent.click(changeBtn)
+    expect(onChangeItUp).toHaveBeenCalledOnce()
+    expect(onLetItRide).toHaveBeenCalledOnce()
   })
 
-  it('host CTA — shows "Change Settings & Start" when continuous mode is off', async () => {
-    const { default: GameOverView } = await import('../components/GameOverView.svelte')
-    const onReconfigure = vi.fn()
-    const { getByRole } = render(GameOverView, {
-      ...baseProps,
-      role: 'host',
-      selfName: null,
-      continuousMode: false,
-      onReconfigure,
-    })
-    const btn = getByRole('button', { name: /change settings & start/i })
-    await fireEvent.click(btn)
-    expect(onReconfigure).toHaveBeenCalledOnce()
-  })
-
-  it('guest winner + continuous on — shows "Start Next Round" CTA', async () => {
-    const { default: GameOverView } = await import('../components/GameOverView.svelte')
-    const { getByRole } = render(GameOverView, {
-      ...baseProps,
-      role: 'guest',
-      selfName: 'Alice',
-      continuousMode: true,
-    })
-    expect(getByRole('button', { name: /start next round/i })).toBeTruthy()
-  })
-
-  it('guest winner + continuous off — shows waiting status, no CTA', async () => {
+  it('guest — always shows waiting status, no host CTAs', async () => {
     const { default: GameOverView } = await import('../components/GameOverView.svelte')
     const { queryByRole, getByText } = render(GameOverView, {
       ...baseProps,
       role: 'guest',
       selfName: 'Alice',
-      continuousMode: false,
     })
-    expect(queryByRole('button', { name: /start next round/i })).toBeNull()
+    expect(queryByRole('button', { name: /let it ride/i })).toBeNull()
+    expect(queryByRole('button', { name: /change it up/i })).toBeNull()
     expect(getByText(/waiting for the host/i)).toBeTruthy()
   })
 
-  it('guest loser — always shows waiting status, no CTA', async () => {
+  it('guest loser — shows waiting status, no host CTAs', async () => {
     const { default: GameOverView } = await import('../components/GameOverView.svelte')
     const { queryByRole, getByText } = render(GameOverView, {
       ...baseProps,
       role: 'guest',
       selfName: 'Bob',
-      continuousMode: true,
       ownTiles: initTiles(makeCard()),
     })
-    expect(queryByRole('button', { name: /start next round/i })).toBeNull()
+    expect(queryByRole('button', { name: /let it ride/i })).toBeNull()
     expect(getByText(/waiting for the host/i)).toBeTruthy()
   })
 
-  it('renders errorMessage when provided', async () => {
+  it('renders nextRoundError when provided', async () => {
     const { default: GameOverView } = await import('../components/GameOverView.svelte')
     const { getByRole } = render(GameOverView, {
       ...baseProps,
       role: 'host',
       selfName: null,
-      continuousMode: true,
-      errorMessage: "Couldn't start next round — try again.",
+      nextRoundError: "Couldn't start next round — try again.",
     })
     expect(getByRole('alert').textContent).toContain("Couldn't start next round")
   })

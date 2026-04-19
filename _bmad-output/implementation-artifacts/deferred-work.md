@@ -1,5 +1,16 @@
 # Deferred Work
 
+## Deferred from: code review of 9-3-collapse-continuous-mode-to-gameover-choice (2026-04-19)
+
+- **`session:connect` wire-protocol change without version bump** — `continuousMode` + `countdownRemainingMs` were removed from the payload; pre-deploy browser tabs will see `undefined` on those fields. Deploy practice (coordinated reload) covers this, and the project has no version field to hinge compatibility on. (src/server/rooms.ts)
+- **No integration test for the Change It Up → `RoundConfigOverlay` mount flow** — unit tests assert the callback fires, but nothing exercises the overlay-mount-on-Game-Over path end-to-end. Manual verification checklist in Dev Notes covers the happy path. (src/client/__tests__/)
+- **Let It Ride 401 has no re-auth prompt path** — if the host session cookie expires, `handleLetItRide` shows the generic transient error with no path back to auth. Pre-existing gap across every host endpoint in the project. (src/client/pages/HostRoomPage.svelte)
+- **Buffered `round:end` during Game Over can yank host to lobby before CTA tap** — the `round:end` handler unconditionally calls `onRoundEnded()`. Pre-existing reconnect edge case; 9-3 exposes it more now that `round:dismissed` no longer also clears `winData`. (src/client/pages/HostRoomPage.svelte)
+- **No `round:end` handler clears `winData` in gameState** — client-only state gets cleared on remount so no concrete symptom observed. Worth a defensive clear if weird Game-Over-sticks-around reports surface. (src/client/lib/gameState.svelte.ts)
+- **No test for authenticated-caller-plus-missing-room returning 404 (not 403)** — guard ordering on `/round/next-round` is correct (404 before 403) but untested. Future reordering could leak room-existence info silently. (src/server/__tests__/rooms.test.ts)
+- **`RoundConfigOverlay` backdrop dismisses without confirmation** — pre-existing overlay behavior; now reachable from the Change It Up path, so an accidental tap forces re-selecting playlist/vibe. (src/client/components/RoundConfigOverlay.svelte)
+- **`pendingRound.roundNumber` is the sole fallback for next-round numbering** — `(currentRound?.roundNumber ?? base.roundNumber) + 1`. Computation is pre-existing; flagging because it's now the only path driving the number. Merits a unit test if "round N+1 shows as round 2" ever reports. (src/server/rooms.ts:457)
+
 ## Deferred from: code review of host-casual-toggle-and-status-line-trim (2026-04-19)
 
 - **Guest with a name equal to `room.host_name` collides on `playerCasualModes` and sweep keys** — pre-existing throughout (the bingo-claim path at `src/server/rooms.ts:761` already coerces such a guest onto the host's card); this story extends the collision surface to casual-mode state. Low likelihood in friends-only flows but worth guarding later (e.g. reserve the host's name at guest-join time). (src/server/ws.ts, src/server/rooms.ts)

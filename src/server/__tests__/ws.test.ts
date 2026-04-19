@@ -157,7 +157,7 @@ describe('Host connect', () => {
     const c = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     const msg = await c.next()
 
-    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: null, winsByName: {}, lastRoundWinner: null, continuousMode: false, countdownRemainingMs: null, casualModeNames: [] })
+    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: null, winsByName: {}, lastRoundWinner: null, casualModeNames: [] })
     c.close()
   })
 
@@ -242,7 +242,7 @@ describe('session:connect with hostName set', () => {
     const c = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
     const msg = await c.next()
 
-    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: 'Sarah', winsByName: {}, lastRoundWinner: null, continuousMode: false, countdownRemainingMs: null, casualModeNames: [] })
+    expect(msg).toEqual({ type: 'session:connect', role: 'host', players: [], hostName: 'Sarah', winsByName: {}, lastRoundWinner: null, casualModeNames: [] })
     c.close()
   })
 

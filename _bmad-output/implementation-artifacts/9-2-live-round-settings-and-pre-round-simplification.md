@@ -2,6 +2,8 @@
 
 Status: ready-for-dev
 
+> **Scope amended by Story 9-3 (2026-04-19):** Autoplay Next Round row and HostMiniPlayer Loop removal excised. See 9-3 for context. `AdvancedSettings` now renders four rows: Clip Duration, Title Reveal, Win Reaction, Casual Mode. Struck items below are retained for traceability; do not implement them.
+
 ## Story
 
 As a host,
@@ -13,7 +15,7 @@ so that starting a party is low-friction and I can course-correct without restar
 Today [RoundConfigOverlay.svelte](src/client/components/RoundConfigOverlay.svelte) presents six decisions in sequence before any song plays (playlist, vibe, clip duration, title reveal, casual mode, host name), and the in-round [HostMiniPlayer.svelte](src/client/components/HostMiniPlayer.svelte) shows a `∞ Loop` button whose label does not reflect "Continuous Mode" semantics. All per-round settings are fixed at round-start; changing any requires ending the round and reconfiguring.
 
 **What this story does:**
-- Moves clip duration, title reveal, win reaction (formerly "Vibe"), casual-mode permission, and Autoplay Next Round (formerly "Loop") into a live-editable Round Settings section inside [HostControlsOverlay.svelte](src/client/components/HostControlsOverlay.svelte).
+- Moves clip duration, title reveal, win reaction (formerly "Vibe"), and casual-mode permission into a live-editable Round Settings section inside [HostControlsOverlay.svelte](src/client/components/HostControlsOverlay.svelte).
 - Extracts the settings rows into a new shared `AdvancedSettings.svelte` rendered in both the pre-round overlay ("Advanced settings" collapsible `<details>`) and the live host panel — identical UI in both places.
 - Adds a `PATCH /api/rooms/:code/round-config` endpoint modeled on [rooms.ts:542](src/server/rooms.ts#L542) `/continuous-mode` — validates a partial config, mutates `roomState.currentRound.config` + `roomState.pendingRound` so song-scheduling (`startSong` reads `round.config.titleRevealDelay`, [rooms.ts:198](src/server/rooms.ts#L198)) picks up the new values on the next draw, and broadcasts `round-config:changed`.
 - Persists last-used settings in `localStorage` so hosts don't reconfigure every session.
@@ -57,7 +59,7 @@ Today [RoundConfigOverlay.svelte](src/client/components/RoundConfigOverlay.svelt
 
 11. **Component contract.** Accepts:
     - `clipDuration`, `titleRevealDelay`, `audioPreset`, `allowCasualMode` (current values)
-    - `continuousMode?: boolean` (live mode only)
+    - ~~`continuousMode?: boolean` (live mode only)~~ _(struck by 9-3)_
     - `mode: 'pre-round' | 'live'`
     - `code?: string` (required in `'live'` mode)
     - Change callbacks for `'pre-round'` mode (parent owns state): `onClipDurationChange`, `onTitleRevealDelayChange`, `onAudioPresetChange`, `onAllowCasualModeChange`.
@@ -66,14 +68,14 @@ Today [RoundConfigOverlay.svelte](src/client/components/RoundConfigOverlay.svelt
     2. **Title Reveal** — segmented: Now / 5s / 10s / 15s / Never
     3. **Win Reaction** — segmented: Hype / Deadpan / Minimal (maps to `audioPreset`)
     4. **Casual Mode** — two-pill toggle: Off / Allow
-    5. **Autoplay Next Round** (live mode only, appended last) — two-pill toggle: Off / On
+    5. ~~**Autoplay Next Round** (live mode only, appended last) — two-pill toggle: Off / On~~ _(struck by 9-3 — Continuous Mode deleted; next-round choice now lives on Game Over screen)_
 13. **Row visuals.** Each row has: label + `InfoTooltip` (§15) + control + (live mode only) transient success pill slot. Styling reuses the existing `.pill` / `.pill-group` / `.option-section` / `.option-label` tokens that today live inline in [RoundConfigOverlay.svelte:686-708](src/client/components/RoundConfigOverlay.svelte#L686-L708) — move those into the new component.
 14. **Live-mode behaviour.** Each control's `onclick`:
-    - Applies optimistic update (via the setters from AC #10, or game state for continuous mode)
-    - Fires `PATCH /api/rooms/:code/round-config` (or `POST /continuous-mode` for autoplay)
+    - Applies optimistic update (via the setters from AC #10)
+    - Fires `PATCH /api/rooms/:code/round-config`
     - On success (res.ok): set a per-row "saved" flag to `true`; after ~1.5s `setTimeout`, reset to `false`. Per-row success copy:
       - Clip Duration / Title Reveal / Win Reaction → "Saved — applies to next song"
-      - Casual Mode / Autoplay Next Round → "Saved"
+      - Casual Mode → "Saved"
     - On failure: revert the optimistic update and set a per-row `error` string to a short "Couldn't save" message; clear on the next successful change or after ~3s.
     - Rapid repeat clicks on the same control: latest value wins; in-flight request for the previous value is ignored on arrival (guard via a per-row incrementing `seq` counter).
 
@@ -90,13 +92,13 @@ Today [RoundConfigOverlay.svelte](src/client/components/RoundConfigOverlay.svelt
     - Title Reveal — "When the song title and artist appear on cards."
     - Win Reaction — "Style of the celebration overlay when someone wins — Hype (loud), Deadpan (dry), Minimal (subtle)."
     - Casual Mode — "Lets players tap squares to auto-mark instead of listening for the full song."
-    - Autoplay Next Round — "Keep rocking this playlist (no repeats) after the Winner gets their due."
+    - ~~Autoplay Next Round — "Keep rocking this playlist (no repeats) after the Winner gets their due."~~ _(struck by 9-3)_
 
 ### Client — host panel & mini player
 
 17. **HostControlsOverlay — Round Settings section.** Above the existing End Round / End Session actions, render a `<section>` headed "Round Settings" containing `<AdvancedSettings mode="live" ... />`. Reuse the existing `.divider` pattern below the new section. The section is only rendered when a round is currently active (`game.tiles.length > 0` is the existing proxy; if the controls overlay can be opened between rounds, hide the Round Settings section in that case).
-18. **HostMiniPlayer — Loop removed.** Remove the `.continuous-btn` block at [HostMiniPlayer.svelte:46-54](src/client/components/HostMiniPlayer.svelte#L46-L54) and its associated `.continuous-btn` / `.continuous-btn.active` CSS rules. Remove the `continuousMode` and `onContinuousToggle` props. Keep the countdown-text `.track-info` branch unchanged.
-19. **HostRoomPage — re-wire continuous toggle.** Props `continuousMode` and `onContinuousToggle` pass from [HostRoomPage.svelte:366-367](src/client/pages/HostRoomPage.svelte#L366-L367) into `HostControlsOverlay` (which forwards them to `AdvancedSettings`) instead of `HostMiniPlayer`.
+18. ~~**HostMiniPlayer — Loop removed.** Remove the `.continuous-btn` block at [HostMiniPlayer.svelte:46-54](src/client/components/HostMiniPlayer.svelte#L46-L54) and its associated `.continuous-btn` / `.continuous-btn.active` CSS rules. Remove the `continuousMode` and `onContinuousToggle` props. Keep the countdown-text `.track-info` branch unchanged.~~ _(struck by 9-3 — Loop button removal migrated to 9-3 AC #16 as part of Continuous Mode deletion.)_
+19. ~~**HostRoomPage — re-wire continuous toggle.** Props `continuousMode` and `onContinuousToggle` pass from [HostRoomPage.svelte:366-367](src/client/pages/HostRoomPage.svelte#L366-L367) into `HostControlsOverlay` (which forwards them to `AdvancedSettings`) instead of `HostMiniPlayer`.~~ _(struck by 9-3 — `continuousMode` / `onContinuousToggle` props are deleted entirely; no re-route needed.)_
 
 ### Client — pre-round overlay
 

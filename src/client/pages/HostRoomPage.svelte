@@ -9,6 +9,7 @@
   import PlayersOverlay from '../components/PlayersOverlay.svelte'
   import HostMiniPlayer from '../components/HostMiniPlayer.svelte'
   import HostControlsOverlay from '../components/HostControlsOverlay.svelte'
+  import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
   import { createGameState } from '../lib/gameState.svelte.ts'
   import { postStartNextRound } from '../lib/api.ts'
 
@@ -28,14 +29,13 @@
   let hostName = $state<string | null>(null)
   let authDegraded = $state(false)
   let showControls = $state(false)
+  let isRoundConfigOpen = $state(false)
   let toastVisible = $state(false)
   let playbackError = $state(false)
-  let continuousError = $state<string | null>(null)
   let pendingAutoPlay = $state(false)
   let nextRoundError = $state<string | null>(null)
   let undoTimer: ReturnType<typeof setTimeout> | undefined
   let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
-  let continuousErrorTimer: ReturnType<typeof setTimeout> | undefined
   let nextRoundErrorTimer: ReturnType<typeof setTimeout> | undefined
   let sessionEnded = false
   let ws: WebSocket
@@ -74,31 +74,14 @@
     playbackErrorTimer = setTimeout(() => { playbackError = false }, 3000)
   }
 
-  function showContinuousError(message: string) {
-    continuousError = message
-    clearTimeout(continuousErrorTimer)
-    continuousErrorTimer = setTimeout(() => { continuousError = null }, 3000)
+  function handleChangeItUp() {
+    clearTimeout(nextRoundErrorTimer)
+    nextRoundError = null
+    isRoundConfigOpen = true
   }
 
-  function handleContinuousToggle() {
-    const next = !game.continuousMode
-    game.continuousMode = next
-    fetch(`/api/rooms/${code}/continuous-mode`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: next }),
-    }).then(res => {
-      if (!res.ok) {
-        game.continuousMode = !next
-        showContinuousError('Failed to toggle continuous mode')
-      }
-    }).catch(() => {
-      game.continuousMode = !next
-      showContinuousError('Failed to toggle continuous mode')
-    })
-  }
-
-  async function handleStartNextRound() {
+  async function handleLetItRide() {
+    if (isRoundConfigOpen) return
     nextRoundError = null
     try {
       const res = await postStartNextRound(code)
@@ -125,20 +108,6 @@
         .then(res => { if (!res.ok) showPlaybackError() })
         .catch(() => showPlaybackError())
     }
-  })
-
-  let countdownSeconds = $state<number | null>(null)
-  $effect(() => {
-    const endsAt = game.countdownEndsAt
-    if (endsAt === null) { countdownSeconds = null; return }
-    const tick = () => {
-      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-      countdownSeconds = remaining
-      if (remaining === 0) clearInterval(id)
-    }
-    tick()
-    const id = setInterval(tick, 200)
-    return () => clearInterval(id)
   })
 
   function handlePlayPause() {
@@ -260,15 +229,9 @@
           hostName = data.hostName ?? null
           game.winsByName = (data.winsByName as Record<string, number> | undefined) ?? {}
           game.lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
-          game.continuousMode = (data.continuousMode as boolean | undefined) ?? false
-          const remaining = data.countdownRemainingMs as number | null | undefined
-          game.countdownEndsAt = (remaining !== null && remaining !== undefined && remaining > 0) ? Date.now() + remaining : null
           const casualNames = (data.casualModeNames as string[] | undefined) ?? []
           game.casualModePlayers = new Set(casualNames)
           if (hostName !== null) casualModeOn = casualNames.includes(hostName)
-        } else if (data.type === 'continuous:countdown-cancel') {
-          const reason = (data as Record<string, unknown>).reason as string | undefined
-          if (reason) showContinuousError(`Continuous round failed — ${reason}`)
         } else if (data.type === 'song:start') {
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
@@ -306,7 +269,6 @@
     game.cleanup()
     clearTimeout(undoTimer)
     clearTimeout(playbackErrorTimer)
-    clearTimeout(continuousErrorTimer)
     clearTimeout(nextRoundErrorTimer)
     ws?.close()
     player?.disconnect()
@@ -329,10 +291,6 @@
   <div class="error-banner" role="alert">Playback control failed — check Spotify is active.</div>
 {/if}
 
-{#if continuousError}
-  <div class="error-banner" role="alert">{continuousError}</div>
-{/if}
-
 {#if sdkFailed}
   <SdkFailureBanner trackId={currentTrackId} />
 {/if}
@@ -352,7 +310,7 @@
   </div>
 {/if}
 
-<div class="host-game">
+<div class="host-game" inert={isRoundConfigOpen || undefined}>
   <div class="card-area">
     {#if game.winData !== null}
       <GameOverView
@@ -360,7 +318,6 @@
         selfName={null}
         winData={game.winData}
         audioPreset={game.audioPreset}
-        continuousMode={game.continuousMode}
         ownTiles={game.tiles}
         playedTrackIds={game.playedTrackIds}
         playerCount={game.playerCount}
@@ -370,9 +327,9 @@
         playersOpen={game.showPlayers}
         onPlayersClick={() => { game.showPlayers = !game.showPlayers; game.showHistory = false }}
         onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
-        onStartNextRound={handleStartNextRound}
-        onReconfigure={onRoundEnded}
-        errorMessage={nextRoundError}
+        onLetItRide={handleLetItRide}
+        onChangeItUp={handleChangeItUp}
+        {nextRoundError}
       />
     {:else if game.tiles.length > 0}
       <GameHeader
@@ -413,10 +370,20 @@
   onNext={handleNext}
   onGearClick={() => { showControls = true }}
   controlsOpen={showControls}
-  continuousMode={game.continuousMode}
-  onContinuousToggle={handleContinuousToggle}
-  {countdownSeconds}
 />
+
+{#if isRoundConfigOpen}
+  <RoundConfigOverlay
+    {code}
+    initialHostName={hostName}
+    onClose={() => { isRoundConfigOpen = false }}
+    onStarted={(name) => {
+      if (name) hostName = name
+      isRoundConfigOpen = false
+    }}
+    onHostNameMaybeSaved={(name) => { hostName = name }}
+  />
+{/if}
 
 {#if showControls}
   <HostControlsOverlay

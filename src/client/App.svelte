@@ -18,8 +18,6 @@
   let guestHostName = $state<string | null>(null)
   let guestWinsByName = $state<Record<string, number>>({})
   let guestLastRoundWinner = $state<string | null>(null)
-  let guestContinuousMode = $state(false)
-  let guestCountdownRemainingMs = $state<number | null>(null)
   let guestCasualModeNames = $state<string[]>([])
   let guestPendingMessages = $state<MessageEvent[]>([])
   let currentRoomCode = $state('')
@@ -47,8 +45,6 @@
     hostName: string | null,
     winsByName: Record<string, number>,
     lastRoundWinner: string | null,
-    continuousMode: boolean,
-    countdownRemainingMs: number | null,
     code: string,
     ws: WebSocket,
     pending: MessageEvent[],
@@ -62,8 +58,6 @@
     guestHostName = hostName
     guestWinsByName = winsByName
     guestLastRoundWinner = lastRoundWinner
-    guestContinuousMode = continuousMode
-    guestCountdownRemainingMs = countdownRemainingMs
     guestCasualModeNames = casualModeNames
     guestPendingMessages = pending
     page = 'room'
@@ -114,7 +108,7 @@
 {:else if page === 'lobby'}
   <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} onBackToDashboard={handleBackToDashboard} />
 {:else if page === 'room'}
-  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} initialWinsByName={guestWinsByName} initialLastRoundWinner={guestLastRoundWinner} initialContinuousMode={guestContinuousMode} initialCountdownRemainingMs={guestCountdownRemainingMs} initialCasualModeNames={guestCasualModeNames} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} />
+  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} initialWinsByName={guestWinsByName} initialLastRoundWinner={guestLastRoundWinner} initialCasualModeNames={guestCasualModeNames} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} />
 {:else if page === 'hostroom'}
   <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} onSessionEnded={handleSessionEnded} />
 {/if}

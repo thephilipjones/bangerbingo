@@ -48,7 +48,6 @@ export function createGameState({
   initialPlayers = [],
   initialWinsByName = {},
   initialLastRoundWinner = null,
-  initialContinuousMode = false,
   initialCasualModeNames = [],
   getMarksForCard,
   onTileMark,
@@ -59,7 +58,6 @@ export function createGameState({
   initialPlayers?: string[]
   initialWinsByName?: Record<string, number>
   initialLastRoundWinner?: string | null
-  initialContinuousMode?: boolean
   initialCasualModeNames?: string[]
   /**
    * Called on round:start with the raw card array.
@@ -97,8 +95,6 @@ export function createGameState({
   let highestRoundNumber = $state(0)
   let hasStats = $state(Object.keys(initialWinsByName).length > 0 || initialLastRoundWinner !== null)
   const showStats = $derived(hasStats && highestRoundNumber >= 2)
-  let continuousMode = $state(initialContinuousMode)
-  let countdownEndsAt = $state<number | null>(null)
   let allowCasualMode = $state(false)
   let casualModePlayers = $state<Set<string>>(new Set(initialCasualModeNames))
   let catchUpToastCount = $state<number | null>(null)
@@ -165,7 +161,6 @@ export function createGameState({
       winData = null
       isClaiming = false
       hasAutoClaimedThisRound = false
-      countdownEndsAt = null
       const rawHistory = (data.songHistory as HistoryEntry[] | undefined) ?? []
       songHistory = rawHistory.slice().reverse()
       const playedIds = new Set(rawHistory.map(e => e.trackId))
@@ -187,14 +182,6 @@ export function createGameState({
         catchUpToastCount = indices.length
         catchUpToastId = (catchUpToastId ?? 0) + 1
       }
-    } else if (data.type === 'continuous-mode:changed') {
-      continuousMode = data.enabled as boolean
-    } else if (data.type === 'continuous:countdown-start') {
-      countdownEndsAt = Date.now() + (data.durationMs as number)
-    } else if (data.type === 'continuous:countdown-cancel') {
-      countdownEndsAt = null
-    } else if (data.type === 'round:dismissed') {
-      winData = null
     } else if (data.type === 'stats:updated') {
       winsByName = { ...((data.winsByName as Record<string, number> | undefined) ?? {}) }
       lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
@@ -286,10 +273,6 @@ export function createGameState({
       if (v !== null) hasStats = true
     },
     get showStats() { return showStats },
-    get continuousMode() { return continuousMode },
-    set continuousMode(v: boolean) { continuousMode = v },
-    get countdownEndsAt() { return countdownEndsAt },
-    set countdownEndsAt(v: number | null) { countdownEndsAt = v },
     get allowCasualMode() { return allowCasualMode },
     get casualModePlayers() { return casualModePlayers },
     set casualModePlayers(v: Set<string>) { casualModePlayers = v },

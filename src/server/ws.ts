@@ -46,7 +46,6 @@ export interface RoundState {
   songHistory: SongHistoryEntry[] // append-only; used by 5-5 win validation + 5-6 drawer
   paused: boolean                 // true after /pause; cleared on /play
   ended?: boolean                 // true after a valid win claim
-  winnerName?: string             // set on valid claim; persisted for /round/next-round winner-auth after restart
   timers: {
     autoAdvance?: ReturnType<typeof setTimeout>
     reveal?: ReturnType<typeof setTimeout>
@@ -80,10 +79,6 @@ export interface RoomState {
   currentRound?: RoundState
   sdkDeviceId?: string
   sessionStats: SessionStats
-  // Continuous Mode (Story 8-3): not persisted — rehydrateRooms defaults to false
-  // and never has an in-flight countdown after a restart.
-  continuousMode: boolean
-  continuousCountdown?: { timer: ReturnType<typeof setTimeout>; endsAt: number }
   // Casual Mode (Story 8-4): not persisted — resets between sessions.
   playerCasualModes: Map<string, boolean> // name → casual mode on
 }
@@ -114,7 +109,6 @@ export function persistRoomState(code: string): void {
       songHistory: round.songHistory,
       paused: round.paused,
       ended: round.ended,
-      winnerName: round.winnerName,
     } : undefined,
   }
   upsertActiveRoom(code, JSON.stringify(snapshot))
@@ -147,23 +141,26 @@ export function rehydrateRooms(): void {
       pendingRound: snap.pendingRound,
       sdkDeviceId: snap.sdkDeviceId,
       sessionStats: emptySessionStats(),
-      continuousMode: false,
       playerCasualModes: new Map(),
-      currentRound: snap.currentRound ? {
-        ...snap.currentRound,
-        config: {
-          ...snap.currentRound.config,
-          audioPreset: snap.currentRound.config?.audioPreset ?? 'minimal',
-        },
-        roundStartPayload: {
-          ...snap.currentRound.roundStartPayload,
-          audioPreset: snap.currentRound.roundStartPayload?.audioPreset ?? 'minimal',
-        },
-        cards: new Map(Object.entries(snap.currentRound.cards)),
-        paused: true,
-        timers: {},
-        autoMarkedTileIndices: new Map(),
-      } : undefined,
+      currentRound: snap.currentRound ? (() => {
+        // Drop pre-9-3 winnerName from persisted snapshots — field removed from RoundState.
+        const { winnerName: _winnerName, ...snapRound } = snap.currentRound
+        return {
+          ...snapRound,
+          config: {
+            ...snapRound.config,
+            audioPreset: snapRound.config?.audioPreset ?? 'minimal',
+          },
+          roundStartPayload: {
+            ...snapRound.roundStartPayload,
+            audioPreset: snapRound.roundStartPayload?.audioPreset ?? 'minimal',
+          },
+          cards: new Map(Object.entries(snapRound.cards)),
+          paused: true,
+          timers: {},
+          autoMarkedTileIndices: new Map(),
+        }
+      })() : undefined,
     }
     roomSockets.set(row.room_code, roomState)
   }
@@ -208,12 +205,6 @@ export function destroyRoom(roomCode: string): void {
     clearTimeout(round.timers.reveal)
     round.timers.autoAdvance = undefined
     round.timers.reveal = undefined
-  }
-
-  // 1b. clear continuous-mode countdown timer if one is in flight (Story 8-3)
-  if (room.continuousCountdown) {
-    clearTimeout(room.continuousCountdown.timer)
-    room.continuousCountdown = undefined
   }
 
   // 2. broadcast session:end
@@ -298,7 +289,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     const wasInMap = roomSockets.has(code)
     if (!wasInMap) {
-      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false, playerCasualModes: new Map() })
+      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), playerCasualModes: new Map() })
     }
     const roomState = roomSockets.get(code)!
 
@@ -320,10 +311,6 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       hostName: room.host_name,
       winsByName: { ...roomState.sessionStats.winsByName },
       lastRoundWinner: roomState.sessionStats.lastRoundWinner,
-      continuousMode: roomState.continuousMode,
-      countdownRemainingMs: roomState.continuousCountdown
-        ? Math.max(0, roomState.continuousCountdown.endsAt - Date.now())
-        : null,
       casualModeNames: Array.from(roomState.playerCasualModes.entries()).filter(([, v]) => v).map(([k]) => k),
     }))
 
@@ -382,7 +369,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     }
 
     if (!roomSockets.has(code)) {
-      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), continuousMode: false, playerCasualModes: new Map() })
+      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), playerCasualModes: new Map() })
     }
     const roomState = roomSockets.get(code)!
 
@@ -403,10 +390,6 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       hostName: room.host_name,
       winsByName: { ...roomState.sessionStats.winsByName },
       lastRoundWinner: roomState.sessionStats.lastRoundWinner,
-      continuousMode: roomState.continuousMode,
-      countdownRemainingMs: roomState.continuousCountdown
-        ? Math.max(0, roomState.continuousCountdown.endsAt - Date.now())
-        : null,
       casualModeNames: Array.from(roomState.playerCasualModes.entries()).filter(([, v]) => v).map(([k]) => k),
     }))
 

@@ -16,8 +16,6 @@
       hostName: string | null,
       winsByName: Record<string, number>,
       lastRoundWinner: string | null,
-      continuousMode: boolean,
-      countdownRemainingMs: number | null,
       code: string,
       ws: WebSocket,
       pending: MessageEvent[],
@@ -75,14 +73,14 @@
     connecting = true
     bufferedMessages = []
     activeWs = connectAsGuest(name, code, {
-      onConnect(role, players, hostName, winsByName, lastRoundWinner, continuousMode, countdownRemainingMs, casualModeNames) {
+      onConnect(role, players, hostName, winsByName, lastRoundWinner, casualModeNames) {
         connecting = false
         const handedOff = activeWs!
         const pending = bufferedMessages
         activeWs = undefined
         bufferedMessages = []
         setStoredGuestName(name)
-        onJoined(name, role, players, hostName, winsByName, lastRoundWinner, continuousMode, countdownRemainingMs, code, handedOff, pending, casualModeNames)
+        onJoined(name, role, players, hostName, winsByName, lastRoundWinner, code, handedOff, pending, casualModeNames)
       },
       onError(message) {
         connecting = false

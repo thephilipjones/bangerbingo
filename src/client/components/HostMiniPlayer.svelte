@@ -9,9 +9,6 @@
     onNext,
     onGearClick,
     controlsOpen = false,
-    continuousMode,
-    onContinuousToggle,
-    countdownSeconds = null,
   }: {
     currentTrack: { title: string; artist: string } | null
     isPlaying: boolean
@@ -22,9 +19,6 @@
     onNext: () => void
     onGearClick: () => void
     controlsOpen?: boolean
-    continuousMode: boolean
-    onContinuousToggle: () => void
-    countdownSeconds?: number | null
   } = $props()
 </script>
 
@@ -43,21 +37,10 @@
     <button class="ctrl-btn next-btn" onclick={onNext} aria-label="Next">
       <span class="btn-icon">⏭</span><span class="btn-label">Next</span>
     </button>
-    <button
-      class="ctrl-btn continuous-btn"
-      class:active={continuousMode}
-      onclick={onContinuousToggle}
-      aria-label={continuousMode ? 'Continuous mode on' : 'Continuous mode off'}
-      aria-pressed={continuousMode}
-    >
-      <span class="btn-icon">∞</span><span class="btn-label">Loop</span>
-    </button>
   </div>
 
   <div class="track-info">
-    {#if countdownSeconds !== null}
-      <span class="countdown-text">Next game starts in {countdownSeconds}s</span>
-    {:else if currentTrack}
+    {#if currentTrack}
       <span class="track-text">{currentTrack.title} — {currentTrack.artist}</span>
     {:else}
       <span class="track-text waiting">Waiting for round to start…</span>
@@ -154,30 +137,6 @@
     font-size: 14px;
   }
 
-  .continuous-btn {
-    width: 44px;
-    background: var(--bg-2);
-    color: var(--fg);
-    border: var(--rule-thin) solid var(--rule);
-    font-size: 20px;
-  }
-
-  .continuous-btn.active {
-    background: var(--accent);
-    color: var(--accent-fg);
-    border-color: var(--accent);
-  }
-
-  .countdown-text {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--accent);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
-  }
-
   .gear-btn {
     width: 44px;
     background: none;
@@ -214,14 +173,9 @@
 
     .play-pause-btn,
     .next-btn,
-    .continuous-btn,
     .gear-btn {
       width: 90px;
       font-size: 14px;
-    }
-
-    .continuous-btn .btn-icon {
-      font-size: 18px;
     }
 
     .gear-btn .btn-icon {

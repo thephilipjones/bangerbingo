@@ -95,10 +95,10 @@ export async function startRound(code: string, payload: StartRoundPayload): Prom
   return res.json()
 }
 
-export async function postStartNextRound(code: string, playerName?: string | null): Promise<Response> {
+export async function postStartNextRound(code: string): Promise<Response> {
   return fetch(`/api/rooms/${code}/round/next-round`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(playerName ? { playerName } : {}),
+    body: JSON.stringify({}),
   })
 }

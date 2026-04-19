@@ -9,9 +9,8 @@
   import { cardFingerprint } from '../lib/bingo.ts'
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
-  import { postStartNextRound } from '../lib/api.ts'
 
-  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialContinuousMode = false, initialCountdownRemainingMs = null, initialCasualModeNames = [], pendingMessages = [], onLeave }: {
+  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialCasualModeNames = [], pendingMessages = [], onLeave }: {
     name: string
     code: string
     ws: WebSocket
@@ -19,8 +18,6 @@
     hostName?: string | null
     initialWinsByName?: Record<string, number>
     initialLastRoundWinner?: string | null
-    initialContinuousMode?: boolean
-    initialCountdownRemainingMs?: number | null
     initialCasualModeNames?: string[]
     pendingMessages?: MessageEvent[]
     onLeave?: () => void
@@ -32,8 +29,6 @@
   let marksKey = ''
   let toastMessage = $state<string | null>(null)
   let toastTimer: ReturnType<typeof setTimeout> | undefined
-  let nextRoundError = $state<string | null>(null)
-  let nextRoundErrorTimer: ReturnType<typeof setTimeout> | undefined
   // Reconnect into an existing round delivers a buffered round:start whose reset
   // would clobber `casualModeOn` seeded from session:connect. Skip the reset the
   // first time so reconnected casual players keep their server-truth state.
@@ -62,7 +57,6 @@
     initialPlayers: untrack(() => initialPlayers),
     initialWinsByName: untrack(() => initialWinsByName),
     initialLastRoundWinner: untrack(() => initialLastRoundWinner),
-    initialContinuousMode: untrack(() => initialContinuousMode),
     initialCasualModeNames: untrack(() => initialCasualModeNames),
     getMarksForCard: (card: Tile[]) => {
       marksKey = `bangerbingo:marks:${code}:${cardFingerprint(card)}`
@@ -73,24 +67,6 @@
       const ids = tiles.filter(t => t.state === 'marked').map(t => t.trackId)
       localStorage.setItem(marksKey, JSON.stringify(ids))
     },
-  })
-
-  if (untrack(() => initialCountdownRemainingMs) !== null && (untrack(() => initialCountdownRemainingMs) as number) > 0) {
-    game.countdownEndsAt = Date.now() + (untrack(() => initialCountdownRemainingMs) as number)
-  }
-
-  let countdownSeconds = $state<number | null>(null)
-  $effect(() => {
-    const endsAt = game.countdownEndsAt
-    if (endsAt === null) { countdownSeconds = null; return }
-    const tick = () => {
-      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-      countdownSeconds = remaining
-      if (remaining === 0) clearInterval(id)
-    }
-    tick()
-    const id = setInterval(tick, 200)
-    return () => clearInterval(id)
   })
 
   $effect(() => {
@@ -110,22 +86,6 @@
     if (game.hasBingo) game.handleBingoClick()
   })
 
-  async function handleStartNextRound() {
-    nextRoundError = null
-    try {
-      const res = await postStartNextRound(code, name)
-      if (!res.ok) {
-        nextRoundError = "Couldn't start next round — try again."
-        clearTimeout(nextRoundErrorTimer)
-        nextRoundErrorTimer = setTimeout(() => { nextRoundError = null }, 3000)
-      }
-    } catch {
-      nextRoundError = "Couldn't start next round — try again."
-      clearTimeout(nextRoundErrorTimer)
-      nextRoundErrorTimer = setTimeout(() => { nextRoundError = null }, 3000)
-    }
-  }
-
   function handleWsData(data: Record<string, unknown>) {
     game.processWsMessage(data)
     if (data.type === 'round:start') {
@@ -135,8 +95,6 @@
       hasSeenRoundStart = true
       clearTimeout(toastTimer)
       toastMessage = null
-      nextRoundError = null
-      clearTimeout(nextRoundErrorTimer)
       statusLine = 'Waiting for next song…'
     } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
       statusLine = 'Waiting for next song…'
@@ -164,7 +122,6 @@
 
   onDestroy(() => {
     clearTimeout(toastTimer)
-    clearTimeout(nextRoundErrorTimer)
     game.cleanup()
     ws.close()
   })
@@ -197,7 +154,6 @@
       selfName={name}
       winData={game.winData}
       audioPreset={game.audioPreset}
-      continuousMode={game.continuousMode}
       ownTiles={game.tiles}
       playedTrackIds={game.playedTrackIds}
       playerCount={game.playerCount}
@@ -207,9 +163,6 @@
       playersOpen={game.showPlayers}
       onPlayersClick={() => { game.showPlayers = !game.showPlayers; game.showHistory = false }}
       onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
-      onStartNextRound={handleStartNextRound}
-      onReconfigure={() => {}}
-      errorMessage={nextRoundError}
     />
   {:else if game.tiles.length > 0}
     <GameHeader
@@ -222,7 +175,7 @@
       onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
     />
     <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
-    <p class="status-line" role="status">{countdownSeconds !== null ? `Next game starts in ${countdownSeconds}s` : statusLine}</p>
+    <p class="status-line" role="status">{statusLine}</p>
     {#if toastMessage}
       <div class="casual-toast" role="status" aria-live="polite">{toastMessage}</div>
     {/if}
@@ -238,7 +191,7 @@
       </div>
     {/if}
   {:else}
-    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {countdownSeconds} {onLeave} allowCasualMode={game.allowCasualMode} {casualModeOn} onCasualToggle={handleCasualToggle} casualModeNames={game.casualModePlayers} />
+    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {onLeave} allowCasualMode={game.allowCasualMode} {casualModeOn} onCasualToggle={handleCasualToggle} casualModeNames={game.casualModePlayers} />
   {/if}
 </main>
 
