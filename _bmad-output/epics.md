@@ -159,3 +159,13 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 - Retire or update tests targeting removed/repurposed pages (`DashboardPage`, `LobbyPage`, `RoundConfigPage`)
 
 **Acceptance bar:** Host logs in, lands on Host Management (Spotify status + sessions + New Session), taps New Session → Configure overlay (enter name + playlist) → Start Round. Guests join via root URL with name prefilled from prior visit, see waiting room with all named players (host with `[host]` tag) and room code in URL. Game page header shows status-indicator buttons (`N Players`, `Nth Song`) flanking a muted room code. Host Mini-Player (fixed bottom) is play/pause + next + gear. Gear opens Host Controls Overlay with End Round, End Session, and Host Management link. Host can delete any session from Host Management; connected guests are redirected with a banner. Host stays logged in for 30 days (per existing Epic 1 cookie).
+
+---
+
+## Epic 9: Game Over Rethink
+
+*Replace the claim button + Win Overlay modal with an auto-triggered Game Over page state, and reduce pre-round friction by moving secondary round settings into a live-editable Host Controls panel.*
+
+**Stories:** 9-1 (Game Over Page State & Auto-Bingo), 9-2 (Live Round Settings & Pre-Round Simplification)
+
+**Acceptance bar:** A completed bingo pattern auto-triggers a full-page Game Over state (no modal, no claim button) showing winner + winning songs; host starts a new round by picking a playlist and hitting Start (Advanced settings collapsed by default); clip duration, title reveal, win reaction, casual mode, and autoplay-next-round are all live-editable mid-round via the Host Controls panel with changes applying to the next song.

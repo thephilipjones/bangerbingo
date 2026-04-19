@@ -323,10 +323,10 @@ This document provides the complete epic and story breakdown for Bangerbingo, de
 ---
 
 ### Epic 9: Game Over Rethink
-*Replace the claim button and Win Overlay modal with an auto-triggered Game Over page state. When a player marks their 5th winning tile, the room bounces into a communal Game Over view showing the winner's card (celebratory for the winner, side-by-side toggle for everyone else) and a context-aware "Start Next Round" CTA.*
-**Depends on:** Epic 5 (win detection, `round:win` broadcast, `/round/claim` endpoint), Epic 8 (Continuous Mode gating for the next-round CTA)
-**Stories:** 9-1 (Game Over Page State & Auto-Bingo)
-**Deferred (out of scope for this epic):** Countdown timer on Game Over screen; "songs that would have won it for you" near-miss visualization; host big-screen / TV layout.
+*Replace the claim button and Win Overlay modal with an auto-triggered Game Over page state. When a player marks their 5th winning tile, the room bounces into a communal Game Over view showing the winner's card (celebratory for the winner, side-by-side toggle for everyone else) and a context-aware "Start Next Round" CTA. Also simplifies the pre-round setup overlay and makes secondary round settings live-editable from the Host Controls panel.*
+**Depends on:** Epic 5 (win detection, `round:win` broadcast, `/round/claim` endpoint), Epic 7 (Round Config overlay, Host Controls overlay, Host Mini Player), Epic 8 (Continuous Mode gating for the next-round CTA)
+**Stories:** 9-1 (Game Over Page State & Auto-Bingo), 9-2 (Live Round Settings & Pre-Round Simplification)
+**Deferred (out of scope for this epic):** Countdown timer on Game Over screen; "songs that would have won it for you" near-miss visualization; host big-screen / TV layout; expanding `audioPreset` scope beyond the win overlay.
 
 ---
 
@@ -1475,6 +1475,8 @@ So that I'm never behind just because I looked away.
 - "Independent of live game state" = the Game Over page mode is a client-side view state. The server still ends the round on first valid claim (same `round.ended = true` + `round:win` broadcast as today).
 - The host is always also a player in this project.
 
+**Scope expansion (2026-04-19):** This epic also carries **Story 9-2: Live Round Settings & Pre-Round Simplification**, which targets the same round-boundary friction from the *entry* side. The pre-round overlay today front-loads six decisions before a single song plays and exposes a cryptic "Loop" button in the mini-player; 9-2 collapses those into a minimal playlist-first setup with an expandable "Advanced settings" block, and relocates live-editable versions of clip duration / title reveal / win reaction (formerly "Vibe") / casual mode / Autoplay Next Round into the in-round Host Controls panel with hover-info tooltips and ~1.5s "Saved — applies to next song" confirmations. Host preferences persist to `localStorage` so new sessions skip the configuration step. 9-2 is independent of 9-1 and can ship on its own.
+
 ---
 
 ### Story 9-1: Game Over Page State & Auto-Bingo
@@ -1597,3 +1599,108 @@ So that the end of a round is a shared scoreboard moment instead of a dismissabl
 - "Songs that would have won it for you if you had 4-in-a-row" near-miss visualization. *Deferred — acknowledged by Philip as low-priority in the original request.*
 - Big-screen / TV-shared host layout. *Out of scope indefinitely — host does not want their card visible on a shared display.*
 - Non-winner keyboard/a11y handling of the Their/Your toggle beyond what the existing project-wide a11y baseline provides.
+
+---
+
+### Story 9-2: Live Round Settings & Pre-Round Simplification
+
+As a host,
+I want the pre-round overlay to be minimal (playlist + start) and the secondary round settings to be adjustable mid-round from the Host Controls panel with clear explanations,
+So that starting a party is low-friction and I can course-correct without restarting a whole round.
+
+**Acceptance Criteria:**
+
+**— Pre-round overlay simplification —**
+
+**Given** a host opens the Round Configuration overlay to start a round
+**When** the overlay renders
+**Then** only the playlist picker, a collapsed `<details>` titled "Advanced settings", and the Start Round button are visible by default (plus the host-name field on the first round of a session)
+
+**Given** the host-name field is shown on the first round
+**When** the input renders
+**Then** its placeholder is **"Host"** (signaling the default value the server persists) and it has no info tooltip
+
+**Given** the host expands the "Advanced settings" `<details>` block
+**When** the block renders
+**Then** the same four pill-group controls that exist today (Clip Duration, Title Reveal, Win Reaction, Casual Mode) render in the same visual style that the Host Controls live panel uses — shared component, identical styling
+
+**Given** the host has previously run a session on this device
+**When** the pre-round overlay mounts
+**Then** the Advanced settings are seeded from `localStorage` (key `bb:host-prefs:v1`); missing or schema-mismatched data falls back to defaults `{ clipDuration: 30, titleRevealDelay: 10, audioPreset: 'minimal', allowCasualMode: false }`
+
+**Given** a round starts successfully
+**When** the start request returns 200
+**Then** the current Advanced-settings values (plus `audioPreset` and `allowCasualMode`) are written to `localStorage` under `bb:host-prefs:v1` with `schemaVersion: 1`
+
+**— Live in-round Round Settings panel —**
+
+**Given** the host has opened the Host Controls overlay during an active round
+**When** the overlay renders
+**Then** a "Round Settings" section renders above the End Round / End Session actions, containing (in order): Clip Duration, Title Reveal, Win Reaction, Casual Mode, Autoplay Next Round — each with an info (ⓘ) icon and a segmented-pill or toggle control pre-populated with the current value
+
+**Given** the host taps a different pill on any live setting row
+**When** the request is in flight
+**Then** the UI updates optimistically to the new value, fires `PATCH /api/rooms/:code/round-config` (or `POST /api/rooms/:code/continuous-mode` for Autoplay Next Round) with the minimal partial body
+
+**Given** the PATCH returns 200
+**When** the response is received
+**Then** a "Saved — applies to next song" pill appears next to the row (or "Saved" for Casual Mode / Autoplay Next Round) for ~1.5s and then disappears; no always-on helper text is shown
+
+**Given** the PATCH fails (network error or non-200)
+**When** the response is received
+**Then** the optimistic value reverts to the previous value, and a short "Couldn't save" error line appears next to the row for ~3s
+
+**Given** the host makes rapid consecutive changes on the same row
+**When** multiple requests are in flight
+**Then** only the latest change's response is applied; responses for superseded clicks are ignored (via a per-row monotonic sequence counter)
+
+**Given** the host changes Clip Duration, Title Reveal, or Win Reaction mid-round
+**When** the PATCH reaches the server
+**Then** the server mutates both `roomState.currentRound.config` AND `roomState.pendingRound`, broadcasts `round-config:changed` with the merged config, and the currently-playing clip is not truncated or recalculated — the new value applies on the next song draw
+
+**Given** the host changes Casual Mode mid-round
+**When** the PATCH reaches the server
+**Then** `roomState.currentRound.config.allowCasualMode` is updated; players currently with Casual Mode toggled on are unaffected (their `playerCasualModes` entry does not change), but the new permission value gates future per-player toggle attempts
+
+**Given** the host taps Autoplay Next Round in the live panel
+**When** the toggle change fires
+**Then** the existing `POST /api/rooms/:code/continuous-mode` endpoint is called (identical to the former Loop button wiring); on success, the `continuous-mode:changed` broadcast + countdown flow work exactly as they did before
+
+**— Host Mini Player cleanup —**
+
+**Given** the host is in an active round
+**When** the Mini Player renders at the bottom of the screen
+**Then** the standalone "Loop" button is **not** present (it has been removed); the Play/Pause, Next, countdown-text, and gear buttons are unchanged
+
+**— Labels —**
+
+**Given** any UI surface labels the `audioPreset` setting
+**When** the label renders
+**Then** it reads "Win Reaction" (replacing "Vibe"); the underlying data field name `audioPreset` and its values `'hype' | 'deadpan' | 'minimal'` are unchanged
+
+**— Info tooltips —**
+
+**Given** any live settings row renders
+**When** the host hovers or taps its ⓘ icon
+**Then** a small popover appears with the corresponding explanation copy; the popover dismisses on outside-tap, blur, `Escape`, or mouseleave (desktop)
+
+**Given** the host-name input on the pre-round overlay renders
+**When** the row is inspected
+**Then** it has no ⓘ tooltip — the placeholder is self-explanatory
+
+**— Server endpoint —**
+
+**Given** a PATCH request to `/api/rooms/:code/round-config` arrives
+**When** the handler runs
+**Then** it validates each provided field against the same enums used by `POST /round` (clipDuration / titleRevealDelay / audioPreset / allowCasualMode), rejecting invalid values with 400; returns 409 if there is no active round; 503 if there is no live session; 404 / 403 / 401 on the standard access guards
+
+**Given** a valid PATCH with a partial body arrives
+**When** the handler mutates state
+**Then** it updates both `roomState.currentRound.config` and `roomState.pendingRound`, broadcasts `{ type: 'round-config:changed', config: <merged> }`, and returns HTTP 200 with the merged config body
+
+**— Out of scope —**
+
+- Mid-clip recalculation of settings (all edits apply on the next song).
+- Expanding `audioPreset` scope beyond the win overlay — a rename only.
+- Persisting host prefs server-side (local device storage is enough for a friends-only app).
+- Live-editing the playlist or the host name.
