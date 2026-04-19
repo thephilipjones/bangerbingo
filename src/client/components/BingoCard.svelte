@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ClientTile } from '../lib/bingo.ts'
+  import FreeTileEmblem from './FreeTileEmblem.svelte'
 
   let {
     tiles,
@@ -10,6 +11,20 @@
     onTileClick: (index: number) => void
     nopeIndex?: number | null
   } = $props()
+
+  // Stable seed derived from the card's tile list — same card → same emblem;
+  // a new round's card rolls a different one.
+  const emblemSeed = $derived.by(() => {
+    let h = 2166136261
+    for (const t of tiles) {
+      const s = `${t.title}|${t.artist}`
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i)
+        h = Math.imul(h, 16777619)
+      }
+    }
+    return h >>> 0
+  })
 </script>
 
 <div class="bingo-grid" role="grid" aria-label="Bingo card">
@@ -21,8 +36,8 @@
         aria-label="Free space"
         aria-disabled="true"
       >
-        <div class="tile-content">
-          <span class="free-label">FREE</span>
+        <div class="tile-content free-content">
+          <FreeTileEmblem seed={emblemSeed} />
         </div>
       </div>
     {:else}
@@ -155,10 +170,10 @@
     max-width: 100%;
   }
 
-  .free-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
+  .free-content {
+    padding: 2px;
+    width: 100%;
+    height: 100%;
   }
 
   @keyframes nope-wobble {
@@ -207,6 +222,5 @@
       line-clamp: 3;
     }
     .tile-artist { font-size: 11px; }
-    .free-label { font-size: 15px; }
   }
 </style>
