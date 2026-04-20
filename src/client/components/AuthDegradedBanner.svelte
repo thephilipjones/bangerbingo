@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { Warning, ArrowRight } from 'phosphor-svelte'
+
   let { onReauth }: { onReauth: () => void } = $props()
 </script>
 
 <div class="banner" role="alert">
+  <Warning size={16} weight="fill" aria-hidden="true" />
   <span class="message">Spotify auth expired — playback may stop</span>
-  <button class="reauth-btn" onclick={onReauth}>Re-authenticate →</button>
+  <button class="reauth-btn" onclick={onReauth}>Re-authenticate <ArrowRight size={14} aria-hidden="true" /></button>
 </div>
 
 <style>
@@ -41,6 +44,10 @@
     white-space: nowrap;
     min-height: 44px;
     min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
   }
   .reauth-btn:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
 

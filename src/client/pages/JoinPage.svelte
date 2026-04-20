@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte'
+  import { Lock } from 'phosphor-svelte'
   import { connectAsGuest, sanitizeCode, validateJoin } from '../lib/ws.ts'
   import { getStoredGuestName, setStoredGuestName } from '../lib/guestName.ts'
   import Logo from '../lib/components/Logo.svelte'
@@ -134,7 +135,7 @@
           <label for="code-input" class="u-small">
             Room code
             {#if prefillCode}
-              <span class="lock" aria-label="locked">🔒</span>
+              <span class="lock" aria-label="locked"><Lock size={16} weight="fill" aria-hidden="true" /></span>
             {/if}
           </label>
           {#if prefillCode}

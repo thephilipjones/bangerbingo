@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { X } from 'phosphor-svelte'
   import { computePlayerCount } from '../lib/waitingRoom.ts'
   import PlayerList from './PlayerList.svelte'
 
@@ -32,7 +33,7 @@
 <div class="sheet" role="dialog" aria-label="Players list">
   <div class="sheet-header">
     <span class="sheet-title">Players ({playerCount})</span>
-    <button class="close-btn" onclick={onClose} aria-label="Close players">&times;</button>
+    <button class="close-btn" onclick={onClose} aria-label="Close players"><X size={16} weight="bold" aria-hidden="true" /></button>
   </div>
   <div class="sheet-body">
     {#if players.length === 0 && hostName === null}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { Star } from 'phosphor-svelte'
   import type { AudioPreset } from '../lib/api.ts'
 
   let {
@@ -95,7 +96,7 @@
       </div>
     {:else if !isHost && showGuestDismiss}
       <div class="ctas">
-        <button class="btn-secondary" onclick={onDismiss}>{isWinner ? '🎉 Dismiss' : 'Dismiss'}</button>
+        <button class="btn-secondary" onclick={onDismiss}>{#if isWinner}<Star size={16} weight="fill" aria-hidden="true" />{/if}Dismiss</button>
       </div>
     {/if}
   </div>
@@ -226,6 +227,10 @@
     font-size: 15px;
     cursor: pointer;
     min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
   }
   .btn-secondary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>

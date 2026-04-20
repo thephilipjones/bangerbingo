@@ -322,3 +322,8 @@
 ## Deferred from: code review of 6-1-local-dev-and-tailscale-multi-device-testing (2026-04-05)
 
 - **Session cookie `Secure=false` in dev silently breaks if `NODE_ENV=production` is set over plain-HTTP tailnet** (src/server/auth.ts:87,96,186) — cookies would be rejected by browsers over HTTP when `secure: true`, leading to empty session with no warning. Pre-existing; relevant to Epic 6-2/6-3 deploy hardening when TLS + prod env layering is finalized.
+
+## Deferred from: code review of 11-1-phosphor-icon-system (2026-04-20)
+
+- **`aria-label="locked"` on lock-icon wrapper span is redundant announcement** — pre-existing pattern, `<span class="lock" aria-label="locked">` wraps the (formerly) `🔒` glyph; 11-1 preserved the span and only swapped the inner content. A screen reader will announce "locked" alongside the surrounding labelled button, duplicating intent. (src/client/pages/JoinPage.svelte:138)
+- **Spotify device `type` enumeration gap in the replaced `deviceIcon` branching** — new `{#if}` chain covers `Smartphone`/`Speaker`/`Computer` → device-specific Phosphor icons with `MusicNote` fallback, same bucketing as the removed `deviceIcon()` helper. The Spotify Web API also returns `Tablet`, `TV`, `GameConsole`, `CastVideo`, `CastAudio`, `Automobile`, `STB`, `AVR`, `AudioDongle`, `Unknown`; all currently fall through to `MusicNote`. Not a regression — behavior preserved — but the new per-value structure invites richer mapping (e.g., `DeviceTablet`, `Television`, `GameController`). (src/client/components/DeviceChip.svelte, src/client/components/DevicePicker.svelte)

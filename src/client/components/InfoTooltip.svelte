@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { Info } from 'phosphor-svelte'
 
   let { label, text }: { label: string; text: string } = $props()
 
@@ -62,7 +63,7 @@
     onblur={hide}
     onclick={toggle}
     onkeydown={onKeydown}
-  >ⓘ</button>
+  ><Info size={16} aria-hidden="true" /></button>
 
   {#if open}
     <span class="popover" id={popoverId} role="tooltip">{text}</span>

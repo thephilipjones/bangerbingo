@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { Warning } from 'phosphor-svelte'
+
   let { onPickDevice }: { onPickDevice: () => void } = $props()
 </script>
 
 <div class="sdk-failure-banner" role="alert">
+  <Warning size={16} weight="fill" aria-hidden="true" />
   <span class="msg">Browser playback unavailable — pick a device to play on</span>
   <button type="button" class="pick-btn" onclick={onPickDevice}>Pick a device</button>
 </div>

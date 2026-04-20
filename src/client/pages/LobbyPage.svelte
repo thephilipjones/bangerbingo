@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { Link, ArrowLeft } from 'phosphor-svelte'
   import { TRIVIA_FACTS, shuffle } from '../lib/trivia.ts'
   import { connectAsHost, applyPlayerEvent, copyRoomCode } from '../lib/ws.ts'
   import { getRooms } from '../lib/api.ts'
@@ -131,13 +132,13 @@
 <div class="lobby">
   <!-- Header: room code -->
   <header class="lobby-header">
-    <button class="back-btn" onclick={onBackToDashboard} aria-label="Back to session manager">← Sessions</button>
+    <button class="back-btn" onclick={onBackToDashboard} aria-label="Back to session manager"><ArrowLeft size={18} aria-hidden="true" /> Sessions</button>
     <div class="header-center">
       <div class="room-invite">
         Join at
         <button class="url-copy-btn" onclick={handleCopyUrl} aria-label="Copy room URL">
           {copiedUrl ? 'Copied!' : 'BangerBingo.net'}
-          {#if !copiedUrl}<svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"/></svg>{/if}
+          {#if !copiedUrl}<Link size={18} aria-hidden="true" />{/if}
         </button>
       </div>
       <button class="room-code" onclick={handleCopyCode} aria-label="Copy room code">
@@ -231,6 +232,9 @@
     padding: var(--space-1) 0;
     min-width: 6rem;
     text-align: left;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
   }
 
   .back-btn:hover { color: var(--fg); }

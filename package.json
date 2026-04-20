@@ -19,6 +19,7 @@
     "@hono/node-server": "^1.13.7",
     "better-sqlite3": "^11.9.1",
     "hono": "^4.7.5",
+    "phosphor-svelte": "^3.1.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {

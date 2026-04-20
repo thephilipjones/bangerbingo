@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { Trash } from 'phosphor-svelte'
   import {
     getRooms,
     createRoom,
@@ -207,7 +208,7 @@
               class="trash-btn"
               aria-label={`Delete session ${room.code}`}
               onclick={(e) => handleDeleteRoom(e, room.code)}
-            >🗑</button>
+            ><Trash size={16} aria-hidden="true" /></button>
           </div>
         </li>
       {/each}

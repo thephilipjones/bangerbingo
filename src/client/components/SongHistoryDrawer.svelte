@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { MusicNote, X } from 'phosphor-svelte'
+
   type HistoryEntry = {
     trackId: string
     title: string
@@ -18,7 +20,7 @@
 <div class="sheet" role="dialog" aria-label="Song history">
   <div class="sheet-header">
     <span class="sheet-title">Song History</span>
-    <button class="close-btn" onclick={onClose} aria-label="Close history">×</button>
+    <button class="close-btn" onclick={onClose} aria-label="Close history"><X size={16} weight="bold" aria-hidden="true" /></button>
   </div>
   <div class="sheet-body">
     {#if entries.length === 0}
@@ -39,7 +41,7 @@
                 onerror={() => { failedImages = new Set([...failedImages, entry.songIndex]) }}
               />
             {:else}
-              <div class="art-fallback" aria-hidden="true">♪</div>
+              <div class="art-fallback" aria-hidden="true"><MusicNote size={24} /></div>
             {/if}
             <div class="mystery-art" aria-hidden="true">?</div>
           </div>

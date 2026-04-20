@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
+import { sveltePhosphorOptimize } from 'phosphor-svelte/vite'
 
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [sveltePhosphorOptimize(), svelte()],
   root: 'src/client',
   build: {
     outDir: '../../dist/client',

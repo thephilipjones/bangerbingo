@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Play, Pause, SkipForward, GearSix } from 'phosphor-svelte'
   import DeviceChip from './DeviceChip.svelte'
 
   let {
@@ -41,11 +42,11 @@
       >Open Spotify</a>
     {:else}
       <button class="ctrl-btn play-pause-btn" onclick={onPlayPause} disabled={!sdkReady} aria-label={isPlaying ? 'Pause' : 'Play'}>
-        <span class="btn-icon">{isPlaying ? '‖' : '▶'}</span><span class="btn-label">{isPlaying ? 'Pause' : 'Play'}</span>
+        <span class="btn-icon">{#if isPlaying}<Pause size={20} weight="fill" aria-hidden="true" />{:else}<Play size={20} weight="fill" aria-hidden="true" />{/if}</span><span class="btn-label">{isPlaying ? 'Pause' : 'Play'}</span>
       </button>
     {/if}
     <button class="ctrl-btn next-btn" onclick={onNext} aria-label="Next">
-      <span class="btn-icon">⏭</span><span class="btn-label">Next</span>
+      <span class="btn-icon"><SkipForward size={18} weight="fill" aria-hidden="true" /></span><span class="btn-label">Next</span>
     </button>
   </div>
 
@@ -65,7 +66,7 @@
   </div>
 
   <button class="ctrl-btn gear-btn" class:active={controlsOpen} onclick={onGearClick} aria-label="Host controls">
-    <span class="btn-icon">⚙</span><span class="btn-label">Host</span>
+    <span class="btn-icon"><GearSix size={18} aria-hidden="true" /></span><span class="btn-label">Host</span>
   </button>
 </div>
 
@@ -215,10 +216,6 @@
     .gear-btn {
       width: 90px;
       font-size: 14px;
-    }
-
-    .gear-btn .btn-icon {
-      font-size: 16px;
     }
   }
 </style>

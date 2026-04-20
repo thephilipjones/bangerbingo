@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { X, ArrowLeft } from 'phosphor-svelte'
   import AdvancedSettings from './AdvancedSettings.svelte'
   import type { AudioPreset } from '../lib/api.ts'
   import type { TitleRevealDelay } from '../lib/bingo.ts'
@@ -49,7 +50,7 @@
 <div class="sheet" role="dialog" aria-label="Host controls">
   <header class="sheet-header">
     <span class="sheet-title">Host Controls</span>
-    <button class="close-btn" onclick={onClose} aria-label="Close controls">×</button>
+    <button class="close-btn" onclick={onClose} aria-label="Close controls"><X size={16} weight="bold" aria-hidden="true" /></button>
   </header>
 
   <div class="sheet-body">
@@ -77,7 +78,7 @@
   </div>
 
   <footer class="sheet-footer">
-    <button class="footer-nav" onclick={onHostManagement}>← Sessions</button>
+    <button class="footer-nav" onclick={onHostManagement}><ArrowLeft size={14} aria-hidden="true" /> Sessions</button>
     {#if roundActive}
       <button class="footer-danger" onclick={onStartNewRound}>Start a New Round</button>
     {/if}
@@ -185,6 +186,9 @@
     padding: 0.4rem 0.5rem;
     min-height: 36px;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
   }
   .footer-nav:hover { color: var(--fg); }
   .footer-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

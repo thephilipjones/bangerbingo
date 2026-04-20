@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { DeviceMobile, SpeakerHigh, Desktop, MusicNote, CaretDown } from 'phosphor-svelte'
+
   let {
     selectedDevice,
     onclick,
@@ -8,13 +10,6 @@
     onclick: () => void
     expanded?: boolean
   } = $props()
-
-  function deviceIcon(type: string): string {
-    if (type === 'Smartphone') return '📱'
-    if (type === 'Speaker') return '🔊'
-    if (type === 'Computer') return '💻'
-    return '🎵'
-  }
 </script>
 
 <button
@@ -25,12 +20,22 @@
   aria-expanded={expanded}
 >
   {#if selectedDevice}
-    <span class="chip-icon" aria-hidden="true">{deviceIcon(selectedDevice.type)}</span>
+    <span class="chip-icon" aria-hidden="true">
+      {#if selectedDevice.type === 'Smartphone'}
+        <DeviceMobile size={16} />
+      {:else if selectedDevice.type === 'Speaker'}
+        <SpeakerHigh size={16} />
+      {:else if selectedDevice.type === 'Computer'}
+        <Desktop size={16} />
+      {:else}
+        <MusicNote size={16} />
+      {/if}
+    </span>
     <span class="chip-label">{selectedDevice.name}</span>
   {:else}
     <span class="chip-label chip-placeholder">Pick a device</span>
   {/if}
-  <span class="chip-caret" aria-hidden="true">▾</span>
+  <span class="chip-caret" aria-hidden="true"><CaretDown size={12} weight="fill" /></span>
 </button>
 
 <style>
@@ -54,7 +59,8 @@
   .device-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .chip-icon {
-    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
     flex-shrink: 0;
   }
 
@@ -66,7 +72,8 @@
   }
 
   .chip-caret {
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
     flex-shrink: 0;
     opacity: 0.7;
   }

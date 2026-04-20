@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { DeviceMobile, SpeakerHigh, Desktop, MusicNote, Check, X, ArrowsClockwise } from 'phosphor-svelte'
   import { getDevices } from '../lib/api.ts'
   import type { SpotifyDevice } from '../lib/api.ts'
 
@@ -75,13 +76,6 @@
     onClose()
   }
 
-  function deviceIcon(type: string): string {
-    if (type === 'Smartphone') return '📱'
-    if (type === 'Speaker') return '🔊'
-    if (type === 'Computer') return '💻'
-    return '🎵'
-  }
-
   onDestroy(() => {
     mounted = false
     fetchController?.abort()
@@ -104,8 +98,8 @@
         class="refresh-btn"
         onclick={loadDevices}
         disabled={fetchState === 'loading'}
-      >↺ Refresh</button>
-      <button class="close-btn" onclick={handleClose} aria-label="Close">×</button>
+      ><ArrowsClockwise size={14} aria-hidden="true" /> Refresh</button>
+      <button class="close-btn" onclick={handleClose} aria-label="Close"><X size={16} weight="bold" aria-hidden="true" /></button>
     </div>
   </header>
 
@@ -148,10 +142,20 @@
               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(device) }
             }}
           >
-            <span class="device-icon" aria-hidden="true">{deviceIcon(device.type)}</span>
+            <span class="device-icon" aria-hidden="true">
+              {#if device.type === 'Smartphone'}
+                <DeviceMobile size={16} />
+              {:else if device.type === 'Speaker'}
+                <SpeakerHigh size={16} />
+              {:else if device.type === 'Computer'}
+                <Desktop size={16} />
+              {:else}
+                <MusicNote size={16} />
+              {/if}
+            </span>
             <span class="device-name">{device.name}</span>
             {#if device.id === activeDeviceId}
-              <span class="check-mark" aria-hidden="true">✓</span>
+              <span class="check-mark" aria-hidden="true"><Check size={14} weight="bold" /></span>
             {/if}
           </li>
         {/each}
@@ -216,6 +220,10 @@
     padding: 0.3rem 0.6rem;
     min-height: 44px;
     min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
   }
   @media (hover: hover) {
     .refresh-btn:hover:not(:disabled) { color: var(--fg); border-color: var(--fg); }

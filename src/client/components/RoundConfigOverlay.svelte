@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { X, ArrowRight } from 'phosphor-svelte'
   import { startRound } from '../lib/api.ts'
   import type { AudioPreset } from '../lib/api.ts'
   import type { TitleRevealDelay } from '../lib/bingo.ts'
@@ -309,7 +310,7 @@
   <div class="panel" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Round configuration">
     <header class="panel-header">
       <h2 class="picker-header">Pick a playlist</h2>
-      <button class="close-btn" onclick={requestClose} aria-label="Close">✕</button>
+      <button class="close-btn" onclick={requestClose} aria-label="Close"><X size={16} weight="bold" aria-hidden="true" /></button>
     </header>
 
     <div class="config-panel">
@@ -334,7 +335,7 @@
               type="button"
               aria-label="Clear search"
               onclick={clearSearch}
-            >✕</button>
+            ><X size={16} weight="bold" aria-hidden="true" /></button>
           {/if}
         </div>
 
@@ -346,7 +347,7 @@
               type="button"
               aria-label="Clear selection"
               onclick={clearSelection}
-            >✕</button>
+            ><X size={16} weight="bold" aria-hidden="true" /></button>
           </div>
         {/if}
 
@@ -454,7 +455,11 @@
         onclick={handleStartRound}
         disabled={submitting}
       >
-        {submitting ? 'Starting…' : roundActive ? 'Start New Round →' : 'Start Round →'}
+        {#if submitting}
+          Starting…
+        {:else}
+          {roundActive ? 'Start New Round' : 'Start Round'} <ArrowRight size={16} aria-hidden="true" />
+        {/if}
       </button>
 
     </div>
@@ -796,6 +801,10 @@
     font-weight: 700;
     cursor: pointer;
     margin-top: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
   }
   .start-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
