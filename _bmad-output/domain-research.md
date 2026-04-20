@@ -206,3 +206,75 @@ Deploy:    Railway (zero config, git-push) or Hetzner VPS + Caddy + pm2 (~€4/m
 - **The OSS vacuum is an opportunity, not a warning sign.** No one has shipped this because Spotify's API restrictions make commercialization impossible for individuals. For personal use among friends, those restrictions don't apply. Bangerbingo can be exactly what no commercial product can be.
 - **Ship the host-plays-too flow.** Every existing product (OSS and commercial) treats the host as a pure operator. This is the single most human differentiator.
 - **The server is not the hard part.** 40 lines of room management, 200 lines total. The Spotify integration (SDK init, token refresh, seek to chorus, playlist pull) is where actual debugging time will go.
+
+---
+
+## Appendix: Ideal Playlist Length for Music Bingo
+
+**Research Date:** 2026-04-20
+**Scope:** Follow-up research tied to the preset-list refresh (see `src/server/music/presets.ts`). Concrete question: what is the sweet-spot song count for a bingo playlist, and when should the host be warned?
+
+### Industry Consensus
+
+Commercial music-bingo platforms converge tightly around the same number.
+
+| Source | Minimum | Sweet spot | Notes |
+|--------|---------|-----------|-------|
+| Rockstar Bingo | 75 | 75–100 | "100 is the sweet spot for variety if you use the playlist more often" |
+| Muzingo | 50 | 50–75 | 48-song game ≈ 45 min, 75-song game ≈ 60 min at 10–15 sec clips |
+| Bingofy | — | 75 | Aligns with traditional 75-ball bingo heritage |
+| Mix Tape Music Bingo | 50 | 75 | Same 75-song standard |
+
+**Consensus: 75 songs is the baseline, 100 is the upper sweet spot.** This matches the traditional 75-ball bingo number, which is not coincidence — the number evolved because 75 is where "everyone participates meaningfully but someone actually wins" holds.
+
+### The Math — Full-Card Bingo
+
+For a 5×5 card with 25 distinct tiles drawn from a pool of `P` songs, the expected number of plays before a given card hits full bingo is the position of the last card-song in a shuffled playlist:
+
+```
+E[full-card bingo] = 25 × (P + 1) / 26
+```
+
+| Pool size `P` | Expected plays to full card | What this means |
+|---------------|----------------------------|-----------------|
+| 50 | ~49 | Basically requires playing the whole playlist |
+| 75 | ~73 | Tracks the traditional bingo number — full card happens near the end |
+| 100 | ~97 | Full card reachable, round runs long |
+| 150 | ~145 | ~72 min at 30s/clip — marathon |
+| 200 | ~193 | ~96 min. Most groups give up before anyone full-cards |
+
+### The Math — Line Bingo (first-to-win)
+
+Line bingo (any 5-in-a-row) is the more common win condition. With multiple players sharing a pool, first-across-all-cards happens much sooner than a single card's expected time. Rough empirical ballpark for 6 players on `P`-pool:
+
+| Pool size `P` | First line bingo (~6 players) |
+|---------------|-------------------------------|
+| 50  | ~7–9 plays |
+| 75  | ~10–12 plays |
+| 100 | ~12–15 plays |
+| 150 | ~16–20 plays |
+
+Line bingo is fast across all pool sizes, so pool size mainly affects **full-card viability** and **repeat-round variety**.
+
+### Recommendation for Bangerbingo
+
+| Pool size | Verdict | Host UX |
+|-----------|---------|---------|
+| **< 50** | Blocked (user-set floor in [src/server/music/presets.ts](src/server/music/presets.ts)) | Hard error: "Pick a longer playlist" |
+| **50–74** | Acceptable | Silent — works fine for line bingo |
+| **75–120** | **Sweet spot** | No warning. Target zone for all presets |
+| **120–180** | Long round | Soft hint: "This is a long playlist — rounds may take a while" (Continuous Mode works well here) |
+| **> 180** | Warn | Explicit: "At this length, full-card bingo may not be reached in one round. Consider a shorter playlist, enabling Auto-Bingo, or setting Casual Mode" |
+
+### Implementation Implications
+
+1. **All 20 public presets currently sit in 60–100+ range** — verified via real Spotify API hits against the running dev server (2026-04-20). This matches the sweet spot.
+2. **The existing 25-track hard floor** at [src/server/music/spotify.ts:116](src/server/music/spotify.ts#L116) is the card-tile minimum (25 tiles = 25 songs), but the *experiential* floor is 50. The app's UI floor should eventually move to 50 to match — out of scope for the current preset change.
+3. **Warnings (120+ soft, 180+ hard)** would plug into the playlist-picker UX in [src/client/components/RoundConfigOverlay.svelte](src/client/components/RoundConfigOverlay.svelte), showing after a host selects a preset or custom playlist. Out of scope for the current preset change — capture as a future story.
+
+### Sources
+
+- [Rockstar Bingo — "How many songs do you need for music bingo?"](https://help.rockstar.bingo/en/article/how-many-songs-do-you-need-for-music-bingo-zhv8jg/)
+- [Muzingo — "The Ultimate Guide to Music Bingo Playlists"](https://playmuzingo.com/creating-music-bingo-playlists-with-muzingo/)
+- [Mix Tape Music Bingo — "How to Play"](https://www.mixtapemusicbingo.com/how-to-play)
+- [Bingofy — "How to Create the Perfect Spotify Playlist for Music Bingo"](https://www.bingofy.co/blog/music-bingo-spotify-playlist-tips/)
