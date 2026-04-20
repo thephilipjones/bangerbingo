@@ -4,6 +4,7 @@ inputDocuments:
   - _bmad-output/prd.md
   - _bmad-output/ux-spec.md
   - _bmad-output/epics.md
+  - .claude/plans/we-don-t-support-hosts-linear-kazoo.md
 ---
 
 # Bangerbingo - Epic Breakdown
@@ -327,6 +328,14 @@ This document provides the complete epic and story breakdown for Bangerbingo, de
 **Depends on:** Epic 5 (win detection, `round:win` broadcast, `/round/claim` endpoint), Epic 7 (Round Config overlay, Host Controls overlay, Host Mini Player), Epic 8 (Continuous Mode gating for the next-round CTA)
 **Stories:** 9-1 (Game Over Page State & Auto-Bingo), 9-2 (Live Round Settings & Pre-Round Simplification)
 **Deferred (out of scope for this epic):** Countdown timer on Game Over screen; "songs that would have won it for you" near-miss visualization; host big-screen / TV layout; expanding `audioPreset` scope beyond the win overlay.
+
+---
+
+### Epic 10: Multi-Device Playback (Spotify Connect Picker)
+*The host can pick any Spotify Connect device — the in-browser SDK, an iPhone, a Sonos, an Echo — as the playback target and swap live mid-round without interrupting the game. Unlocks iOS host support (the Web Playback SDK is perpetually broken on mobile Safari — autoplay, backgrounding, screen-lock, volume API all unreliable) and doubles as desktop audio routing to speakers / hi-fi / smart speakers.*
+**Depends on:** Epic 1 (host Spotify token + `withFreshToken`), Epic 5 (`callSpotifyOnDevice` already device-agnostic, 404→reactivation fallback), Epic 7 (`AdvancedSettings`, `HostControlsOverlay`, `RoundConfigOverlay`, `SdkFailureBanner`, Host Mini Player structure)
+**Stories:** 10-1 (Device List API & Live-Swap Endpoint), 10-2 (Device Chip + Picker UI), 10-3 (SDK Default, Preference Persistence & Failure Path)
+**Deferred (out of scope for this epic):** Per-guest Spotify playback (separate future research thread); native app wrapper (Capacitor / iOS App Remote SDK); server-side audio re-streaming (Spotify ToS violation); programmatic launching of the Spotify iOS app from Safari; per-device volume control from Bangerbingo UI.
 
 ---
 
@@ -1704,3 +1713,229 @@ So that starting a party is low-friction and I can course-correct without restar
 - Expanding `audioPreset` scope beyond the win overlay — a rename only.
 - Persisting host prefs server-side (local device storage is enough for a friends-only app).
 - Live-editing the playlist or the host name.
+
+---
+
+## Epic 10: Multi-Device Playback (Spotify Connect Picker)
+
+*Bangerbingo hosts today are pinned to the Web Playback SDK — the host's browser IS the Spotify device that plays audio. On iOS Safari that stack is perpetually broken (autoplay blocks every track, backgrounding the tab kills playback, `activateElement` is flaky, volume API is non-functional, screen-lock drops audio). This epic reframes the host as a pure Spotify Connect remote: the server already sends `PUT /me/player/play?device_id=<x>` — `device_id` just stops being "the SDK device" and becomes "whichever Connect device the host picked". Unlocks iOS host support and doubles as a desktop feature for routing audio to speakers, Sonos, Echo, or a home hi-fi.*
+
+**Design intent captured from 2026-04-19 research thread:**
+- Manual toggle, available on all platforms — no UA sniffing. Desktop hosts benefit too (route to speakers), iOS users flip it once and persist the choice.
+- The UX idiom matches Spotify's own "Connect to a device" chip so hosts already recognise the affordance.
+- Existing server code ([src/server/rooms.ts:34-99](src/server/rooms.ts#L34-L99) `callSpotifyOnDevice`) is already device-agnostic; the only coupling to the SDK today is how `device_id` gets populated. Generalising the write endpoint completes the decoupling.
+- Live mid-round swap uses `PUT /v1/me/player` (`transfer_playback`) — the same API the existing 404→reactivation fallback already uses, so no new failure-mode surface area.
+- Host phones must have the Spotify iOS app installed, logged into the same Premium account, and "woken" at least once (tapped play in the native app so it appears in `/me/player/devices`). Onboarding copy handles this.
+- Guest music playback is a **separate future thread** — intentionally not blocked on this epic.
+
+---
+
+### Story 10-1: Device List API & Live-Swap Endpoint
+
+As a host,
+I want the server to expose my available Spotify Connect devices and accept a chosen device id as the playback target (swapping audio mid-round when I change it),
+So that the client UI can populate a device picker and the existing play/pause/next codepath keeps working unchanged regardless of which device is active.
+
+**Acceptance Criteria:**
+
+**— Device list endpoint —**
+
+**Given** an authenticated host with a valid Spotify token
+**When** the client sends `GET /api/rooms/:code/player/devices`
+**Then** the server calls `GET /v1/me/player/devices` through `withFreshToken` (silent refresh if needed) and returns `{ devices: Array<{ id: string; name: string; type: string; is_active: boolean; is_restricted: boolean; volume_percent: number | null }> }` — exactly the subset of fields the client renders
+
+**Given** the host's Spotify token has expired and cannot be refreshed
+**When** `GET /api/rooms/:code/player/devices` runs
+**Then** the existing `auth:degraded` path triggers (same handling as every other host-token endpoint) and the response is a non-200 that the client treats as "re-auth required" — no new error surface is added
+
+**Given** `/me/player/devices` returns an empty device list (host has no active Spotify apps)
+**When** the server forwards the response
+**Then** the endpoint returns `{ devices: [] }` with HTTP 200 — the empty state is a valid response, not an error
+
+**Given** a guest session (no host token) or an unauthenticated request
+**When** the request is made
+**Then** the endpoint returns the same 401/403 shape as other host-only endpoints — only the room host may list devices
+
+**— Device-write endpoint (generalised) —**
+
+**Given** the existing `POST /api/rooms/:code/sdk/device` endpoint accepts `{ device_id: string }` and stores it into `roomState.sdkDeviceId`
+**When** this epic ships
+**Then** a new endpoint `POST /api/rooms/:code/player/device` accepts the same payload (keeping the old `/sdk/device` path as a thin alias that forwards to the new handler, so the SDK `ready` callback on existing host pages keeps working during rollout)
+
+**Given** the host posts a `device_id` that is not currently present in the room's last-known device list
+**When** the handler processes the request
+**Then** the id is still accepted and stored — the server does not gate on a freshness check (the id may be a perfectly valid Connect device that simply wasn't in the last GET) — Spotify's own 404 response on the subsequent play call is the authoritative check
+
+**— Live mid-round swap —**
+
+**Given** there is an active round and `roomState.currentRound.isPlaying === true`
+**When** the host posts a new `device_id` different from the current `roomState.sdkDeviceId` / `playerDeviceId`
+**Then** the server issues `PUT /v1/me/player` with `{ device_ids: [newId], play: true }` so audio seamlessly transfers with playback resumed; the new id is persisted to room state; the round's song index, timers, and player state are unaffected
+
+**Given** there is no active round (lobby / between rounds)
+**When** the host posts a new `device_id`
+**Then** the server persists the id but does NOT call `transfer_playback` with `play: true` — storing the selection is enough; the next `POST /round` will use the new id when it fires its first `callSpotifyOnDevice`
+
+**Given** the `transfer_playback` call returns 404 (device went dormant between list fetch and swap)
+**When** the server handles the error
+**Then** the existing `callSpotifyOnDevice` reactivation fallback logic applies — the handler returns a non-200 that the client surfaces, and the banner/picker flow (Story 10-3) re-fetches devices
+
+**— No regression to existing play/pause/next codepaths —**
+
+**Given** any play / pause / next / seek action during a round
+**When** the server issues the Spotify API call
+**Then** `callSpotifyOnDevice` is unchanged — it still reads whatever `device_id` is currently stored in room state, whether that id came from the SDK `ready` callback or from the user picker; the 404→`transfer_playback` reactivation path is unchanged
+
+**— Out of scope —**
+
+- Storing a history of recent devices or any analytics on device switches.
+- Per-device volume control from the Bangerbingo server.
+- Forcing a specific device name (Spotify exposes the Connect device name chosen by each client — we render it as-is).
+
+---
+
+### Story 10-2: Device Chip + Picker UI
+
+As a host,
+I want a compact device chip in my playback bar that opens a bottom-sheet list of my Spotify Connect devices (and surfaces in the same pre-round Advanced Settings row so I can pick before a round starts too),
+So that I can route audio to my iPhone / Sonos / Echo / laptop browser and swap live without digging through Spotify's own app.
+
+**Acceptance Criteria:**
+
+**— DeviceChip in Host Mini Player —**
+
+**Given** a host is on the game page (pre-round or active round)
+**When** the Host Mini Player renders
+**Then** a new `DeviceChip` component appears in the Mini Player row, showing the active device as `[icon name ▾]` (icon derived from Spotify device `type`: 📱 for Smartphone, 🔊 for Speaker, 💻 for Computer, else generic) — the chip is compact enough to sit alongside the existing Play/Pause, Next, countdown, and gear controls without pushing them off-screen on a 375px viewport
+
+**Given** the chip shows the currently active device
+**When** the host taps or clicks it
+**Then** the `DevicePicker` bottom-sheet opens; on desktop (≥768px) it may render as a popover/menu anchored to the chip — either idiom is acceptable as long as the list, refresh, and empty-state are reachable
+
+**Given** no device has been selected yet (fresh session, SDK still initialising)
+**When** the chip renders
+**Then** it shows a neutral "Pick a device ▾" label instead of a specific device name
+
+**— DevicePicker bottom-sheet —**
+
+**Given** the `DevicePicker` opens
+**When** it mounts
+**Then** it fires `GET /api/rooms/:code/player/devices` and renders a loading state until the response arrives; on success it lists every device with its icon, name, and a highlight/check on the currently selected id
+
+**Given** the picker is open and the host taps a different device row
+**When** the tap fires
+**Then** the client optimistically updates the chip label to the new device, POSTs to `/api/rooms/:code/player/device` with the chosen `device_id`, and closes the sheet; on a non-200 response the chip reverts to the previous selection and a short "Couldn't switch device" inline error appears in the picker on next open
+
+**Given** the picker is open
+**When** the host taps a "Refresh" affordance (icon button in the sheet header)
+**Then** the devices list is re-fetched and the rendered list updates; the currently selected id (if still present) remains highlighted, if absent the chip label falls back to "Pick a device ▾"
+
+**Given** the server returns `{ devices: [] }`
+**When** the picker renders
+**Then** it shows an empty-state block with copy along the lines of "No Spotify devices available. Open your Spotify app and press play on any song, then Refresh." — the refresh button remains available
+
+**Given** Spotify returns a device with `is_restricted: true`
+**When** the picker renders that row
+**Then** the row is visible but disabled (not tappable) with a subtle hint like "Restricted by Spotify" — tapping does nothing
+
+**Given** the host is mid-round and swaps to a new device via the picker
+**When** the server returns 200
+**Then** audio transfers per Story 10-1; the UI shows a brief "Playing on {deviceName}" confirmation pill (same ~1.5s self-dismiss pattern as Story 9-2 "Saved — applies to next song") near the chip; round state is visually unaffected (card, song history, players list all unchanged)
+
+**— AdvancedSettings row (reused in RoundConfigOverlay and HostControlsOverlay) —**
+
+**Given** the host opens `AdvancedSettings` from `RoundConfigOverlay` (pre-round) or `HostControlsOverlay` (live, `mode="live"` per Epic 9 / Story 9-2)
+**When** the component renders
+**Then** a "Playback device" row appears alongside the existing `clipDuration` / `titleRevealDelay` / `audioPreset` / `allowCasualMode` rows, using the same segmented-pill / row styling as its neighbours; the row shows the active device name and an action to open the same `DevicePicker` sheet
+
+**Given** the host changes device from the live `HostControlsOverlay` Advanced Settings row during an active round
+**When** the change fires
+**Then** the same POST + live-swap semantics apply as the Mini Player chip — no duplicate codepath, the picker is the only UI primitive
+
+**— Accessibility / mobile —**
+
+**Given** any DeviceChip / DevicePicker element is rendered
+**When** it is interactive
+**Then** its tap target meets the existing WCAG AA ≥44×44px baseline (UX-DR21); the sheet dismisses on outside-tap, backdrop-tap, and `Escape`; focus returns to the chip on dismiss
+
+**— Out of scope —**
+
+- Showing live volume indicators or scrubbing volume from the picker.
+- Multi-select / "play on multiple devices" (not a Spotify Connect primitive anyway).
+- A persistent device indicator anywhere other than the Mini Player chip and the Advanced Settings row.
+
+---
+
+### Story 10-3: SDK Default, Preference Persistence & Failure Path
+
+As a host on any platform (desktop Chrome, desktop Firefox, or iOS Safari),
+I want the app to default to the in-browser SDK device where it works, remember my last chosen device across reloads, and clearly route me to the device picker when the SDK fails to initialise,
+So that desktop users keep the zero-configuration path they have today while iOS hosts (or anyone whose SDK breaks) get a coherent fallback instead of a dead-end error banner.
+
+**Acceptance Criteria:**
+
+**— SDK-first default on supported browsers —**
+
+**Given** a host opens the game page on a browser where the Web Playback SDK initialises successfully
+**When** the SDK `ready` callback fires with a `device_id`
+**Then** the existing POST to `/api/rooms/:code/sdk/device` (now aliased to `/player/device` per Story 10-1) runs as today, and the `DeviceChip` shows "Bangerbingo (this browser)" as the active selection — no user action required to start a round
+
+**Given** the SDK device is registered and no `preferredDeviceId` is persisted
+**When** the chip and picker render
+**Then** the SDK device is the active selection; the picker still lists every other Connect device the host owns so they can swap if they want to
+
+**— Preference persistence via hostPrefs —**
+
+**Given** `src/client/lib/hostPrefs.ts` manages host localStorage preferences (key `bb:host-prefs:v1`, Story 9-2)
+**When** this epic ships
+**Then** the schema adds `preferredDeviceId?: string`; missing / schema-mismatched values fall back to `undefined`
+
+**Given** the host selects a device via the picker
+**When** the POST to `/api/rooms/:code/player/device` returns 200
+**Then** `preferredDeviceId` is written to `hostPrefs` with the chosen id; a subsequent reload of the host page reads it back and uses it as the initial active selection
+
+**Given** the host page mounts with a persisted `preferredDeviceId`
+**When** the initial devices fetch returns
+**Then** if the persisted id is present in the device list, it is selected as active (overriding the SDK default); if it is absent, the selection falls back to the SDK device (if ready) or "Pick a device" (if not), and `preferredDeviceId` is NOT cleared — the next fetch may yet surface it
+
+**— SDK failure path (iOS Safari primary case) —**
+
+**Given** the SDK fires `initialization_error` or `authentication_error` (today's failure mode on iOS Safari)
+**When** the host page detects the error
+**Then** the chip renders "Pick a device ▾" instead of a specific device, and the `SdkFailureBanner` copy is reworked — it no longer says "Audio unavailable, use your Spotify app"; it reads along the lines of "Browser playback unavailable — pick a device to play on" with a primary action that opens the `DevicePicker`
+
+**Given** the SDK failed but the host then picks an external device (iPhone, Sonos, etc.)
+**When** the picker POST succeeds
+**Then** the banner auto-dismisses (no need for a manual clear) — the room is in a valid playable state again; the chip reflects the chosen device
+
+**Given** no devices are available after SDK failure (empty `/me/player/devices` response)
+**When** the picker is opened from the banner
+**Then** the existing empty-state copy from Story 10-2 appears ("Open your Spotify app and press play…") — the banner stays up until the user successfully picks a device
+
+**Given** the SDK subsequently recovers on a different page load
+**When** the SDK `ready` callback fires
+**Then** the banner is not shown, and selection priority follows the Preference Persistence rule above (persisted `preferredDeviceId` wins; else SDK device)
+
+**— No UA sniffing —**
+
+**Given** the app must decide whether to render the banner / "Pick a device" default
+**When** the decision runs
+**Then** it is driven **only** by observed SDK events (`ready` / `initialization_error` / `authentication_error`) — not by user-agent string, not by `navigator.platform`, not by touch detection; iOS users who happen to have a working SDK path (unusual) are not treated differently from desktop
+
+**— First-time iOS onboarding copy —**
+
+**Given** a host lands on the game page on a mobile viewport AND the SDK has errored AND the devices list is empty
+**When** the empty-state renders (either in the banner expansion or the picker)
+**Then** the copy includes a first-time-friendly instruction block: "1. Open the Spotify app on your phone. 2. Press play on any song. 3. Come back here and tap Refresh." — no separate onboarding modal; the empty-state text is the onboarding
+
+**— Persistence robustness —**
+
+**Given** the stored `hostPrefs` JSON fails to parse (corruption) or is of a non-matching `schemaVersion`
+**When** the host page mounts
+**Then** `hostPrefs` resets to defaults (no `preferredDeviceId`) per the existing Story 9-2 fallback semantics — no separate handling for device preference alone
+
+**— Out of scope —**
+
+- Syncing `preferredDeviceId` across host devices / browsers (local device storage only — matches Story 9-2 scope).
+- A "Forget this device" action in the picker (the host can just pick a different one).
+- Auto-choosing a non-SDK device on startup based on history / heuristics (user always picks explicitly on first switch; we only persist what they picked).
