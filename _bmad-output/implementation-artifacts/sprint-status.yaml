@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-19 # epic 9 retro
+last_updated: 2026-04-20 # epic 10 added to backlog
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -116,3 +116,10 @@ development_status:
   9-2-live-round-settings-and-pre-round-simplification: done
   9-3-collapse-continuous-mode-to-gameover-choice: done
   epic-9-retrospective: done
+
+  # Epic 10: Multi-Device Playback (Spotify Connect Picker)
+  epic-10: backlog
+  10-1-device-list-api-and-live-swap-endpoint: backlog
+  10-2-device-chip-and-picker-ui: backlog
+  10-3-sdk-default-preference-persistence-and-failure-path: backlog
+  epic-10-retrospective: optional

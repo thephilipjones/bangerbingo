@@ -162,10 +162,30 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 ---
 
-## Epic 9: Game Over Rethink
+## Epic 8: Relaxed Play ✅ DONE
+
+*Host can enable Continuous Mode for back-to-back games on the same playlist; win moment holds for celebration; players can opt into Casual Mode for automatic square marking; session win stats surface in the Players List.*
+
+**Stories:** 8-1 (Win Moment Hold & Audio Presets), 8-2 (Session Statistics), 8-3 (Continuous Mode), 8-4 (Casual Mode Permission & Player Toggle), 8-5 (Casual Mode Auto-Mark Engine)
+
+---
+
+## Epic 9: Game Over Rethink ✅ DONE
 
 *Replace the claim button + Win Overlay modal with an auto-triggered Game Over page state, and reduce pre-round friction by moving secondary round settings into a live-editable Host Controls panel.*
 
-**Stories:** 9-1 (Game Over Page State & Auto-Bingo), 9-2 (Live Round Settings & Pre-Round Simplification)
+**Stories:** 9-1 (Game Over Page State & Auto-Bingo), 9-2 (Live Round Settings & Pre-Round Simplification), 9-3 (Collapse Continuous Mode to Game Over Choice)
 
 **Acceptance bar:** A completed bingo pattern auto-triggers a full-page Game Over state (no modal, no claim button) showing winner + winning songs; host starts a new round by picking a playlist and hitting Start (Advanced settings collapsed by default); clip duration, title reveal, win reaction, casual mode, and autoplay-next-round are all live-editable mid-round via the Host Controls panel with changes applying to the next song.
+
+---
+
+## Epic 10: Multi-Device Playback (Spotify Connect Picker)
+
+*Reframe the host as a pure Spotify Connect remote — pick any Connect device (in-browser SDK, iPhone, Sonos, Echo) as the playback target and swap live mid-round. Unlocks iOS host support (Web Playback SDK is perpetually broken on mobile Safari — autoplay, backgrounding, screen-lock, volume API all unreliable) and doubles as desktop audio routing to speakers / hi-fi / smart speakers.*
+
+**Depends on:** Epic 1 (host Spotify token + `withFreshToken`), Epic 5 (`callSpotifyOnDevice` already device-agnostic, 404→reactivation fallback), Epic 7 (`AdvancedSettings`, `HostControlsOverlay`, `RoundConfigOverlay`, `SdkFailureBanner`, Host Mini Player)
+
+**Stories:** 10-1 (Device List API & Live-Swap Endpoint), 10-2 (Device Chip + Picker UI), 10-3 (SDK Default, Preference Persistence & Failure Path)
+
+**Acceptance bar:** Host's Mini Player shows a device chip; tapping it opens a bottom-sheet picker of the host's Spotify Connect devices. Picking a different device mid-round transfers audio seamlessly via `PUT /v1/me/player` without interrupting the round, song index, or player state. SDK remains the zero-config default when it initialises; on SDK failure (iOS Safari primary case) the failure banner routes the host into the picker instead of a dead-end. Last-chosen device persists across reloads via `hostPrefs`. The failure path is driven only by observed SDK events — no UA sniffing.
