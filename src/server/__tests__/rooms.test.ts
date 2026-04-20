@@ -2482,7 +2482,7 @@ describe('PATCH /api/rooms/:code/round-config', () => {
     expect(roomState.priorCasualModes).toEqual(new Set(['Alice', 'Bob']))
 
     const perPlayer = hostWs.getSent().filter(m => m.type === 'player:casual-mode-changed' && m.enabled === false)
-    expect(perPlayer.map((m: { name: string }) => m.name).sort()).toEqual(['Alice', 'Bob'])
+    expect(perPlayer.map(m => m.name as string).sort()).toEqual(['Alice', 'Bob'])
   })
 
   it('allowCasualMode false→true restores snapshotted players (with catch-up broadcast)', async () => {
@@ -2518,7 +2518,7 @@ describe('PATCH /api/rooms/:code/round-config', () => {
     expect(roomState.priorCasualModes).toBeUndefined()
 
     const perPlayer = hostWs.getSent().filter(m => m.type === 'player:casual-mode-changed' && m.enabled === true)
-    expect(perPlayer.map((m: { name: string }) => m.name).sort()).toEqual(['Alice', 'Bob'])
+    expect(perPlayer.map(m => m.name as string).sort()).toEqual(['Alice', 'Bob'])
   })
 
   it('priorCasualModes snapshot persists across round boundaries (Story 9-2)', async () => {
