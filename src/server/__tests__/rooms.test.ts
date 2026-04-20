@@ -1957,13 +1957,13 @@ describe('Casual Mode — round:start includes allowCasualMode', () => {
     expect(msg.allowCasualMode).toBe(false)
   })
 
-  it('new round resets playerCasualModes', async () => {
+  it('new round preserves playerCasualModes across rounds (Story 9-2)', async () => {
     seedHost()
     await seedRoom()
 
     const roomState = roomSockets.get('ABCD')!
     roomState.playerCasualModes.set('Alice', true)
-    expect(roomState.playerCasualModes.size).toBe(1)
+    expect(roomState.playerCasualModes.get('Alice')).toBe(true)
 
     const app = makeApp()
     await app.request('/api/rooms/ABCD/round', {
@@ -1972,7 +1972,7 @@ describe('Casual Mode — round:start includes allowCasualMode', () => {
       body: JSON.stringify(validPayload),
     })
 
-    expect(roomState.playerCasualModes.size).toBe(0)
+    expect(roomState.playerCasualModes.get('Alice')).toBe(true)
   })
 })
 
@@ -2159,12 +2159,12 @@ describe('Casual Mode — Auto-Mark Engine', () => {
     })
     expect(startRes.status).toBe(200)
 
-    // New round: startRound reset playerCasualModes AND autoMarkedTileIndices to empty.
+    // New round: autoMarkedTileIndices resets (fresh round object) but
+    // playerCasualModes persists across rounds (Story 9-2).
     expect(roomState.currentRound!.autoMarkedTileIndices.has('Alice')).toBe(false)
-    expect(roomState.playerCasualModes.get('Alice')).toBeUndefined()
+    expect(roomState.playerCasualModes.get('Alice')).toBe(true)
 
-    // Re-enable casual mode and seed history, then sweep — Alice starts from a fresh set.
-    roomState.playerCasualModes.set('Alice', true)
+    // Seed history, then sweep — Alice starts from a fresh autoMarked set.
     const newRound = roomState.currentRound!
     // Plant a card on Alice for the new round so indices are deterministic.
     const card: Tile[] = newRound.playlist.slice(0, 10).map(t => ({
@@ -2223,5 +2223,331 @@ describe('Casual Mode — Auto-Mark Engine', () => {
     expect(autoMarks).toHaveLength(1)
     expect(autoMarks[0].catchUp).toBe(true)
     expect(autoMarks[0].tileIndices).toEqual([0])
+  })
+})
+
+// ── PATCH /round-config (Story 9-2) ───────────────────────────────────────
+
+describe('PATCH /api/rooms/:code/round-config', () => {
+  beforeEach(async () => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+  })
+
+  async function startLiveRound(overrides: Partial<{ allowCasualMode: boolean }> = {}) {
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playlistId: 'pl_abc',
+        clipDuration: 30,
+        titleRevealDelay: 5,
+        hostName: 'Host',
+        audioPreset: 'minimal',
+        allowCasualMode: false,
+        ...overrides,
+      }),
+    })
+    expect(res.status).toBe(200)
+    return app
+  }
+
+  it('returns 401 without a session cookie', async () => {
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 45 }),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 404 when room does not exist', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ZZZZ/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 45 }),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 403 when room belongs to a different host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 45 }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 503 when room session is not active', async () => {
+    seedHost()
+    // Room row exists but no roomSockets entry
+    const { getDb } = await import('../db.ts')
+    getDb().prepare('INSERT OR IGNORE INTO rooms (code, host_user_id, created_at) VALUES (?, ?, ?)').run('ABCD', 'host_1', Date.now())
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 45 }),
+    })
+    expect(res.status).toBe(503)
+  })
+
+  it('returns 409 when no round is active', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 45 }),
+    })
+    expect(res.status).toBe(409)
+  })
+
+  it('returns 400 with no valid fields', async () => {
+    seedHost()
+    await seedRoom()
+    await startLiveRound()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ somethingElse: 1 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 on invalid clipDuration', async () => {
+    seedHost()
+    await seedRoom()
+    await startLiveRound()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 99 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 on invalid titleRevealDelay', async () => {
+    seedHost()
+    await seedRoom()
+    await startLiveRound()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titleRevealDelay: 7 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 on invalid audioPreset', async () => {
+    seedHost()
+    await seedRoom()
+    await startLiveRound()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audioPreset: 'turbo' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 on non-boolean allowCasualMode', async () => {
+    seedHost()
+    await seedRoom()
+    await startLiveRound()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowCasualMode: 'yes' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('mutates currentRound.config + pendingRound and broadcasts round-config:changed', async () => {
+    seedHost()
+    await seedRoom()
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+    const app = await startLiveRound()
+
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 45, titleRevealDelay: null, audioPreset: 'hype', allowCasualMode: true }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { clipDuration: number | 'full'; titleRevealDelay: number | null; audioPreset: string; allowCasualMode: boolean }
+    expect(body.clipDuration).toBe(45)
+    expect(body.titleRevealDelay).toBe(null)
+    expect(body.audioPreset).toBe('hype')
+    expect(body.allowCasualMode).toBe(true)
+
+    const roomState = roomSockets.get('ABCD')!
+    expect(roomState.currentRound!.config.clipDuration).toBe(45)
+    expect(roomState.currentRound!.config.titleRevealDelay).toBe(null)
+    expect(roomState.currentRound!.config.audioPreset).toBe('hype')
+    expect(roomState.currentRound!.config.allowCasualMode).toBe(true)
+    expect(roomState.pendingRound!.clipDuration).toBe(45)
+    expect(roomState.pendingRound!.audioPreset).toBe('hype')
+
+    const broadcasts = hostWs.getSent().filter(m => m.type === 'round-config:changed')
+    expect(broadcasts).toHaveLength(1)
+    expect(broadcasts[0].config).toMatchObject({ clipDuration: 45, titleRevealDelay: null, audioPreset: 'hype', allowCasualMode: true })
+  })
+
+  it('partial patch only mutates specified fields', async () => {
+    seedHost()
+    await seedRoom()
+    const app = await startLiveRound()
+
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 60 }),
+    })
+    expect(res.status).toBe(200)
+
+    const roomState = roomSockets.get('ABCD')!
+    expect(roomState.currentRound!.config.clipDuration).toBe(60)
+    // Unspecified fields preserved
+    expect(roomState.currentRound!.config.titleRevealDelay).toBe(5)
+    expect(roomState.currentRound!.config.audioPreset).toBe('minimal')
+    expect(roomState.currentRound!.config.allowCasualMode).toBe(false)
+  })
+
+  it('broadcast payload is narrowed to only patched fields (Story 9-2 race fix)', async () => {
+    seedHost()
+    await seedRoom()
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+    const app = await startLiveRound()
+
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 45 }),
+    })
+    expect(res.status).toBe(200)
+
+    const broadcasts = hostWs.getSent().filter(m => m.type === 'round-config:changed')
+    expect(broadcasts).toHaveLength(1)
+    expect(broadcasts[0].config).toEqual({ clipDuration: 45 })
+  })
+
+  // ── Story 9-2: casual mode revoke / restore ──
+  it('allowCasualMode true→false revokes all player casual modes and clears autoMarkedTileIndices', async () => {
+    seedHost()
+    await seedRoom()
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+    const app = await startLiveRound({ allowCasualMode: true })
+
+    const roomState = roomSockets.get('ABCD')!
+    roomState.playerCasualModes.set('Alice', true)
+    roomState.playerCasualModes.set('Bob', true)
+    roomState.currentRound!.autoMarkedTileIndices.set('Alice', new Set([3]))
+    roomState.currentRound!.autoMarkedTileIndices.set('Bob', new Set([7]))
+
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowCasualMode: false }),
+    })
+    expect(res.status).toBe(200)
+
+    expect(roomState.playerCasualModes.get('Alice')).toBe(false)
+    expect(roomState.playerCasualModes.get('Bob')).toBe(false)
+    expect(roomState.currentRound!.autoMarkedTileIndices.has('Alice')).toBe(false)
+    expect(roomState.currentRound!.autoMarkedTileIndices.has('Bob')).toBe(false)
+    expect(roomState.priorCasualModes).toEqual(new Set(['Alice', 'Bob']))
+
+    const perPlayer = hostWs.getSent().filter(m => m.type === 'player:casual-mode-changed' && m.enabled === false)
+    expect(perPlayer.map((m: { name: string }) => m.name).sort()).toEqual(['Alice', 'Bob'])
+  })
+
+  it('allowCasualMode false→true restores snapshotted players (with catch-up broadcast)', async () => {
+    seedHost()
+    await seedRoom()
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+    const app = await startLiveRound({ allowCasualMode: true })
+
+    const roomState = roomSockets.get('ABCD')!
+    roomState.playerCasualModes.set('Alice', true)
+    roomState.playerCasualModes.set('Bob', true)
+
+    // Revoke.
+    await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowCasualMode: false }),
+    })
+    expect(roomState.priorCasualModes).toEqual(new Set(['Alice', 'Bob']))
+    hostWs.getSent().length = 0 // reset captured broadcasts
+
+    // Restore.
+    const res = await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowCasualMode: true }),
+    })
+    expect(res.status).toBe(200)
+
+    expect(roomState.playerCasualModes.get('Alice')).toBe(true)
+    expect(roomState.playerCasualModes.get('Bob')).toBe(true)
+    expect(roomState.priorCasualModes).toBeUndefined()
+
+    const perPlayer = hostWs.getSent().filter(m => m.type === 'player:casual-mode-changed' && m.enabled === true)
+    expect(perPlayer.map((m: { name: string }) => m.name).sort()).toEqual(['Alice', 'Bob'])
+  })
+
+  it('priorCasualModes snapshot persists across round boundaries (Story 9-2)', async () => {
+    seedHost()
+    await seedRoom()
+    const app = await startLiveRound({ allowCasualMode: true })
+    const roomState = roomSockets.get('ABCD')!
+    roomState.playerCasualModes.set('Alice', true)
+
+    // Revoke mid-round.
+    await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowCasualMode: false }),
+    })
+    expect(roomState.priorCasualModes).toEqual(new Set(['Alice']))
+
+    // Start a new round — snapshot must survive.
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+    await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, allowCasualMode: false }),
+    })
+
+    expect(roomState.priorCasualModes).toEqual(new Set(['Alice']))
+    expect(roomState.playerCasualModes.get('Alice')).toBe(false)
   })
 })

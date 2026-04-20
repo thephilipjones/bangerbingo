@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-19 # story 9-3 done; review applied 7 patches, tests + tsc clean
+last_updated: 2026-04-19 # story 9-2 done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -113,6 +113,6 @@ development_status:
   # Epic 9: Game Over Rethink
   epic-9: in-progress
   9-1-game-over-page-state-and-auto-bingo: done
-  9-2-live-round-settings-and-pre-round-simplification: ready-for-dev
+  9-2-live-round-settings-and-pre-round-simplification: done
   9-3-collapse-continuous-mode-to-gameover-choice: done
   epic-9-retrospective: optional

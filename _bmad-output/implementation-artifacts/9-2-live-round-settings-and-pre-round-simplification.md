@@ -1,6 +1,6 @@
 # Story 9-2: Live Round Settings & Pre-Round Simplification
 
-Status: ready-for-dev
+Status: done
 
 > **Scope amended by Story 9-3 (2026-04-19):** Autoplay Next Round row and HostMiniPlayer Loop removal excised. See 9-3 for context. `AdvancedSettings` now renders four rows: Clip Duration, Title Reveal, Win Reaction, Casual Mode. Struck items below are retained for traceability; do not implement them.
 
@@ -147,6 +147,16 @@ Today [RoundConfigOverlay.svelte](src/client/components/RoundConfigOverlay.svelt
 - [ ] **Tests** (ACs #24–#28) — server endpoint + hostPrefs unit + AdvancedSettings live flow; update RoundConfigOverlay test if needed.
 - [ ] **Manual verification** (Philip — see §Verification in the plan file).
 
+### Review Findings (2026-04-19)
+
+- [x] [Review][Patch] `roundActive` proxy: drop `&& game.winData === null` guard to match spec AC #17 — [src/client/pages/HostRoomPage.svelte:395](src/client/pages/HostRoomPage.svelte#L395).
+- [x] [Review][Patch] Mid-round `allowCasualMode` toggle revokes + restores player casual modes (supersedes Dev Note line 158). **2026-04-19 semantic overrule of Story 8-4's per-round reset:** `playerCasualModes` now persists across round boundaries (explicit toggle-only); host toggling `allowCasualMode: true→false` snapshots every ON player into `RoomState.priorCasualModes`, sets their value to `false`, clears `autoMarkedTileIndices` for each, and broadcasts `player:casual-mode-changed {enabled:false}` per player. Toggling `false→true` restores every snapshotted player, broadcasts per-player, runs a catch-up sweep for each, and clears the snapshot. Snapshot persists across rounds. New WS guards in [ws.ts:331-350](src/server/ws.ts#L331-L350) / [ws.ts:434-450](src/server/ws.ts#L434-L450) reject `{enabled:true}` messages while `currentRound.config.allowCasualMode === false`. `RoomState.priorCasualModes?: Set<string>` added.
+- [x] [Review][Patch] PATCH handler TOCTOU — re-check `currentRound?.active === true` after `await ctx.req.json()` [src/server/rooms.ts:755-763](src/server/rooms.ts#L755-L763).
+- [x] [Review][Patch] `round-config:changed` broadcast narrowed to only the patched fields [src/server/rooms.ts:819-828](src/server/rooms.ts#L819-L828) — client's `'field' in cfg` check already handles partial payloads, so optimistic edits on other rows are no longer clobbered by a stale echo.
+- [x] [Review][Patch] `AdvancedSettings` timers cleared on `onDestroy` [src/client/components/AdvancedSettings.svelte:106-111](src/client/components/AdvancedSettings.svelte#L106-L111).
+- [x] [Review][Patch] Broadcast config payload validated at the client [src/client/lib/gameState.svelte.ts:175-188](src/client/lib/gameState.svelte.ts#L175-L188) via new exports `isValidClipDuration` / `isValidTitleRevealDelay` / `isValidAudioPreset` from [hostPrefs.ts](src/client/lib/hostPrefs.ts). Unknown values are dropped silently.
+- [x] [Review][Patch] `InfoTooltip` hover handlers gated on non-touch pointer [src/client/components/InfoTooltip.svelte:13-22](src/client/components/InfoTooltip.svelte#L13-L22) — first `pointerdown` with `pointerType === 'touch'` flips the component into touch-only mode for its lifetime.
+
 ## Dev Notes
 
 - **Why mutate `pendingRound` too?** Continuous Mode's `startContinuousRound` at [rooms.ts:466-479](src/server/rooms.ts#L466-L479) builds the next round's config from `roomState.pendingRound`. If the host live-edits the current round's clip duration and then an auto-start fires, the auto-started round should inherit the new duration. Writing to both `currentRound.config` AND `pendingRound` costs nothing and keeps both code paths correct.
@@ -187,3 +197,55 @@ Files touched:
 - Story 7-3 (RoundConfigOverlay origin): [_bmad-output/implementation-artifacts/7-3-round-config-overlay-and-host-name.md](_bmad-output/implementation-artifacts/7-3-round-config-overlay-and-host-name.md)
 - Story 7-6 (HostMiniPlayer + HostControlsOverlay origin): [_bmad-output/implementation-artifacts/7-6-host-mini-player-and-controls-overlay.md](_bmad-output/implementation-artifacts/7-6-host-mini-player-and-controls-overlay.md)
 - Win reaction (audioPreset) scope today: [src/client/components/WinOverlay.svelte](src/client/components/WinOverlay.svelte)
+
+## Dev Agent Record
+
+### Agent Model Used
+
+claude-opus-4-7
+
+### Debug Log References
+
+- `npm run lint` (tsc --noEmit) — clean.
+- `npm test -- --run` — 408 tests pass across 22 files (up from 382 before this story). New suites: `hostPrefs.test.ts` (9 tests), `AdvancedSettings.test.ts` (5 tests), new `PATCH /api/rooms/:code/round-config` describe in `rooms.test.ts` (11 tests).
+
+### Completion Notes List
+
+- Scope trimmed per 9-3 amendment: dropped Autoplay Next Round row, HostMiniPlayer Loop button removal (already done in 9-3), AC #7 WS message-union note (no such union exists), ACs #18/#19.
+- Server: extracted `isValidClipDuration` / `isValidTitleRevealDelay` / `isValidAudioPreset` helpers in [rooms.ts](src/server/rooms.ts); `POST /round` now calls them. New `PATCH /api/rooms/:code/round-config` route guards 401/404/403/503/409/400, mutates both `currentRound.config` and `pendingRound`, broadcasts `round-config:changed`.
+- Client API: added `patchRoundConfig(code, partial)` helper + `RoundConfigPatch` type in [api.ts](src/client/lib/api.ts).
+- Client state: `gameState.svelte.ts` now captures `clipDuration` from `round:start`, exposes getters/setters for all four fields, and handles `round-config:changed` by updating only the fields present in the echoed config.
+- Client storage: new `hostPrefs.ts` module with `bb:host-prefs:v1` key, `schemaVersion: 1` gate, per-field validators, and partial-merge semantics (merges onto current or defaults).
+- Client UI: new `InfoTooltip.svelte` (hover/focus/click ⓘ with Escape + outside-pointer dismissal, mobile-safe right-edge anchor). New shared `AdvancedSettings.svelte` renders 4 rows (Clip Duration / Title Reveal / Win Reaction / Casual Mode) with per-row SAVED copy, error pill, seq-based latest-wins guard, and optimistic-with-revert semantics.
+- `HostControlsOverlay.svelte`: new Round Settings section (rendered only when `roundActive`), wired through from `HostRoomPage` via 4 new game-state setters. Sheet `height: 40vh` → `max-height: 80vh` to fit settings + actions.
+- `RoundConfigOverlay.svelte`: four inline pill sections collapsed into `<details>Advanced settings</details>` wrapping `<AdvancedSettings mode="pre-round" />`. Host-name placeholder `"Play along!"` → `"Host"`. State seeded from `readHostPrefs()` on mount; `writeHostPrefs(snapshot)` called from `handleStartRound` on success.
+- Tests: server PATCH covers 401/404/403/503/409, all 4 validator failures, empty-body, happy-path with broadcast + currentRound + pendingRound mutation, and partial-field preservation. Client hostPrefs covers read/write/merge/defaults + 4 failure modes (schema mismatch, malformed JSON, invalid clipDuration, invalid titleRevealDelay, missing allowCasualMode). Client AdvancedSettings covers pre-round (no network), live success (optimistic + PATCH + Saved + writeHostPrefs), live failure (revert + error pill + no writeHostPrefs), casual-mode toggle, and same-value no-op guard.
+
+### File List
+
+**Server**
+- `src/server/rooms.ts`
+- `src/server/__tests__/rooms.test.ts`
+
+**Client**
+- `src/client/lib/api.ts`
+- `src/client/lib/gameState.svelte.ts`
+- `src/client/lib/hostPrefs.ts` (new)
+- `src/client/components/AdvancedSettings.svelte` (new)
+- `src/client/components/InfoTooltip.svelte` (new)
+- `src/client/components/HostControlsOverlay.svelte`
+- `src/client/components/RoundConfigOverlay.svelte`
+- `src/client/pages/HostRoomPage.svelte`
+- `src/client/__tests__/hostPrefs.test.ts` (new)
+- `src/client/__tests__/AdvancedSettings.test.ts` (new)
+
+**Docs**
+- `_bmad-output/implementation-artifacts/9-2-live-round-settings-and-pre-round-simplification.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+## Change Log
+
+| Date       | Change                                                                                                   |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| 2026-04-19 | Story 9-2 implemented — live round-settings PATCH endpoint, shared AdvancedSettings, hostPrefs, Vibe→Win Reaction rename, host-name placeholder. Scope trimmed per 9-3 amendment. |
+| 2026-04-19 | Code review fixes: TOCTOU guard on PATCH; broadcast narrowed to changed fields; client-side validation of broadcast payload; AdvancedSettings timer cleanup; InfoTooltip touch-mode; roundActive proxy matches spec. **Semantic overrule of Story 8-4:** `playerCasualModes` persists across rounds (explicit toggle only); host `allowCasualMode` toggle now revokes / restores per-player casual modes via new `RoomState.priorCasualModes` snapshot, with WS guards rejecting new opt-ins while the permission is off. |

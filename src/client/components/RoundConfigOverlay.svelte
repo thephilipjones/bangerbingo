@@ -7,16 +7,17 @@
   import { onMount, onDestroy } from 'svelte'
   import { startRound } from '../lib/api.ts'
   import type { AudioPreset } from '../lib/api.ts'
+  import type { TitleRevealDelay } from '../lib/bingo.ts'
   import { validateHostName, buildStartRoundPayload } from '../lib/roundConfig.ts'
+  import { readHostPrefs, writeHostPrefs } from '../lib/hostPrefs.ts'
+  import AdvancedSettings from './AdvancedSettings.svelte'
 
-  const VIBE_OPTIONS: { value: AudioPreset; label: string }[] = [
-    { value: 'hype', label: 'Hype' },
-    { value: 'deadpan', label: 'Deadpan' },
-    { value: 'minimal', label: 'Minimal' },
-  ]
+  type ClipDuration = number | 'full'
 
   let audioPreset = $state<AudioPreset>('minimal')
   let allowCasualMode = $state(false)
+  let clipDuration = $state<ClipDuration>(30)
+  let titleRevealDelay = $state<TitleRevealDelay>(10)
 
   let {
     code,
@@ -153,30 +154,6 @@
 
   const selectedSource = $derived(selectedPlaylist?.id ?? null)
 
-  // ── Clip duration ──────────────────────────────────────────────────────────
-
-  const CLIP_OPTIONS: { value: number | 'full'; label: string }[] = [
-    { value: 20, label: '20s' },
-    { value: 30, label: '30s' },
-    { value: 45, label: '45s' },
-    { value: 60, label: '60s' },
-    { value: 'full', label: 'Full Song' },
-  ]
-
-  let clipDuration = $state<number | 'full'>(30)
-
-  // ── Title reveal ───────────────────────────────────────────────────────────
-
-  const REVEAL_OPTIONS: { value: number | null; label: string }[] = [
-    { value: 0, label: 'Now' },
-    { value: 5, label: '5s' },
-    { value: 10, label: '10s' },
-    { value: 15, label: '15s' },
-    { value: null, label: 'Never' },
-  ]
-
-  let titleRevealDelay = $state<number | null>(5)
-
   // ── Start round ────────────────────────────────────────────────────────────
 
   let submitting = $state(false)
@@ -209,6 +186,7 @@
         allowCasualMode,
       )
       await startRound(code, payload)
+      writeHostPrefs({ clipDuration, titleRevealDelay, audioPreset, allowCasualMode })
       onStarted(nameResult.trimmed)
     } catch (err) {
       sourceError = err instanceof Error ? err.message : 'Failed to start round'
@@ -233,6 +211,13 @@
   }
 
   onMount(() => {
+    const prefs = readHostPrefs()
+    if (prefs) {
+      clipDuration = prefs.clipDuration
+      titleRevealDelay = prefs.titleRevealDelay
+      audioPreset = prefs.audioPreset
+      allowCasualMode = prefs.allowCasualMode
+    }
     loadPresets()
     window.addEventListener('keydown', handleKeydown)
   })
@@ -341,69 +326,22 @@
         </div>
       </div>
 
-      <!-- Vibe preset pills -->
-      <section class="option-section">
-        <h2 class="option-label">Vibe</h2>
-        <div class="pill-group" role="group" aria-label="Vibe preset">
-          {#each VIBE_OPTIONS as opt (opt.value)}
-            <button
-              class="pill"
-              class:selected={audioPreset === opt.value}
-              onclick={() => audioPreset = opt.value}
-              aria-pressed={audioPreset === opt.value}
-            >{opt.label}</button>
-          {/each}
+      <details class="advanced-details">
+        <summary class="advanced-summary">Advanced settings</summary>
+        <div class="advanced-body">
+          <AdvancedSettings
+            mode="pre-round"
+            {clipDuration}
+            {titleRevealDelay}
+            {audioPreset}
+            {allowCasualMode}
+            onClipDurationChange={(v) => { clipDuration = v }}
+            onTitleRevealDelayChange={(v) => { titleRevealDelay = v }}
+            onAudioPresetChange={(v) => { audioPreset = v }}
+            onAllowCasualModeChange={(v) => { allowCasualMode = v }}
+          />
         </div>
-      </section>
-
-      <!-- Clip duration pills -->
-      <section class="option-section">
-        <h2 class="option-label">Clip Duration</h2>
-        <div class="pill-group" role="group" aria-label="Clip duration">
-          {#each CLIP_OPTIONS as opt (opt.value)}
-            <button
-              class="pill"
-              class:selected={clipDuration === opt.value}
-              onclick={() => clipDuration = opt.value}
-              aria-pressed={clipDuration === opt.value}
-            >{opt.label}</button>
-          {/each}
-        </div>
-      </section>
-
-      <!-- Title reveal pills -->
-      <section class="option-section">
-        <h2 class="option-label">Title Reveal</h2>
-        <div class="pill-group" role="group" aria-label="Title reveal timing">
-          {#each REVEAL_OPTIONS as opt (String(opt.value))}
-            <button
-              class="pill"
-              class:selected={titleRevealDelay === opt.value}
-              onclick={() => titleRevealDelay = opt.value}
-              aria-pressed={titleRevealDelay === opt.value}
-            >{opt.label}</button>
-          {/each}
-        </div>
-      </section>
-
-      <!-- Casual Mode toggle -->
-      <section class="option-section">
-        <h2 class="option-label">Casual Mode</h2>
-        <div class="pill-group" role="group" aria-label="Casual mode">
-          <button
-            class="pill"
-            class:selected={!allowCasualMode}
-            onclick={() => allowCasualMode = false}
-            aria-pressed={!allowCasualMode}
-          >Off</button>
-          <button
-            class="pill"
-            class:selected={allowCasualMode}
-            onclick={() => allowCasualMode = true}
-            aria-pressed={allowCasualMode}
-          >Allow</button>
-        </div>
-      </section>
+      </details>
 
       {#if needsHostName}
         <section class="option-section">
@@ -413,7 +351,7 @@
             class="host-name-input"
             type="text"
             maxlength="30"
-            placeholder="Play along!"
+            placeholder="Host"
             aria-label="Your name"
             bind:value={hostNameInput}
           />
@@ -682,30 +620,30 @@
     letter-spacing: 0.05em;
   }
 
-  /* Clip pills */
-  .pill-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .pill {
-    padding: 0.5rem 1rem;
-    min-height: 44px;
-    min-width: 60px;
-    background: var(--bg-2);
+  /* Advanced settings disclosure */
+  .advanced-details {
     border: var(--rule-thin) solid var(--rule);
-    color: var(--fg);
-    cursor: pointer;
-    font-size: 0.9rem;
+    background: var(--bg-2);
   }
 
-  .pill.selected {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-fg);
+  .advanced-summary {
+    cursor: pointer;
+    padding: 0.6rem 0.75rem;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--fg);
+    user-select: none;
   }
-  .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .advanced-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .advanced-body {
+    padding: 0.75rem;
+    border-top: var(--rule-thin) solid var(--rule);
+    background: var(--bg);
+  }
 
   /* Start button */
   .source-error {

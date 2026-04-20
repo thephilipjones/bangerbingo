@@ -1,16 +1,40 @@
 <script lang="ts">
+  import AdvancedSettings from './AdvancedSettings.svelte'
+  import type { AudioPreset } from '../lib/api.ts'
+  import type { TitleRevealDelay } from '../lib/bingo.ts'
+
+  type ClipDuration = number | 'full'
+
   let {
     code,
     onClose,
     onEndRound,
     onSessionEnded,
     onHostManagement,
+    roundActive,
+    clipDuration,
+    titleRevealDelay,
+    audioPreset,
+    allowCasualMode,
+    onClipDurationChange,
+    onTitleRevealDelayChange,
+    onAudioPresetChange,
+    onAllowCasualModeChange,
   }: {
     code: string
     onClose: () => void
     onEndRound: () => void
     onSessionEnded: () => void
     onHostManagement: () => void
+    roundActive: boolean
+    clipDuration: ClipDuration
+    titleRevealDelay: TitleRevealDelay
+    audioPreset: AudioPreset
+    allowCasualMode: boolean
+    onClipDurationChange: (v: ClipDuration) => void
+    onTitleRevealDelayChange: (v: TitleRevealDelay) => void
+    onAudioPresetChange: (v: AudioPreset) => void
+    onAllowCasualModeChange: (v: boolean) => void
   } = $props()
 
   let showConfirm = $state(false)
@@ -50,6 +74,25 @@
     <button class="close-btn" onclick={onClose} aria-label="Close controls">×</button>
   </div>
   <div class="sheet-body">
+    {#if roundActive}
+      <section class="round-settings" aria-label="Round Settings">
+        <h3 class="section-title">Round Settings</h3>
+        <AdvancedSettings
+          mode="live"
+          {code}
+          {clipDuration}
+          {titleRevealDelay}
+          {audioPreset}
+          {allowCasualMode}
+          {onClipDurationChange}
+          {onTitleRevealDelayChange}
+          {onAudioPresetChange}
+          {onAllowCasualModeChange}
+        />
+      </section>
+      <div class="divider"></div>
+    {/if}
+
     <button class="action-btn" onclick={handleEndRound} disabled={ending}>
       <span class="action-icon">↻</span> End Round
     </button>
@@ -93,13 +136,26 @@
     bottom: 0;
     left: 0;
     right: 0;
-    height: 40vh;
+    max-height: 80vh;
     z-index: 150;
     background: var(--bg);
     border-top: var(--rule-thick) solid var(--rule);
     display: flex;
     flex-direction: column;
     color: var(--fg);
+  }
+
+  .round-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .section-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--fg);
+    margin: 0;
   }
 
   .sheet-header {

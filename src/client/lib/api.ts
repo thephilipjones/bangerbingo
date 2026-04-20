@@ -102,3 +102,18 @@ export async function postStartNextRound(code: string): Promise<Response> {
     body: JSON.stringify({}),
   })
 }
+
+export interface RoundConfigPatch {
+  clipDuration?: number | 'full'
+  titleRevealDelay?: number | null
+  audioPreset?: AudioPreset
+  allowCasualMode?: boolean
+}
+
+export async function patchRoundConfig(code: string, partial: RoundConfigPatch): Promise<Response> {
+  return fetch(`/api/rooms/${code}/round-config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(partial),
+  })
+}

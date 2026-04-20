@@ -356,6 +356,16 @@ const VALID_CLIP_DURATIONS: ClipDuration[] = [20, 30, 45, 60, 'full']
 const VALID_TITLE_REVEAL_DELAYS: TitleRevealDelay[] = [0, 5, 10, 15, null]
 const VALID_AUDIO_PRESETS: AudioPreset[] = ['hype', 'deadpan', 'minimal']
 
+function isValidClipDuration(v: unknown): v is ClipDuration {
+  return (VALID_CLIP_DURATIONS as unknown[]).includes(v)
+}
+function isValidTitleRevealDelay(v: unknown): v is TitleRevealDelay {
+  return (VALID_TITLE_REVEAL_DELAYS as unknown[]).includes(v)
+}
+function isValidAudioPreset(v: unknown): v is AudioPreset {
+  return typeof v === 'string' && (VALID_AUDIO_PRESETS as string[]).includes(v)
+}
+
 // Core round creation — fetches playlist, builds pool, deals cards, writes roomState,
 // broadcasts round:start, persists. Invoked from both the HTTP handler and continuous
 // auto-start (Story 8-3).
@@ -388,8 +398,9 @@ async function startRound(
   const playerIds = [hostKey, ...guestKeys]
   const cards = generateCards(pool, playerIds)
 
-  // Reset per-player casual mode opt-ins on every new round
-  roomState.playerCasualModes = new Map()
+  // Story 9-2: playerCasualModes persists across rounds — it only changes on
+  // explicit player toggle or host revoke/restore. (Was previously reset per
+  // round under Story 8-4; superseded.)
 
   const roundStartPayload = {
     type: 'round:start',
@@ -487,11 +498,11 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
 
   if (!playlistId || typeof playlistId !== 'string' || !playlistId.trim())
     return ctx.json({ message: 'playlistId is required' }, 400)
-  if (!VALID_CLIP_DURATIONS.includes(clipDuration))
+  if (!isValidClipDuration(clipDuration))
     return ctx.json({ message: 'Invalid clipDuration' }, 400)
-  if (!VALID_TITLE_REVEAL_DELAYS.includes(titleRevealDelay))
+  if (!isValidTitleRevealDelay(titleRevealDelay))
     return ctx.json({ message: 'Invalid titleRevealDelay' }, 400)
-  if (!VALID_AUDIO_PRESETS.includes(audioPreset))
+  if (!isValidAudioPreset(audioPreset))
     return ctx.json({ message: 'Invalid audioPreset' }, 400)
 
   // hostName: capture-once per room, optional.
@@ -722,6 +733,111 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
   deleteActiveRoom(code)
 
   return ctx.json({})
+})
+
+// PATCH /round-config — host edits the live round's config mid-round (Story 9-2).
+// Mutates both currentRound.config (so startSong picks up new values on the next draw)
+// and pendingRound (so Let It Ride inherits the newest values). Ephemeral: not persisted.
+roomsRouter.patch('/rooms/:code/round-config', requireAuth, async (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
+
+  if (roomState.currentRound?.active !== true) {
+    return ctx.json({ message: 'No active round' }, 409)
+  }
+
+  const body = await ctx.req.json().catch(() => null)
+  if (!body || typeof body !== 'object') return ctx.json({ message: 'Invalid request body' }, 400)
+
+  // Re-check round state after the await — a concurrent end-round could have
+  // nulled currentRound while we were parsing the JSON body.
+  if (roomState.currentRound?.active !== true) {
+    return ctx.json({ message: 'No active round' }, 409)
+  }
+
+  const b = body as Record<string, unknown>
+  const hasClip = Object.prototype.hasOwnProperty.call(b, 'clipDuration')
+  const hasReveal = Object.prototype.hasOwnProperty.call(b, 'titleRevealDelay')
+  const hasPreset = Object.prototype.hasOwnProperty.call(b, 'audioPreset')
+  const hasCasual = Object.prototype.hasOwnProperty.call(b, 'allowCasualMode')
+
+  if (!hasClip && !hasReveal && !hasPreset && !hasCasual) {
+    return ctx.json({ message: 'No valid fields' }, 400)
+  }
+
+  if (hasClip && !isValidClipDuration(b.clipDuration))
+    return ctx.json({ message: 'Invalid clipDuration' }, 400)
+  if (hasReveal && !isValidTitleRevealDelay(b.titleRevealDelay))
+    return ctx.json({ message: 'Invalid titleRevealDelay' }, 400)
+  if (hasPreset && !isValidAudioPreset(b.audioPreset))
+    return ctx.json({ message: 'Invalid audioPreset' }, 400)
+  if (hasCasual && typeof b.allowCasualMode !== 'boolean')
+    return ctx.json({ message: 'Invalid allowCasualMode' }, 400)
+
+  const current = roomState.currentRound.config
+  const merged: RoundConfig = {
+    ...current,
+    ...(hasClip ? { clipDuration: b.clipDuration as ClipDuration } : {}),
+    ...(hasReveal ? { titleRevealDelay: b.titleRevealDelay as TitleRevealDelay } : {}),
+    ...(hasPreset ? { audioPreset: b.audioPreset as AudioPreset } : {}),
+    ...(hasCasual ? { allowCasualMode: b.allowCasualMode as boolean } : {}),
+  }
+
+  roomState.currentRound.config = merged
+  if (roomState.pendingRound) {
+    roomState.pendingRound = {
+      ...roomState.pendingRound,
+      ...(hasClip ? { clipDuration: b.clipDuration as ClipDuration } : {}),
+      ...(hasReveal ? { titleRevealDelay: b.titleRevealDelay as TitleRevealDelay } : {}),
+      ...(hasPreset ? { audioPreset: b.audioPreset as AudioPreset } : {}),
+      ...(hasCasual ? { allowCasualMode: b.allowCasualMode as boolean } : {}),
+    }
+  }
+
+  // Story 9-2: when the host flips allowCasualMode, snapshot + revoke every
+  // active player casual mode (true→false) or restore from the snapshot and
+  // run catch-up sweeps (false→true). The snapshot persists across round
+  // boundaries so toggling back on in a later round still restores.
+  if (hasCasual) {
+    const wasAllowed = current.allowCasualMode
+    const nowAllowed = b.allowCasualMode as boolean
+    if (wasAllowed && !nowAllowed) {
+      roomState.priorCasualModes = new Set()
+      for (const [name, on] of roomState.playerCasualModes.entries()) {
+        if (on !== true) continue
+        roomState.priorCasualModes.add(name)
+        roomState.playerCasualModes.set(name, false)
+        roomState.currentRound.autoMarkedTileIndices.delete(name)
+        broadcast(code, { type: 'player:casual-mode-changed', name, enabled: false })
+      }
+    } else if (!wasAllowed && nowAllowed && roomState.priorCasualModes) {
+      for (const name of roomState.priorCasualModes) {
+        roomState.playerCasualModes.set(name, true)
+        broadcast(code, { type: 'player:casual-mode-changed', name, enabled: true })
+        runCasualModeSweep(code, roomState, { playerName: name, isCatchUp: true })
+      }
+      roomState.priorCasualModes = undefined
+    }
+  }
+
+  // Narrow broadcast to only the fields that were actually patched, so a
+  // client with an in-flight optimistic edit on a different row doesn't get
+  // clobbered by an echo of the stale value for that row.
+  const changedConfig: Partial<RoundConfig> = {
+    ...(hasClip ? { clipDuration: merged.clipDuration } : {}),
+    ...(hasReveal ? { titleRevealDelay: merged.titleRevealDelay } : {}),
+    ...(hasPreset ? { audioPreset: merged.audioPreset } : {}),
+    ...(hasCasual ? { allowCasualMode: merged.allowCasualMode } : {}),
+  }
+  broadcast(code, { type: 'round-config:changed', config: changedConfig })
+  return ctx.json(merged)
 })
 
 // POST /round/next-round — host starts the next round with the same config ("Let It Ride").

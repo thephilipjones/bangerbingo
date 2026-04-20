@@ -1,4 +1,6 @@
 import type { AudioPreset } from './api.ts'
+
+export type ClipDuration = number | 'full'
 import { computePlayerCount } from './waitingRoom.ts'
 import {
   initTiles,
@@ -13,6 +15,7 @@ import {
 } from './bingo.ts'
 import type { ClientTile, Tile, TitleRevealDelay } from './bingo.ts'
 import { applyPlayerEvent } from './ws.ts'
+import { isValidClipDuration, isValidTitleRevealDelay, isValidAudioPreset } from './hostPrefs.ts'
 
 export const WIN_LINES: number[][] = [
   [0,1,2,3,4], [5,6,7,8,9], [10,11,12,13,14], [15,16,17,18,19], [20,21,22,23,24],
@@ -70,6 +73,7 @@ export function createGameState({
 }) {
   let tiles = $state<ClientTile[]>([])
   let roundConfig = $state<{ titleRevealDelay: TitleRevealDelay } | null>(null)
+  let clipDuration = $state<ClipDuration>(30)
   let audioPreset = $state<AudioPreset>('minimal')
   let winData = $state<WinData | null>(null)
   let isClaiming = $state(false)
@@ -153,6 +157,7 @@ export function createGameState({
       nopeIndex = null
       const card = data.card as Tile[]
       roundConfig = { titleRevealDelay: data.titleRevealDelay as TitleRevealDelay }
+      clipDuration = (data.clipDuration as ClipDuration | undefined) ?? 30
       audioPreset = (data.audioPreset as AudioPreset | undefined) ?? 'minimal'
       allowCasualMode = (data.allowCasualMode as boolean | undefined) ?? false
       casualModePlayers = new Set()
@@ -168,6 +173,20 @@ export function createGameState({
       songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
       currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
       highestRoundNumber = Math.max(highestRoundNumber, (data.roundNumber as number | undefined) ?? 0)
+    } else if (data.type === 'round-config:changed') {
+      const cfg = (data.config as Record<string, unknown> | undefined) ?? {}
+      if ('clipDuration' in cfg && isValidClipDuration(cfg.clipDuration)) {
+        clipDuration = cfg.clipDuration
+      }
+      if ('titleRevealDelay' in cfg && isValidTitleRevealDelay(cfg.titleRevealDelay)) {
+        roundConfig = { titleRevealDelay: cfg.titleRevealDelay }
+      }
+      if ('audioPreset' in cfg && isValidAudioPreset(cfg.audioPreset)) {
+        audioPreset = cfg.audioPreset
+      }
+      if ('allowCasualMode' in cfg && typeof cfg.allowCasualMode === 'boolean') {
+        allowCasualMode = cfg.allowCasualMode
+      }
     } else if (data.type === 'player:casual-mode-changed') {
       const s = new Set(casualModePlayers)
       if (data.enabled) s.add(data.name as string)
@@ -245,7 +264,12 @@ export function createGameState({
 
   return {
     get tiles() { return tiles },
+    get clipDuration() { return clipDuration },
+    set clipDuration(v: ClipDuration) { clipDuration = v },
+    get titleRevealDelay() { return roundConfig?.titleRevealDelay ?? null },
+    set titleRevealDelay(v: TitleRevealDelay) { roundConfig = { titleRevealDelay: v } },
     get audioPreset() { return audioPreset },
+    set audioPreset(v: AudioPreset) { audioPreset = v },
     get winData() { return winData },
     set winData(v: WinData | null) { winData = v },
     get isClaiming() { return isClaiming },
@@ -274,6 +298,7 @@ export function createGameState({
     },
     get showStats() { return showStats },
     get allowCasualMode() { return allowCasualMode },
+    set allowCasualMode(v: boolean) { allowCasualMode = v },
     get casualModePlayers() { return casualModePlayers },
     set casualModePlayers(v: Set<string>) { casualModePlayers = v },
     get catchUpToastCount() { return catchUpToastCount },

@@ -392,6 +392,15 @@
     onEndRound={handleEndRound}
     onSessionEnded={handleSessionEnd}
     onHostManagement={handleSessionEnd}
+    roundActive={game.tiles.length > 0}
+    clipDuration={game.clipDuration}
+    titleRevealDelay={game.titleRevealDelay}
+    audioPreset={game.audioPreset}
+    allowCasualMode={game.allowCasualMode}
+    onClipDurationChange={(v) => { game.clipDuration = v }}
+    onTitleRevealDelayChange={(v) => { game.titleRevealDelay = v }}
+    onAudioPresetChange={(v) => { game.audioPreset = v }}
+    onAllowCasualModeChange={(v) => { game.allowCasualMode = v }}
   />
 {/if}
 

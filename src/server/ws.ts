@@ -79,8 +79,12 @@ export interface RoomState {
   currentRound?: RoundState
   sdkDeviceId?: string
   sessionStats: SessionStats
-  // Casual Mode (Story 8-4): not persisted — resets between sessions.
+  // Casual Mode (Story 8-4; Story 9-2 persists across rounds): not persisted —
+  // resets between sessions. Only changes via explicit player or host action.
   playerCasualModes: Map<string, boolean> // name → casual mode on
+  // Snapshot of names who had casual mode ON before the host revoked it mid-session
+  // (allowCasualMode: true → false). Consumed on restore (false → true). Story 9-2.
+  priorCasualModes?: Set<string>
 }
 
 export const roomSockets = new Map<string, RoomState>()
@@ -332,6 +336,8 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
           if (typeof msg.enabled !== 'boolean') return
           const r = roomSockets.get(code)
           if (!r) return
+          // Story 9-2: reject new opt-ins while the host has the permission off.
+          if (msg.enabled === true && r.currentRound?.config.allowCasualMode === false) return
           // Host uses host_name as the casual-mode key so the existing PlayerList
           // ☕ indicator (keyed on hostName) lights up without extra client wiring.
           const currentHostName = getRoomByCode(code)?.host_name
@@ -429,6 +435,8 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
           if (typeof msg.enabled !== 'boolean') return
           const r = roomSockets.get(code)
           if (!r) return
+          // Story 9-2: reject new opt-ins while the host has the permission off.
+          if (msg.enabled === true && r.currentRound?.config.allowCasualMode === false) return
           r.playerCasualModes.set(name, msg.enabled)
           broadcast(code, { type: 'player:casual-mode-changed', name, enabled: msg.enabled })
           // Casual Mode (Story 8-5) — AC #4. On enable, run a catch-up sweep for this

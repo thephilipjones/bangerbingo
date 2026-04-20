@@ -1037,6 +1037,41 @@ describe('player:casual-mode-changed', () => {
     host.close()
     alice.close()
   })
+
+  it('rejects new enables when currentRound.config.allowCasualMode is false (Story 9-2)', async () => {
+    seedHost('host_1')
+    createRoom('CASL', 'host_1')
+
+    const host = await connect('/ws?code=CASL', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=CASL&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    // Mount a minimal currentRound with allowCasualMode=false so the guard fires.
+    const rs = roomSockets.get('CASL')!
+    rs.currentRound = {
+      active: true,
+      paused: true,
+      config: { clipDuration: 30, titleRevealDelay: 5, audioPreset: 'minimal', allowCasualMode: false, roundNumber: 1 },
+      playlist: [], currentSongIndex: -1, songHistory: [], cards: new Map(),
+      autoMarkedTileIndices: new Map(), timers: {},
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: true }))
+    // Follow with a disable — which IS allowed (enabled: false never blocked).
+    alice.ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: false }))
+
+    const msg = await host.next('player:casual-mode-changed')
+    // The enable was rejected; the first message host sees is the disable.
+    expect(msg).toEqual({ type: 'player:casual-mode-changed', name: 'Alice', enabled: false })
+    expect(rs.playerCasualModes.get('Alice')).toBe(false)
+
+    host.close()
+    alice.close()
+  })
 })
 
 // ── Casual Mode — square:auto-marked (Story 8-5) ──────────────────────────
