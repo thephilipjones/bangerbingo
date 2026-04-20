@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-20 # 10-retro done
+last_updated: 2026-04-20 # 11-1 ready-for-dev
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -118,8 +118,12 @@ development_status:
   epic-9-retrospective: done
 
   # Epic 10: Multi-Device Playback (Spotify Connect Picker)
-  epic-10: in-progress
+  epic-10: done
   10-1-device-list-api-and-live-swap-endpoint: done
   10-2-device-chip-and-picker-ui: done
   10-3-sdk-default-preference-persistence-and-failure-path: done
   epic-10-retrospective: done
+
+  # Epic 11: Icon System Overhaul
+  epic-11: in-progress
+  11-1-phosphor-icon-system: ready-for-dev
