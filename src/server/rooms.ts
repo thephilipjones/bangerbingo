@@ -618,6 +618,7 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
 const handleSetPlayerDevice = async (ctx: Context<AuthEnv>) => {
   const host = ctx.var.host
   const code = ctx.req.param('code')
+  if (!code) return ctx.json({ message: 'Room not found' }, 404)
 
   const room = getRoomByCode(code)
   if (!room) return ctx.json({ message: 'Room not found' }, 404)
