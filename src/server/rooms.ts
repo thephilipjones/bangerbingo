@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
 import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room, type Host } from './db.ts'
@@ -611,7 +611,11 @@ roomsRouter.post('/rooms/:code/round/pause', requireAuth, (ctx) => {
   return ctx.json({})
 })
 
-roomsRouter.post('/rooms/:code/sdk/device', requireAuth, async (ctx) => {
+// Unified handler: POST /rooms/:code/player/device (canonical) +
+// POST /rooms/:code/sdk/device (legacy alias — SDK `ready` callback).
+// When round is active-playing and the id changes, transfer Spotify
+// playback to the new device; otherwise just store the selection.
+const handleSetPlayerDevice = async (ctx: Context<AuthEnv>) => {
   const host = ctx.var.host
   const code = ctx.req.param('code')
 
@@ -620,13 +624,106 @@ roomsRouter.post('/rooms/:code/sdk/device', requireAuth, async (ctx) => {
   if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
 
   const body = await ctx.req.json().catch(() => null)
-  if (!body || typeof body.deviceId !== 'string') return ctx.json({ message: 'Invalid request body' }, 400)
+  if (!body || typeof body.deviceId !== 'string' || body.deviceId.length === 0) return ctx.json({ message: 'Invalid request body' }, 400)
 
   const roomState = roomSockets.get(code)
   if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
-  roomState.sdkDeviceId = body.deviceId
 
+  const newId: string = body.deviceId
+  const round = roomState.currentRound
+  const isActivePlaying = !!round && round.active && !round.paused
+
+  // Same-device no-op during active playback (AC #17)
+  if (isActivePlaying && roomState.sdkDeviceId === newId) {
+    return ctx.json({})
+  }
+
+  if (isActivePlaying && roomState.sdkDeviceId !== newId) {
+    const freshHost = await withFreshToken(host)
+    if (!freshHost) return ctx.json({ message: 'Spotify auth degraded' }, 503)
+
+    let res: Response
+    try {
+      res = await fetch('https://api.spotify.com/v1/me/player', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${freshHost.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_ids: [newId], play: true }),
+      })
+    } catch (err) {
+      console.error('[spotify:transfer]', err)
+      return ctx.json({ message: 'Device swap failed' }, 502)
+    }
+
+    if (res.status === 401) {
+      const text = await res.text().catch(() => '')
+      console.error('[spotify:transfer] 401', text)
+      refreshWithRetry(host.user_id).catch(() => {})
+      return ctx.json({ message: 'Spotify auth degraded' }, 503)
+    }
+    if (res.status === 404) {
+      const text = await res.text().catch(() => '')
+      console.error('[spotify:transfer] 404', text)
+      return ctx.json({ message: 'Device unavailable — pick another' }, 502)
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.error(`[spotify:transfer] ${res.status}`, text)
+      return ctx.json({ message: 'Device swap failed' }, 502)
+    }
+  }
+
+  roomState.sdkDeviceId = newId
+  persistRoomState(code)
   return ctx.json({})
+}
+
+roomsRouter.post('/rooms/:code/player/device', requireAuth, handleSetPlayerDevice)
+roomsRouter.post('/rooms/:code/sdk/device', requireAuth, handleSetPlayerDevice)
+
+// Lists Spotify Connect devices available to the host. Client (Story 10-2)
+// renders the picker from this response; fields match Spotify's own shape.
+roomsRouter.get('/rooms/:code/player/devices', requireAuth, async (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const freshHost = await withFreshToken(host)
+  if (!freshHost) return ctx.json({ message: 'Spotify auth degraded' }, 503)
+
+  let res: Response
+  try {
+    res = await fetch('https://api.spotify.com/v1/me/player/devices', {
+      headers: { Authorization: `Bearer ${freshHost.access_token}` },
+    })
+  } catch (err) {
+    console.error('[spotify:devices]', err)
+    return ctx.json({ message: 'Spotify devices fetch failed' }, 502)
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    console.error(`[spotify:devices] ${res.status}`, text)
+    return ctx.json({ message: 'Spotify devices fetch failed' }, 502)
+  }
+
+  const json = await res.json().catch(() => null) as { devices?: Array<Record<string, unknown>> } | null
+  const raw = Array.isArray(json?.devices) ? json!.devices! : []
+  const devices = raw.map(d => ({
+    id: d.id,
+    name: d.name,
+    type: d.type,
+    is_active: d.is_active,
+    is_restricted: d.is_restricted,
+    volume_percent: d.volume_percent,
+  }))
+
+  return ctx.json({ devices })
 })
 
 roomsRouter.post('/rooms/:code/round/end', requireAuth, (ctx) => {

@@ -1476,6 +1476,434 @@ describe('POST /api/rooms/:code/sdk/device', () => {
   })
 })
 
+// ── GET /api/rooms/:code/player/devices ───────────────────────────────────
+
+function seedDegradedHost(userId = 'host_1') {
+  upsertHost({
+    user_id: userId,
+    display_name: 'Test Host',
+    email: 'test@example.com',
+    access_token: '', // empty → withFreshToken returns null immediately
+    refresh_token: '',
+    token_expires_at: 0,
+  })
+}
+
+describe('GET /api/rooms/:code/player/devices', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('200 — passes through Spotify device list fields', async () => {
+    seedHost()
+    await seedRoom()
+
+    const spotifyBody = {
+      devices: [
+        { id: 'dev-1', name: 'My Phone', type: 'Smartphone', is_active: true, is_restricted: false, volume_percent: 75, is_private_session: false, supports_volume: true },
+        { id: 'dev-2', name: 'Web Player', type: 'Computer', is_active: false, is_restricted: false, volume_percent: null, is_private_session: false, supports_volume: true },
+      ],
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(spotifyBody), { status: 200, headers: { 'Content-Type': 'application/json' } }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/devices', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { devices: Array<Record<string, unknown>> }
+    expect(body.devices).toEqual([
+      { id: 'dev-1', name: 'My Phone', type: 'Smartphone', is_active: true, is_restricted: false, volume_percent: 75 },
+      { id: 'dev-2', name: 'Web Player', type: 'Computer', is_active: false, is_restricted: false, volume_percent: null },
+    ])
+  })
+
+  it('200 — empty devices list is a valid response', async () => {
+    seedHost()
+    await seedRoom()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ devices: [] }), { status: 200 }) as unknown as Response,
+    )
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/devices', { headers: { Cookie: sessionCookie() } })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { devices: unknown[] }
+    expect(body.devices).toEqual([])
+  })
+
+  it('503 — withFreshToken returns null (auth degraded)', async () => {
+    seedDegradedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/devices', { headers: { Cookie: sessionCookie() } })
+    expect(res.status).toBe(503)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('Spotify auth degraded')
+  })
+
+  it('401 — no session cookie', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/devices')
+    expect(res.status).toBe(401)
+  })
+
+  it('403 — wrong host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/devices', { headers: { Cookie: sessionCookie('host_1') } })
+    expect(res.status).toBe(403)
+  })
+
+  it('404 — room not found', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ZZZZ/player/devices', { headers: { Cookie: sessionCookie() } })
+    expect(res.status).toBe(404)
+  })
+
+  it('502 — Spotify upstream failure', async () => {
+    seedHost()
+    await seedRoom()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('rate limit', { status: 500 }) as unknown as Response,
+    )
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/devices', { headers: { Cookie: sessionCookie() } })
+    expect(res.status).toBe(502)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('Spotify devices fetch failed')
+  })
+})
+
+// ── POST /api/rooms/:code/player/device ───────────────────────────────────
+
+describe('POST /api/rooms/:code/player/device', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function getPersistedState(code = 'ABCD'): Promise<{ sdkDeviceId?: string } | null> {
+    const { getAllActiveRooms } = await import('../db.ts')
+    const rows = getAllActiveRooms()
+    const row = rows.find(r => r.room_code === code)
+    if (!row) return null
+    return JSON.parse(row.state_json) as { sdkDeviceId?: string }
+  }
+
+  it('200 — no active round: stores deviceId and persists room state', async () => {
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'new-device' }),
+    })
+    expect(res.status).toBe(200)
+    expect(roomSockets.get('ABCD')!.sdkDeviceId).toBe('new-device')
+
+    const persisted = await getPersistedState()
+    expect(persisted?.sdkDeviceId).toBe('new-device')
+  })
+
+  it('200 — active round: transfers playback, updates sdkDeviceId, leaves round intact', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'old-id'
+    const round = seedActiveRound()
+    round.currentSongIndex = 2
+    round.paused = false
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'new-id' }),
+    })
+    expect(res.status).toBe(200)
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://api.spotify.com/v1/me/player')
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    expect(init.method).toBe('PUT')
+    expect(init.body).toBe(JSON.stringify({ device_ids: ['new-id'], play: true }))
+
+    expect(roomState.sdkDeviceId).toBe('new-id')
+    expect(roomState.currentRound!.currentSongIndex).toBe(2)
+    expect(roomState.currentRound!.active).toBe(true)
+    expect(roomState.currentRound!.paused).toBe(false)
+  })
+
+  it('200 — same-device no-op during active round: no transfer call', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'x'
+    const round = seedActiveRound()
+    round.paused = false
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'x' }),
+    })
+    expect(res.status).toBe(200)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(roomState.sdkDeviceId).toBe('x')
+  })
+
+  it('200 — paused round is NOT treated as active-playing (stores without transfer)', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'old-id'
+    const round = seedActiveRound()
+    round.paused = true
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'new-id' }),
+    })
+    expect(res.status).toBe(200)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(roomState.sdkDeviceId).toBe('new-id')
+
+    const persisted = await getPersistedState()
+    expect(persisted?.sdkDeviceId).toBe('new-id')
+  })
+
+  it('502 — transfer 404 (device dormant): sdkDeviceId unchanged', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'old-id'
+    seedActiveRound().paused = false
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('device not found', { status: 404 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'bogus-id' }),
+    })
+    expect(res.status).toBe(502)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('Device unavailable — pick another')
+    expect(roomState.sdkDeviceId).toBe('old-id')
+  })
+
+  it('503 — transfer 401 (token revoked): sdkDeviceId unchanged, refresh fired', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'old-id'
+    seedActiveRound().paused = false
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('unauthorized', { status: 401 }) as unknown as Response,
+    )
+    const refreshModule = await import('../refresh.ts')
+    const refreshSpy = vi.spyOn(refreshModule, 'refreshWithRetry').mockResolvedValue(undefined)
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'new-id' }),
+    })
+    expect(res.status).toBe(503)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('Spotify auth degraded')
+    expect(roomState.sdkDeviceId).toBe('old-id')
+
+    await vi.waitFor(() => { expect(refreshSpy).toHaveBeenCalledWith('host_1') }, { timeout: 3000 })
+  })
+
+  it('502 — transfer 5xx: sdkDeviceId unchanged', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'old-id'
+    seedActiveRound().paused = false
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('server error', { status: 500 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'new-id' }),
+    })
+    expect(res.status).toBe(502)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('Device swap failed')
+    expect(roomState.sdkDeviceId).toBe('old-id')
+  })
+
+  it('503 — active round but withFreshToken returns null', async () => {
+    seedDegradedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.sdkDeviceId = 'old-id'
+    seedActiveRound().paused = false
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'new-id' }),
+    })
+    expect(res.status).toBe(503)
+    const body = await res.json() as { message: string }
+    expect(body.message).toBe('Spotify auth degraded')
+    expect(roomState.sdkDeviceId).toBe('old-id')
+  })
+
+  it('400 — missing deviceId', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('400 — non-string deviceId', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 123 }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('401 — no session cookie', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'x' }),
+    })
+    expect(res.status).toBe(401)
+  })
+
+  it('403 — wrong host', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_2', 'ABCD')
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie('host_1'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'x' }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('404 — room not found', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ZZZZ/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'x' }),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it('503 — room exists but no active WS session', async () => {
+    seedHost()
+    await seedRoom()
+    roomSockets.clear()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'x' }),
+    })
+    expect(res.status).toBe(503)
+  })
+})
+
+// ── Alias parity: /sdk/device ≡ /player/device (no active round) ───────────
+
+describe('Alias parity — /sdk/device and /player/device store identical state', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+  })
+
+  it('both endpoints update roomState.sdkDeviceId identically', async () => {
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const resCanonical = await app.request('/api/rooms/ABCD/player/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'from-canonical' }),
+    })
+    expect(resCanonical.status).toBe(200)
+    expect(await resCanonical.json()).toEqual({})
+    expect(roomSockets.get('ABCD')!.sdkDeviceId).toBe('from-canonical')
+
+    const resLegacy = await app.request('/api/rooms/ABCD/sdk/device', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: 'from-legacy' }),
+    })
+    expect(resLegacy.status).toBe(200)
+    expect(await resLegacy.json()).toEqual({})
+    expect(roomSockets.get('ABCD')!.sdkDeviceId).toBe('from-legacy')
+  })
+})
+
 // ── POST /api/rooms/:code/round/claim ─────────────────────────────────────
 
 function makeCard(winTracks: Track[]): Tile[] {

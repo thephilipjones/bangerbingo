@@ -1,6 +1,6 @@
 # Story 10.1: Device List API & Live-Swap Endpoint
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -101,26 +101,38 @@ This story is **server-only**. Stories 10-2 (Device Chip + Picker UI) and 10-3 (
 
 ## Tasks / Subtasks
 
-- [ ] **Server — unified device-write handler** (ACs #7–#17)
-  - [ ] Extract the existing `/sdk/device` handler body at [src/server/rooms.ts:614-630](src/server/rooms.ts#L614-L630) into a shared `handleSetPlayerDevice` function (or inline the logic in a new handler and have `/sdk/device` call into it).
-  - [ ] Register `POST /api/rooms/:code/player/device` with `requireAuth` + the unified handler.
-  - [ ] Re-register `POST /api/rooms/:code/sdk/device` as a thin alias (calls the same handler function, or registers on the same route handler).
-  - [ ] Inside the handler, resolve `freshHost` via `withFreshToken(ctx.var.host)`; return 503 `{ message: 'Spotify auth degraded' }` on null (matches `startContinuousRound` pattern at [src/server/rooms.ts:463](src/server/rooms.ts#L463)).
-  - [ ] Branch on "active-playing round" (see AC #12 guard exactly): if yes AND new id differs from current, call `PUT /v1/me/player` with `{ device_ids: [newId], play: true }`; on non-2xx, short-circuit per ACs #14/#15/#16 (do NOT update `sdkDeviceId`).
-  - [ ] On success (transfer-200 or no-active-round path), set `roomState.sdkDeviceId = deviceId` and call `persistRoomState(code)`.
-  - [ ] Return `ctx.json({})` with 200.
-- [ ] **Server — devices list handler** (ACs #1–#6)
-  - [ ] Register `roomsRouter.get('/rooms/:code/player/devices', requireAuth, …)`.
-  - [ ] Guard: 404 if `getRoomByCode(code)` returns null; 403 if `room.host_user_id !== ctx.var.host.user_id` (ordering: 404 before 403, mirroring `/sdk/device`).
-  - [ ] Resolve `freshHost` via `withFreshToken`; 503 on null.
-  - [ ] `fetch('https://api.spotify.com/v1/me/player/devices', { headers: { Authorization: 'Bearer ' + freshHost.access_token } })`.
-  - [ ] On non-2xx: log `console.error('[spotify:devices] <status>', bodyText)`, return 502 `{ message: 'Spotify devices fetch failed' }`.
-  - [ ] On 2xx: parse JSON, pass through `devices` as-is (Spotify's own field names and nullability). Return 200 `{ devices }`.
-- [ ] **Server tests — `/player/devices`** (AC #20). Add a new `describe('GET /api/rooms/:code/player/devices', …)` block in [src/server/__tests__/rooms.test.ts](src/server/__tests__/rooms.test.ts). Follow the existing mock-fetch / `seedHost` / `seedRoom` / `sessionCookie` patterns; mirror placement next to the `/sdk/device` describe block for reviewer legibility.
-- [ ] **Server tests — `/player/device`** (AC #21). Add a new `describe('POST /api/rooms/:code/player/device', …)` block. Cover the no-active-round store, active-round transfer, same-device no-op, 502/503 failure modes, and 400/401/403/404/503 guards. Adapt seed helpers from existing `/sdk/device` tests.
-- [ ] **Server tests — alias parity** (AC #22). Minimal test asserting `/sdk/device` and `/player/device` store identical state for identical input.
-- [ ] **Server tests — existing `/sdk/device` regression** (AC #23). Run the existing describe block; no changes required (if handler unification routed correctly, these pass as-is).
-- [ ] **Regression gates** (AC #24). `bun run lint`, `bun run test`, `bun run build:client` clean. If `svelte-check` errors appear, compare against baseline (8 pre-existing errors per 9-3 Completion Notes) — no new regressions allowed.
+- [x] **Server — unified device-write handler** (ACs #7–#17)
+  - [x] Extract the existing `/sdk/device` handler body at [src/server/rooms.ts:614-630](src/server/rooms.ts#L614-L630) into a shared `handleSetPlayerDevice` function (or inline the logic in a new handler and have `/sdk/device` call into it).
+  - [x] Register `POST /api/rooms/:code/player/device` with `requireAuth` + the unified handler.
+  - [x] Re-register `POST /api/rooms/:code/sdk/device` as a thin alias (calls the same handler function, or registers on the same route handler).
+  - [x] Inside the handler, resolve `freshHost` via `withFreshToken(ctx.var.host)`; return 503 `{ message: 'Spotify auth degraded' }` on null (matches `startContinuousRound` pattern at [src/server/rooms.ts:463](src/server/rooms.ts#L463)).
+  - [x] Branch on "active-playing round" (see AC #12 guard exactly): if yes AND new id differs from current, call `PUT /v1/me/player` with `{ device_ids: [newId], play: true }`; on non-2xx, short-circuit per ACs #14/#15/#16 (do NOT update `sdkDeviceId`).
+  - [x] On success (transfer-200 or no-active-round path), set `roomState.sdkDeviceId = deviceId` and call `persistRoomState(code)`.
+  - [x] Return `ctx.json({})` with 200.
+- [x] **Server — devices list handler** (ACs #1–#6)
+  - [x] Register `roomsRouter.get('/rooms/:code/player/devices', requireAuth, …)`.
+  - [x] Guard: 404 if `getRoomByCode(code)` returns null; 403 if `room.host_user_id !== ctx.var.host.user_id` (ordering: 404 before 403, mirroring `/sdk/device`).
+  - [x] Resolve `freshHost` via `withFreshToken`; 503 on null.
+  - [x] `fetch('https://api.spotify.com/v1/me/player/devices', { headers: { Authorization: 'Bearer ' + freshHost.access_token } })`.
+  - [x] On non-2xx: log `console.error('[spotify:devices] <status>', bodyText)`, return 502 `{ message: 'Spotify devices fetch failed' }`.
+  - [x] On 2xx: parse JSON, pass through `devices` as-is (Spotify's own field names and nullability). Return 200 `{ devices }`.
+- [x] **Server tests — `/player/devices`** (AC #20).
+- [x] **Server tests — `/player/device`** (AC #21).
+- [x] **Server tests — alias parity** (AC #22).
+- [x] **Server tests — existing `/sdk/device` regression** (AC #23). Existing describe block passes unchanged against the unified handler.
+- [x] **Regression gates** (AC #24). `npm run lint` (= `tsc --noEmit`) clean, `npm run test` 440/440 green, `npm run build:client` clean. (Project uses npm, not bun — story's `bun run …` references are inherited copy from earlier docs.)
+- [x] **Auth scope bump.** Added `user-read-playback-state user-modify-playback-state` to [src/server/auth.ts:105](src/server/auth.ts#L105) (flagged in "Latest Tech Information" scope risk callout). Existing hosts must re-login once for the new scopes to be granted; the existing `AuthDegradedBanner` re-auth path covers this.
+
+### Review Findings
+
+- [x] [Review][Patch] Missing persistence assertion in paused-round test — `'200 — paused round is NOT treated as active-playing'` asserts `sdkDeviceId` updated in memory but never checks the DB row; add a `getPersistedState()` assertion to cover the AC#13 persist path [src/server/__tests__/rooms.test.ts]
+- [x] [Review][Patch] Empty-string `deviceId` bypasses 400 guard — `typeof body.deviceId !== 'string'` passes for `""`, which would propagate as `?device_id=` to Spotify and produce a silent API error; add a `body.deviceId.length > 0` check [src/server/rooms.ts:627]
+- [x] [Review][Patch] `seedDegradedHost` duplicated in two describe blocks — identical helper copy-pasted into `GET /player/devices` and `POST /player/device` describes; hoist to module scope [src/server/__tests__/rooms.test.ts]
+- [x] [Review][Patch] `vi.waitFor` has no explicit timeout in the transfer-401 test — fire-and-forget `refreshWithRetry` assertion relies on the default 1s timeout, which is fragile in CI; pass an explicit `{ timeout: 3000 }` option [src/server/__tests__/rooms.test.ts]
+- [x] [Review][Defer] `GET /player/devices` has no WS-session presence check [src/server/rooms.ts] — deferred, pre-existing; spec doesn't require it for the GET; Story 10-2 (picker UI) owns the UX gate
+- [x] [Review][Defer] AC#11 guard ordering: 400 body-check fires before 503 WS-session check [src/server/rooms.ts:626-630] — deferred, pre-existing; preserved unchanged from original `/sdk/device` handler; spec's "match /sdk/device exactly" takes precedence over the numbered list
+- [x] [Review][Defer] Scope upgrade has no in-app re-consent gate [src/server/auth.ts:105] — deferred, pre-existing; dev notes explicitly document re-login requirement; AuthDegradedBanner covers gracefully
+- [x] [Review][Defer] Transfer-401 returns 503 without retrying — deferred, pre-existing; matches established pattern in `callSpotifyOnDevice`; client's auth-degraded re-auth path is the recovery
 
 ## Dev Notes
 
@@ -267,9 +279,25 @@ claude-opus-4-7
 
 ### Debug Log References
 
+None.
+
 ### Completion Notes List
 
+- Unified the existing `/sdk/device` body into a shared `handleSetPlayerDevice` handler registered on both `POST /api/rooms/:code/player/device` (canonical) and `POST /api/rooms/:code/sdk/device` (legacy alias, per AC #8).
+- Same handler implements the live mid-round transfer logic (AC #12): when `currentRound.active && !currentRound.paused && newId !== sdkDeviceId`, it issues `PUT /v1/me/player` with `{ device_ids: [newId], play: true }` using a `withFreshToken`-resolved token. 2xx → update `sdkDeviceId` + `persistRoomState`; 404 → 502 "Device unavailable — pick another"; 401 → 503 "Spotify auth degraded" + fire-and-forget `refreshWithRetry`; other non-2xx / network → 502 "Device swap failed". `sdkDeviceId` is only mutated on success (ACs #14/#15/#16).
+- Same-device no-op preserved (AC #17): early-return 200 `{}` when `isActivePlaying && newId === sdkDeviceId`, no `fetch` call.
+- Paused or absent round → skips transfer, stores `sdkDeviceId`, calls `persistRoomState` (AC #10). This closes the pre-existing gap on the legacy `/sdk/device` path where the SDK `ready` callback was not persisting — now the unified handler persists unconditionally on any successful write (AC #13), including the SDK-ready callback.
+- Added `GET /api/rooms/:code/player/devices` with 404 → 403 → 503 (auth-degraded) → 502 (upstream failure) ordering. Pass-through fields are exactly `{ id, name, type, is_active, is_restricted, volume_percent }` (AC #1); Spotify's `is_private_session` and `supports_volume` are dropped.
+- **OAuth scope bump.** The scope string at [src/server/auth.ts:105](src/server/auth.ts#L105) previously did not include `user-read-playback-state` (required by `GET /me/player/devices`) or `user-modify-playback-state` (required by `PUT /me/player`). Added both scopes proactively (Open Question #1 in the spec). Existing hosts get a 403 from Spotify for the new endpoints until they re-login; the existing `AuthDegradedBanner` re-auth path covers that gracefully. Flag for PR body: existing hosts must re-authenticate once.
+- `callSpotifyOnDevice` is untouched (AC #18). The 404→`transfer_playback` reactivation path retains its original semantics (waking the *stored* device) and does not get reused for the user-picker transfer path. `startRound`, `round/play`, `round/pause`, `round/next` are unchanged (AC #19).
+- Tests added: 7 for `GET /player/devices`, 15 for `POST /player/device` (including a paused-round guard test that exercises the AC #10 store-only branch), 1 alias-parity test. Existing `/sdk/device` describe block passes unchanged against the unified handler (AC #23).
+- Regression: `npm run lint` (= `tsc --noEmit`) clean, `npm run test` 440/440 green, `npm run build:client` clean. No `svelte-check` regressions (story is server-only).
+
 ### File List
+
+- `src/server/auth.ts` — added `user-read-playback-state user-modify-playback-state` to OAuth scope string.
+- `src/server/rooms.ts` — added `Context` type import; replaced inline `/sdk/device` handler with shared `handleSetPlayerDevice` handler; registered canonical `POST /player/device` + legacy alias `POST /sdk/device` on it; added `GET /player/devices` handler.
+- `src/server/__tests__/rooms.test.ts` — added `describe` blocks for `GET /player/devices`, `POST /player/device`, and alias parity.
 
 ## Open Questions
 
@@ -282,3 +310,4 @@ claude-opus-4-7
 | Date       | Change                                                                 |
 | ---------- | ---------------------------------------------------------------------- |
 | 2026-04-20 | Story 10-1 drafted — Device List API + unified device-write endpoint with live mid-round swap. Server-only. Epic 10 first story. |
+| 2026-04-20 | Story 10-1 implemented — unified `handleSetPlayerDevice` on `/player/device` + `/sdk/device` alias; new `GET /player/devices` handler; live mid-round transfer via `PUT /v1/me/player`; OAuth scope bumped for `user-read-playback-state` + `user-modify-playback-state` (hosts must re-login once). 23 new tests; 440/440 suite green; lint + build:client clean. |

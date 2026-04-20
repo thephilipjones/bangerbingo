@@ -102,7 +102,7 @@ authRouter.get('/login', (ctx) => {
     client_id: config.spotifyClientId,
     response_type: 'code',
     redirect_uri: config.spotifyRedirectUri,
-    scope: 'streaming user-read-email user-read-private playlist-read-private playlist-read-collaborative',
+    scope: 'streaming user-read-email user-read-private playlist-read-private playlist-read-collaborative user-read-playback-state user-modify-playback-state',
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   })

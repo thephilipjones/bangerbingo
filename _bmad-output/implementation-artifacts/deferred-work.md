@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Deferred from: code review of 10-1-device-list-api-and-live-swap-endpoint (2026-04-20)
+
+- **`GET /player/devices` has no WS-session presence check** — spec doesn't require it for GET (only POST/AC#11 needs the 503 guard); Story 10-2 picker UI owns the "no session → hide picker" UX gate. (src/server/rooms.ts)
+- **AC#11 guard ordering: 400 body-check fires before 503 WS-session check** — preserved unchanged from original `/sdk/device` handler; spec's "ordering matches /sdk/device exactly" takes precedence over the numbered list; only affects the edge case of invalid body + no WS session simultaneously. (src/server/rooms.ts:626-630)
+- **Scope upgrade has no in-app re-consent gate** — adding `user-read-playback-state` / `user-modify-playback-state` to the OAuth scope requires re-login for existing hosts; dev notes acknowledge this; `AuthDegradedBanner` re-auth path covers it gracefully. (src/server/auth.ts:105)
+- **Transfer-401 returns 503 without retrying the transfer** — fire-and-forget `refreshWithRetry` then 503 matches the established pattern in `callSpotifyOnDevice`; client's auth-degraded re-auth path is the recovery. Pre-existing design. (src/server/rooms.ts)
+
 ## Deferred from: code review of modal-chrome-and-dark-mode-cleanup (2026-04-19)
 
 - **`.header-btn.active { border-color: transparent }` loses affordance in forced-colors mode** — Windows High Contrast strips accent backgrounds; the transparent border gives no edge to replace it. Minor a11y concern, outside the chrome-cleanup plan's scope. (src/client/components/GameHeader.svelte:110)
