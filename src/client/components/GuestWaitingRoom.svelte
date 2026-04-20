@@ -3,6 +3,7 @@
   import { TRIVIA_FACTS, shuffle } from '../lib/trivia.ts'
   import VinylWithTonearm from './VinylWithTonearm.svelte'
   import PlayerList from './PlayerList.svelte'
+  import InfoTooltip from './InfoTooltip.svelte'
 
   let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, onLeave, allowCasualMode = false, casualModeOn = false, onCasualToggle, casualModeNames = new Set() }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; onLeave?: () => void; allowCasualMode?: boolean; casualModeOn?: boolean; onCasualToggle?: () => void; casualModeNames?: Set<string> } = $props()
 
@@ -96,6 +97,7 @@
   <!-- Casual Mode toggle (waiting room) -->
   {#if allowCasualMode}
     <div class="casual-toggle-row">
+      <InfoTooltip label="Casual Mode" text="Automatically mark your squares at the end of each song" />
       <span class="casual-label">Casual Mode</span>
       <button
         class="casual-btn"

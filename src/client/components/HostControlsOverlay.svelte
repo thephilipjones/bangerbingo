@@ -69,14 +69,14 @@
 
 <!-- Sheet -->
 <div class="sheet" role="dialog" aria-label="Host controls">
-  <div class="sheet-header">
+  <header class="sheet-header">
     <span class="sheet-title">Host Controls</span>
     <button class="close-btn" onclick={onClose} aria-label="Close controls">×</button>
-  </div>
+  </header>
+
   <div class="sheet-body">
     {#if roundActive}
       <section class="round-settings" aria-label="Round Settings">
-        <h3 class="section-title">Round Settings</h3>
         <AdvancedSettings
           mode="live"
           {code}
@@ -90,16 +90,9 @@
           {onAllowCasualModeChange}
         />
       </section>
-      <div class="divider"></div>
+    {:else}
+      <p class="idle-msg">No round active.</p>
     {/if}
-
-    <button class="action-btn" onclick={handleEndRound} disabled={ending}>
-      <span class="action-icon">↻</span> End Round
-    </button>
-
-    <button class="action-btn" onclick={() => { showConfirm = true }} disabled={ending}>
-      <span class="action-icon">⏻</span> End Session
-    </button>
 
     {#if showConfirm}
       <div class="confirm-dialog">
@@ -114,13 +107,15 @@
         </div>
       </div>
     {/if}
-
-    <div class="divider"></div>
-
-    <button class="mgmt-link" onclick={onHostManagement}>
-      <span class="action-icon">→</span> Host Management
-    </button>
   </div>
+
+  <footer class="sheet-footer">
+    <button class="footer-nav" onclick={onHostManagement} disabled={ending}>← Sessions</button>
+    <div class="footer-danger-group">
+      <button class="footer-danger" onclick={handleEndRound} disabled={ending || !roundActive}>End Round</button>
+      <button class="footer-danger" onclick={() => { showConfirm = true }} disabled={ending}>End Session</button>
+    </div>
+  </footer>
 </div>
 
 <style>
@@ -148,40 +143,38 @@
   .round-settings {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .section-title {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--fg);
-    margin: 0;
   }
 
   .sheet-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 16px 12px;
+    gap: 0.5rem;
+    padding: 1.15rem 0.5rem 0.95rem 1.25rem;
     border-bottom: var(--rule-thin) solid var(--rule);
     flex-shrink: 0;
   }
 
   .sheet-title {
     color: var(--fg);
-    font-size: 16px;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
     font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: var(--track-display);
   }
 
   .close-btn {
     background: none;
     border: none;
     color: var(--fg-muted);
-    font-size: 24px;
+    font-size: 1rem;
     cursor: pointer;
     padding: 0;
-    min-width: 44px;
-    min-height: 44px;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -193,70 +186,59 @@
   .sheet-body {
     overflow-y: auto;
     flex: 1;
-    padding: 16px;
+    padding: 0.85rem 1rem;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.5rem;
   }
 
-  .action-btn {
-    background: var(--bg-2);
-    color: var(--fg);
-    border: var(--rule-thin) solid var(--rule);
-    padding: 14px 16px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    text-align: left;
-    min-height: 44px;
-  }
-  .action-btn:hover { background: var(--fg); color: var(--bg); }
-  .action-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-  .action-icon {
-    margin-right: 8px;
+  .idle-msg {
+    color: var(--fg-muted);
+    font-size: 0.9rem;
+    text-align: center;
+    margin: 0.5rem 0;
   }
 
   .confirm-dialog {
     background: var(--bg-2);
     border: var(--rule-thin) solid var(--rule);
-    padding: 16px;
+    padding: 0.75rem;
   }
 
   .confirm-title {
     color: var(--fg);
-    font-size: 15px;
+    font-size: 0.95rem;
     font-weight: 600;
-    margin: 0 0 4px;
+    margin: 0 0 0.25rem;
   }
 
   .confirm-sub {
     color: var(--fg-muted);
-    font-size: 13px;
-    margin: 0 0 12px;
+    font-size: 0.8rem;
+    margin: 0 0 0.6rem;
   }
 
   .error-text {
     color: var(--danger);
-    font-size: 13px;
-    margin: 0 0 8px;
+    font-size: 0.8rem;
+    margin: 0 0 0.5rem;
   }
 
   .confirm-actions {
     display: flex;
-    gap: 10px;
+    gap: 0.5rem;
     justify-content: flex-end;
   }
 
   .confirm-cancel,
   .confirm-end {
     min-width: 44px;
-    min-height: 44px;
+    min-height: 36px;
     border: var(--rule-thin) solid var(--rule);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 0.85rem;
     font-weight: 600;
-    padding: 0 16px;
+    padding: 0 0.85rem;
   }
 
   .confirm-cancel {
@@ -276,24 +258,53 @@
     cursor: default;
   }
 
-  .divider {
-    height: 1px;
-    background: var(--rule);
-    margin: 4px 0;
+  .sheet-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-top: var(--rule-thin) solid var(--rule);
+    flex-shrink: 0;
+    background: var(--bg);
   }
 
-  .mgmt-link {
+  .footer-nav {
     background: none;
     border: none;
     color: var(--fg-muted);
-    font-size: 14px;
+    font-size: 0.85rem;
     cursor: pointer;
-    text-align: left;
-    padding: 10px 0;
-    min-height: 44px;
+    padding: 0.4rem 0.5rem;
+    min-height: 36px;
+    white-space: nowrap;
   }
-  .mgmt-link:hover { color: var(--fg); }
-  .mgmt-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .footer-nav:hover:not(:disabled) { color: var(--fg); }
+  .footer-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .footer-nav:disabled { opacity: 0.5; cursor: default; }
+
+  .footer-danger-group {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .footer-danger {
+    background: none;
+    border: var(--rule-thin) solid var(--danger);
+    color: var(--danger);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.4rem 0.75rem;
+    min-height: 36px;
+    white-space: nowrap;
+  }
+  .footer-danger:hover:not(:disabled) {
+    background: var(--danger);
+    color: var(--accent-fg);
+  }
+  .footer-danger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .footer-danger:disabled { opacity: 0.4; cursor: default; }
 
   @media (min-width: 768px) {
     .overlay {
@@ -306,14 +317,10 @@
       right: 8px;
       left: auto;
       height: auto;
-      max-height: 60vh;
-      width: 280px;
+      max-height: 70vh;
+      width: 400px;
       border-radius: 10px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-    }
-
-    .sheet-header {
-      display: none;
     }
   }
 </style>

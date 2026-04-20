@@ -59,9 +59,9 @@
 
   const TOOLTIPS: Record<RowKey, string> = {
     clipDuration: 'How long each song plays before moving on.',
-    titleRevealDelay: 'When the song title and artist appear on cards.',
-    audioPreset: 'Style of the celebration overlay when someone wins — Hype (loud), Deadpan (dry), Minimal (subtle).',
-    allowCasualMode: 'Lets players tap squares to auto-mark instead of listening for the full song.',
+    titleRevealDelay: 'How long until the song title and artist are revealed.',
+    audioPreset: 'Celebration style when someone wins — Hype (loud), Deadpan (dry), Minimal (subtle).',
+    allowCasualMode: 'Allow players to opt into autopilot where squares are marked for them at the end of a song.',
   }
 
   const SAVED_COPY: Record<RowKey, string> = {

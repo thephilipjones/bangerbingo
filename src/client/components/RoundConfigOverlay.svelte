@@ -236,7 +236,10 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_interactive_supports_focus -->
   <div class="panel" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Round configuration">
-    <button class="close-btn" onclick={requestClose} aria-label="Close">✕</button>
+    <header class="panel-header">
+      <h2 class="picker-header">Pick a playlist</h2>
+      <button class="close-btn" onclick={requestClose} aria-label="Close">✕</button>
+    </header>
 
     <div class="config-panel">
 
@@ -327,7 +330,10 @@
       </div>
 
       <details class="advanced-details">
-        <summary class="advanced-summary">Advanced settings</summary>
+        <summary class="advanced-summary">
+          <span>Settings</span>
+          <span class="chevron" aria-hidden="true">▸</span>
+        </summary>
         <div class="advanced-body">
           <AdvancedSettings
             mode="pre-round"
@@ -397,13 +403,19 @@
     border: var(--rule-heavy) solid var(--rule);
     width: 100%;
     max-width: 480px;
-    padding: 3rem 1rem 1.5rem;
+    padding: 0;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 1.15rem 0.5rem 0.95rem 1.25rem;
+    border-bottom: var(--rule-thin) solid var(--rule);
   }
 
   .close-btn {
-    position: absolute;
-    top: 0.35rem;
-    right: 0.35rem;
     width: 36px;
     height: 36px;
     min-width: 36px;
@@ -430,6 +442,7 @@
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    padding: 1.25rem 1rem 1.5rem;
   }
 
   .host-name-input {
@@ -451,6 +464,16 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+  }
+
+  .picker-header {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: var(--track-display);
+    color: var(--fg);
+    margin: 0;
   }
 
   .search-bar {
@@ -632,12 +655,30 @@
     min-height: 44px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--fg);
     user-select: none;
+    list-style: none;
   }
+  .advanced-summary::-webkit-details-marker { display: none; }
+  .advanced-summary::marker { content: ''; }
   .advanced-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .chevron {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+  .advanced-details[open] .chevron {
+    transform: rotate(90deg);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chevron { transition: none; }
+  }
 
   .advanced-body {
     padding: 0.75rem;

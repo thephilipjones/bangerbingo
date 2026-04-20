@@ -6,6 +6,7 @@
   import GuestWaitingRoom from '../components/GuestWaitingRoom.svelte'
   import GameHeader from '../components/GameHeader.svelte'
   import PlayersOverlay from '../components/PlayersOverlay.svelte'
+  import InfoTooltip from '../components/InfoTooltip.svelte'
   import { cardFingerprint } from '../lib/bingo.ts'
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
@@ -181,6 +182,7 @@
     {/if}
     {#if game.allowCasualMode}
       <div class="casual-toggle-row">
+        <InfoTooltip label="Casual Mode" text="Automatically mark your squares at the end of each song" />
         <span class="casual-label">Casual Mode</span>
         <button
           class="casual-btn"
