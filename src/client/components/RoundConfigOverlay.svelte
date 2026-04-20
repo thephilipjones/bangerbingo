@@ -22,12 +22,14 @@
   let {
     code,
     initialHostName,
+    roundActive = false,
     onClose,
     onStarted,
     onHostNameMaybeSaved,
   }: {
     code: string
     initialHostName: string | null
+    roundActive?: boolean
     onClose: () => void
     onStarted: (submittedHostName: string | null) => void
     // Called when a hostName was submitted to the server but startRound itself failed.
@@ -371,12 +373,15 @@
       {#if sourceError}
         <p class="source-error">{sourceError}</p>
       {/if}
+      {#if roundActive}
+        <p class="replace-round-note">Starting this round will end the current one for everyone.</p>
+      {/if}
       <button
         class="start-btn"
         onclick={handleStartRound}
         disabled={submitting}
       >
-        {submitting ? 'Starting…' : 'Start Round →'}
+        {submitting ? 'Starting…' : roundActive ? 'Start New Round →' : 'Start Round →'}
       </button>
 
     </div>
@@ -690,6 +695,13 @@
   .source-error {
     color: var(--danger);
     font-size: 0.9rem;
+  }
+
+  .replace-round-note {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+    margin: 0;
+    text-align: center;
   }
 
   .start-btn {

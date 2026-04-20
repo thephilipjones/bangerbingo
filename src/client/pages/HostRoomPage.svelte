@@ -30,11 +30,9 @@
   let authDegraded = $state(false)
   let showControls = $state(false)
   let isRoundConfigOpen = $state(false)
-  let toastVisible = $state(false)
   let playbackError = $state(false)
   let pendingAutoPlay = $state(false)
   let nextRoundError = $state<string | null>(null)
-  let undoTimer: ReturnType<typeof setTimeout> | undefined
   let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
   let nextRoundErrorTimer: ReturnType<typeof setTimeout> | undefined
   let sessionEnded = false
@@ -64,7 +62,6 @@
   function handleSessionEnd() {
     if (sessionEnded) return
     sessionEnded = true
-    clearTimeout(undoTimer)
     onSessionEnded()
   }
 
@@ -122,19 +119,9 @@
       .catch(() => showPlaybackError())
   }
 
-  function handleEndRound() {
-    clearTimeout(undoTimer)
+  function handleStartNewRound() {
     showControls = false
-    toastVisible = true
-    undoTimer = setTimeout(async () => {
-      toastVisible = false
-      await fetch(`/api/rooms/${code}/round/end`, { method: 'POST' })
-    }, 2000)
-  }
-
-  function handleUndo() {
-    toastVisible = false
-    clearTimeout(undoTimer)
+    isRoundConfigOpen = true
   }
 
   function initSdkPlayer() {
@@ -267,7 +254,6 @@
 
   onDestroy(() => {
     game.cleanup()
-    clearTimeout(undoTimer)
     clearTimeout(playbackErrorTimer)
     clearTimeout(nextRoundErrorTimer)
     ws?.close()
@@ -301,13 +287,6 @@
 
 {#if game.showPlayers}
   <PlayersOverlay players={game.players} {hostName} selfName={null} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} />
-{/if}
-
-{#if toastVisible}
-  <div class="toast" role="status">
-    <span>Ending round…</span>
-    <button class="undo-btn" onclick={handleUndo}>Undo</button>
-  </div>
 {/if}
 
 <div class="host-game" inert={isRoundConfigOpen || undefined}>
@@ -376,6 +355,7 @@
   <RoundConfigOverlay
     {code}
     initialHostName={hostName}
+    roundActive={game.tiles.length > 0 && game.winData === null}
     onClose={() => { isRoundConfigOpen = false }}
     onStarted={(name) => {
       if (name) hostName = name
@@ -389,8 +369,7 @@
   <HostControlsOverlay
     {code}
     onClose={() => { showControls = false }}
-    onEndRound={handleEndRound}
-    onSessionEnded={handleSessionEnd}
+    onStartNewRound={handleStartNewRound}
     onHostManagement={handleSessionEnd}
     roundActive={game.tiles.length > 0}
     clipDuration={game.clipDuration}
@@ -431,31 +410,6 @@
     flex-direction: column;
     align-items: center;
     padding: 80px 16px 64px;
-  }
-
-  .toast {
-    position: fixed;
-    top: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--fg);
-    color: var(--bg);
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    z-index: 200;
-    white-space: nowrap;
-    border: var(--rule-thin) solid var(--rule);
-  }
-
-  .undo-btn {
-    background: none;
-    border: var(--rule-thin) solid currentColor;
-    color: inherit;
-    padding: 4px 10px;
-    cursor: pointer;
-    font-size: 13px;
   }
 
   .sdk-status {

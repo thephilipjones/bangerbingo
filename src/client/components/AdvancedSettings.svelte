@@ -219,6 +219,13 @@
     <div class="row-header">
       <h3 class="option-label">Clip Duration</h3>
       <InfoTooltip label="Clip Duration" text={TOOLTIPS.clipDuration} />
+      {#if mode === 'live'}
+        {#if savedFlags.clipDuration}
+          <p class="saved-pill" role="status">{SAVED_COPY.clipDuration}</p>
+        {:else if errorMsgs.clipDuration}
+          <p class="error-pill" role="alert">{errorMsgs.clipDuration}</p>
+        {/if}
+      {/if}
     </div>
     <div class="pill-group" role="group" aria-label="Clip duration">
       {#each CLIP_OPTIONS as opt (String(opt.value))}
@@ -231,19 +238,19 @@
         >{opt.label}</button>
       {/each}
     </div>
-    {#if mode === 'live'}
-      {#if savedFlags.clipDuration}
-        <p class="saved-pill" role="status">{SAVED_COPY.clipDuration}</p>
-      {:else if errorMsgs.clipDuration}
-        <p class="error-pill" role="alert">{errorMsgs.clipDuration}</p>
-      {/if}
-    {/if}
   </section>
 
   <section class="option-section">
     <div class="row-header">
       <h3 class="option-label">Title Reveal</h3>
       <InfoTooltip label="Title Reveal" text={TOOLTIPS.titleRevealDelay} />
+      {#if mode === 'live'}
+        {#if savedFlags.titleRevealDelay}
+          <p class="saved-pill" role="status">{SAVED_COPY.titleRevealDelay}</p>
+        {:else if errorMsgs.titleRevealDelay}
+          <p class="error-pill" role="alert">{errorMsgs.titleRevealDelay}</p>
+        {/if}
+      {/if}
     </div>
     <div class="pill-group" role="group" aria-label="Title reveal timing">
       {#each REVEAL_OPTIONS as opt (String(opt.value))}
@@ -256,19 +263,19 @@
         >{opt.label}</button>
       {/each}
     </div>
-    {#if mode === 'live'}
-      {#if savedFlags.titleRevealDelay}
-        <p class="saved-pill" role="status">{SAVED_COPY.titleRevealDelay}</p>
-      {:else if errorMsgs.titleRevealDelay}
-        <p class="error-pill" role="alert">{errorMsgs.titleRevealDelay}</p>
-      {/if}
-    {/if}
   </section>
 
   <section class="option-section">
     <div class="row-header">
       <h3 class="option-label">Win Reaction</h3>
       <InfoTooltip label="Win Reaction" text={TOOLTIPS.audioPreset} />
+      {#if mode === 'live'}
+        {#if savedFlags.audioPreset}
+          <p class="saved-pill" role="status">{SAVED_COPY.audioPreset}</p>
+        {:else if errorMsgs.audioPreset}
+          <p class="error-pill" role="alert">{errorMsgs.audioPreset}</p>
+        {/if}
+      {/if}
     </div>
     <div class="pill-group" role="group" aria-label="Win reaction">
       {#each PRESET_OPTIONS as opt (opt.value)}
@@ -281,19 +288,19 @@
         >{opt.label}</button>
       {/each}
     </div>
-    {#if mode === 'live'}
-      {#if savedFlags.audioPreset}
-        <p class="saved-pill" role="status">{SAVED_COPY.audioPreset}</p>
-      {:else if errorMsgs.audioPreset}
-        <p class="error-pill" role="alert">{errorMsgs.audioPreset}</p>
-      {/if}
-    {/if}
   </section>
 
   <section class="option-section">
     <div class="row-header">
       <h3 class="option-label">Casual Mode</h3>
       <InfoTooltip label="Casual Mode" text={TOOLTIPS.allowCasualMode} />
+      {#if mode === 'live'}
+        {#if savedFlags.allowCasualMode}
+          <p class="saved-pill" role="status">{SAVED_COPY.allowCasualMode}</p>
+        {:else if errorMsgs.allowCasualMode}
+          <p class="error-pill" role="alert">{errorMsgs.allowCasualMode}</p>
+        {/if}
+      {/if}
     </div>
     <div class="pill-group" role="group" aria-label="Casual mode">
       <button
@@ -311,13 +318,6 @@
         aria-pressed={allowCasualMode}
       >Allow</button>
     </div>
-    {#if mode === 'live'}
-      {#if savedFlags.allowCasualMode}
-        <p class="saved-pill" role="status">{SAVED_COPY.allowCasualMode}</p>
-      {:else if errorMsgs.allowCasualMode}
-        <p class="error-pill" role="alert">{errorMsgs.allowCasualMode}</p>
-      {/if}
-    {/if}
   </section>
 </div>
 
@@ -376,12 +376,14 @@
   .saved-pill {
     color: var(--fg-muted);
     font-size: 0.8rem;
-    margin: 0;
+    margin: 0 0 0 auto;
+    text-align: right;
   }
 
   .error-pill {
     color: var(--danger);
     font-size: 0.8rem;
-    margin: 0;
+    margin: 0 0 0 auto;
+    text-align: right;
   }
 </style>
