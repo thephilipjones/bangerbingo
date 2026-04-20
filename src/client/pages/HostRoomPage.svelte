@@ -10,8 +10,10 @@
   import HostMiniPlayer from '../components/HostMiniPlayer.svelte'
   import HostControlsOverlay from '../components/HostControlsOverlay.svelte'
   import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
+  import DevicePicker from '../components/DevicePicker.svelte'
   import { createGameState } from '../lib/gameState.svelte.ts'
-  import { postStartNextRound } from '../lib/api.ts'
+  import { postStartNextRound, postSetDevice } from '../lib/api.ts'
+  import type { SpotifyDevice } from '../lib/api.ts'
 
   let { code, onRoundEnded, onSessionEnded }: {
     code: string
@@ -35,6 +37,16 @@
   let nextRoundError = $state<string | null>(null)
   let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
   let nextRoundErrorTimer: ReturnType<typeof setTimeout> | undefined
+  let selectedDevice = $state<{ id: string; name: string; type: string } | null>(null)
+  let showDevicePicker = $state(false)
+  let pickerError = $state<string | null>(null)
+  let pickerSource = $state<'chip' | 'settings'>('chip')
+  let isSwitchingDevice = $state(false)
+  let confirmPill = $state<string | null>(null)
+  let deviceSwitchResult = $state<'saved' | 'error' | null>(null)
+  let confirmPillTimer: ReturnType<typeof setTimeout> | undefined
+  let deviceSwitchResultTimer: ReturnType<typeof setTimeout> | undefined
+  let chipRef = $state<HTMLElement | undefined>(undefined)
   let sessionEnded = false
   let ws: WebSocket
   let player: Spotify.Player | undefined
@@ -117,6 +129,45 @@
     fetch(`/api/rooms/${code}/round/next`, { method: 'POST' })
       .then(res => { if (!res.ok) showPlaybackError() })
       .catch(() => showPlaybackError())
+  }
+
+  function handleOpenDevicePicker(source: 'chip' | 'settings' = 'chip') {
+    pickerSource = source
+    pickerError = null
+    chipRef = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+    showDevicePicker = true
+  }
+
+  async function handleDeviceSelected(device: SpotifyDevice) {
+    if (isSwitchingDevice || device.id === null) return
+    isSwitchingDevice = true
+    const deviceId = device.id
+    const source = pickerSource
+    const prevDevice = selectedDevice
+    selectedDevice = { id: deviceId, name: device.name, type: device.type }
+    try {
+      const res = await postSetDevice(code, deviceId).catch(() => null)
+      if (res && res.ok) {
+        if (source === 'chip') {
+          clearTimeout(confirmPillTimer)
+          confirmPill = `Playing on ${device.name}`
+          confirmPillTimer = setTimeout(() => { confirmPill = null }, 1500)
+        }
+        deviceSwitchResult = 'saved'
+        clearTimeout(deviceSwitchResultTimer)
+        deviceSwitchResultTimer = setTimeout(() => { deviceSwitchResult = null }, 1500)
+      } else {
+        selectedDevice = prevDevice
+        clearTimeout(confirmPillTimer)
+        confirmPill = null
+        pickerError = "Couldn't switch device"
+        deviceSwitchResult = 'error'
+        clearTimeout(deviceSwitchResultTimer)
+        deviceSwitchResultTimer = setTimeout(() => { deviceSwitchResult = null }, 3000)
+      }
+    } finally {
+      isSwitchingDevice = false
+    }
   }
 
   function handleStartNewRound() {
@@ -256,6 +307,8 @@
     game.cleanup()
     clearTimeout(playbackErrorTimer)
     clearTimeout(nextRoundErrorTimer)
+    clearTimeout(confirmPillTimer)
+    clearTimeout(deviceSwitchResultTimer)
     ws?.close()
     player?.disconnect()
     if (sdkScript && document.head.contains(sdkScript)) {
@@ -349,7 +402,22 @@
   onNext={handleNext}
   onGearClick={() => { showControls = true }}
   controlsOpen={showControls}
+  {selectedDevice}
+  onDeviceChipClick={() => handleOpenDevicePicker('chip')}
+  {confirmPill}
+  devicePickerOpen={showDevicePicker}
 />
+
+{#if showDevicePicker}
+  <DevicePicker
+    {code}
+    activeDeviceId={selectedDevice?.id ?? null}
+    incomingError={pickerError}
+    onDeviceSelected={handleDeviceSelected}
+    onClose={() => { showDevicePicker = false }}
+    returnFocusEl={chipRef}
+  />
+{/if}
 
 {#if isRoundConfigOpen}
   <RoundConfigOverlay
@@ -380,6 +448,9 @@
     onTitleRevealDelayChange={(v) => { game.titleRevealDelay = v }}
     onAudioPresetChange={(v) => { game.audioPreset = v }}
     onAllowCasualModeChange={(v) => { game.allowCasualMode = v }}
+    activeDeviceName={selectedDevice?.name ?? null}
+    onOpenDevicePicker={() => handleOpenDevicePicker('settings')}
+    {deviceSwitchResult}
   />
 {/if}
 

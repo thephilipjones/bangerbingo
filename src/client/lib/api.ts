@@ -117,3 +117,26 @@ export async function patchRoundConfig(code: string, partial: RoundConfigPatch):
     body: JSON.stringify(partial),
   })
 }
+
+export interface SpotifyDevice {
+  id: string | null
+  name: string
+  type: string
+  is_active: boolean
+  is_restricted: boolean
+  volume_percent: number | null
+}
+
+export async function getDevices(code: string, signal?: AbortSignal): Promise<{ devices: SpotifyDevice[] }> {
+  const res = await fetch(`/api/rooms/${code}/player/devices`, { signal })
+  if (!res.ok) throw new Error(`GET /player/devices failed: ${res.status}`)
+  return res.json()
+}
+
+export async function postSetDevice(code: string, deviceId: string): Promise<Response> {
+  return fetch(`/api/rooms/${code}/player/device`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId }),
+  })
+}

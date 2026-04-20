@@ -22,6 +22,9 @@
     onTitleRevealDelayChange,
     onAudioPresetChange,
     onAllowCasualModeChange,
+    activeDeviceName = null,
+    onOpenDevicePicker = undefined,
+    deviceSwitchResult = null,
   }: {
     mode: Mode
     code?: string
@@ -33,7 +36,13 @@
     onTitleRevealDelayChange?: (v: TitleRevealDelay) => void
     onAudioPresetChange?: (v: AudioPreset) => void
     onAllowCasualModeChange?: (v: boolean) => void
+    activeDeviceName?: string | null
+    onOpenDevicePicker?: () => void
+    deviceSwitchResult?: 'saved' | 'error' | null
   } = $props()
+
+  const deviceSaved = $derived(deviceSwitchResult === 'saved')
+  const deviceError = $derived(deviceSwitchResult === 'error')
 
   const CLIP_OPTIONS: { value: ClipDuration; label: string }[] = [
     { value: 20, label: '20s' },
@@ -289,6 +298,24 @@
       {/each}
     </div>
   </section>
+
+  {#if mode === 'live'}
+    <section class="option-section">
+      <div class="row-header">
+        <h3 class="option-label">Playback Device</h3>
+        {#if deviceSaved}
+          <p class="saved-pill" role="status">Switched to {activeDeviceName}</p>
+        {:else if deviceError}
+          <p class="error-pill" role="alert">Couldn't switch device</p>
+        {/if}
+      </div>
+      <button
+        type="button"
+        class="pill device-pill"
+        onclick={() => onOpenDevicePicker?.()}
+      >{activeDeviceName ?? 'No device selected'}</button>
+    </section>
+  {/if}
 
   <section class="option-section">
     <div class="row-header">

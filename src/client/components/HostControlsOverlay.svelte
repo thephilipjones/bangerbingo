@@ -19,6 +19,9 @@
     onTitleRevealDelayChange,
     onAudioPresetChange,
     onAllowCasualModeChange,
+    activeDeviceName = null,
+    onOpenDevicePicker = undefined,
+    deviceSwitchResult = null,
   }: {
     code: string
     onClose: () => void
@@ -33,6 +36,9 @@
     onTitleRevealDelayChange: (v: TitleRevealDelay) => void
     onAudioPresetChange: (v: AudioPreset) => void
     onAllowCasualModeChange: (v: boolean) => void
+    activeDeviceName?: string | null
+    onOpenDevicePicker?: () => void
+    deviceSwitchResult?: 'saved' | 'error' | null
   } = $props()
 </script>
 
@@ -60,6 +66,9 @@
           {onTitleRevealDelayChange}
           {onAudioPresetChange}
           {onAllowCasualModeChange}
+          {activeDeviceName}
+          {onOpenDevicePicker}
+          {deviceSwitchResult}
         />
       </section>
     {:else}

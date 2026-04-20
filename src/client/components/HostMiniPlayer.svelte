@@ -1,4 +1,6 @@
 <script lang="ts">
+  import DeviceChip from './DeviceChip.svelte'
+
   let {
     currentTrack,
     isPlaying,
@@ -9,6 +11,10 @@
     onNext,
     onGearClick,
     controlsOpen = false,
+    selectedDevice = null,
+    onDeviceChipClick,
+    confirmPill = null,
+    devicePickerOpen = false,
   }: {
     currentTrack: { title: string; artist: string } | null
     isPlaying: boolean
@@ -19,6 +25,10 @@
     onNext: () => void
     onGearClick: () => void
     controlsOpen?: boolean
+    selectedDevice?: { id: string; name: string; type: string } | null
+    onDeviceChipClick?: () => void
+    confirmPill?: string | null
+    devicePickerOpen?: boolean
   } = $props()
 </script>
 
@@ -44,6 +54,13 @@
       <span class="track-text">{currentTrack.title} — {currentTrack.artist}</span>
     {:else}
       <span class="track-text waiting">Waiting for round to start…</span>
+    {/if}
+  </div>
+
+  <div class="chip-wrap">
+    <DeviceChip {selectedDevice} onclick={onDeviceChipClick ?? (() => {})} expanded={devicePickerOpen} />
+    {#if confirmPill}
+      <p class="confirm-pill" role="status">{confirmPill}</p>
     {/if}
   </div>
 
@@ -135,6 +152,28 @@
     color: var(--accent-fg);
     border-color: var(--accent);
     font-size: 14px;
+  }
+
+  .chip-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .confirm-pill {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100vw - 32px);
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
+    font-size: 12px;
+    padding: 4px 10px;
+    pointer-events: none;
+    margin: 0;
   }
 
   .gear-btn {

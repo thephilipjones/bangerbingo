@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Deferred from: code review of 10-2-device-chip-and-picker-ui (2026-04-20)
+
+- **No focus trap inside DevicePicker modal** — accessibility enhancement beyond spec ACs; #13/#14 only require tap-target size and dismiss behaviour. Consistent with other overlays in this codebase that also lack traps. (src/client/components/DevicePicker.svelte)
+- **Listbox lacks arrow-key navigation / roving tabindex / `aria-activedescendant`** — beyond WAI-ARIA listbox conformance scope of this story; AC #13 only requires tap-target baseline. Every `<li role="option">` is tab-stoppable; consider roving tabindex in a future a11y pass. (src/client/components/DevicePicker.svelte)
+- **`selectedDevice` not initialized from server on mount** — explicitly Story 10-3 scope (SDK-default tracking + `preferredDeviceId`). AC #2 and #20 require "Pick a device ▾" fallback until user picks; current behaviour is correct for 10-2. (src/client/pages/HostRoomPage.svelte)
+- **`handleDeviceSelected` collapses all POST failures to one "Couldn't switch device" message** — matches existing `patchRoundConfig` pattern; finer-grained 401/404/5xx routing (route 401 to re-auth, 404 to session-ended) is a general-purpose enhancement for the whole client API layer. (src/client/pages/HostRoomPage.svelte)
+
 ## Deferred from: code review of 10-1-device-list-api-and-live-swap-endpoint (2026-04-20)
 
 - **`GET /player/devices` has no WS-session presence check** — spec doesn't require it for GET (only POST/AC#11 needs the 503 guard); Story 10-2 picker UI owns the "no session → hide picker" UX gate. (src/server/rooms.ts)
