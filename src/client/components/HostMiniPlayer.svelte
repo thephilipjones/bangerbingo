@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Play, Pause, SkipForward, GearSix } from 'phosphor-svelte'
   import DeviceChip from './DeviceChip.svelte'
+  import type { TitleRevealDelay } from '../lib/bingo.ts'
 
   let {
     currentTrack,
@@ -8,6 +9,8 @@
     sdkReady,
     sdkFailed,
     currentTrackId,
+    titleRevealDelay,
+    currentRevealed,
     onPlayPause,
     onNext,
     onGearClick,
@@ -22,6 +25,8 @@
     sdkReady: boolean
     sdkFailed: boolean
     currentTrackId: string | null
+    titleRevealDelay: TitleRevealDelay
+    currentRevealed: boolean
     onPlayPause: () => void
     onNext: () => void
     onGearClick: () => void
@@ -31,6 +36,15 @@
     confirmPill?: string | null
     devicePickerOpen?: boolean
   } = $props()
+
+  let hostRevealed = $state(false)
+
+  $effect(() => {
+    currentTrackId
+    hostRevealed = false
+  })
+
+  const blurred = $derived(titleRevealDelay !== 0 && !currentRevealed && !hostRevealed)
 </script>
 
 <div class="mini-player">
@@ -52,7 +66,18 @@
 
   <div class="track-info">
     {#if currentTrack}
-      <span class="track-text">{currentTrack.title} — {currentTrack.artist}</span>
+      {#if blurred}
+        <button
+          type="button"
+          class="track-reveal-btn"
+          onclick={() => { hostRevealed = true }}
+          aria-label="Reveal song title"
+        >
+          <span class="track-text blurred">{currentTrack.title} — {currentTrack.artist}</span>
+        </button>
+      {:else}
+        <span class="track-text">{currentTrack.title} — {currentTrack.artist}</span>
+      {/if}
     {:else}
       <span class="track-text waiting">Waiting for round to start…</span>
     {/if}
@@ -101,12 +126,27 @@
     overflow: hidden;
     text-overflow: ellipsis;
     display: block;
+    transition: filter 400ms ease-out;
+  }
+
+  .track-text.blurred {
+    filter: blur(10px);
+    user-select: none;
   }
 
   .track-text.waiting {
     color: var(--fg-muted);
     font-weight: 400;
   }
+
+  .track-reveal-btn {
+    all: unset;
+    cursor: pointer;
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .track-reveal-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .left-controls {
     display: flex;

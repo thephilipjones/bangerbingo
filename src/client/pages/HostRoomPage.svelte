@@ -426,6 +426,8 @@
   {sdkReady}
   {sdkFailed}
   {currentTrackId}
+  titleRevealDelay={game.titleRevealDelay}
+  currentRevealed={game.currentRevealed}
   onPlayPause={handlePlayPause}
   onNext={handleNext}
   onGearClick={() => { showControls = true }}
