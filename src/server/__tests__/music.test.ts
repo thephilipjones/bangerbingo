@@ -69,19 +69,19 @@ describe('GET /api/music/presets', () => {
 // ── GET /api/music/search ──────────────────────────────────────────────────
 
 describe('GET /api/music/search', () => {
+  function mockSpotifySearch(items: Array<{ id: string; name: string; owner: { display_name: string }; tracks: { total: number } }>, next: string | null = null) {
+    return vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ playlists: { next, items } }),
+    } as Response)
+  }
+
   beforeEach(() => {
     initDb(':memory:')
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        playlists: {
-          items: [
-            { id: 'pl1', name: 'Chill Vibes', owner: { display_name: 'Spotify' }, tracks: { total: 50 } },
-            { id: 'pl2', name: 'Party Mix', owner: { display_name: 'User123' }, tracks: { total: 30 } },
-          ],
-        },
-      }),
-    } as Response)
+    mockSpotifySearch([
+      { id: 'pl1', name: 'Chill Vibes', owner: { display_name: 'Spotify' }, tracks: { total: 50 } },
+      { id: 'pl2', name: 'Party Mix', owner: { display_name: 'User123' }, tracks: { total: 30 } },
+    ])
   })
 
   afterEach(() => vi.restoreAllMocks())
@@ -92,19 +92,80 @@ describe('GET /api/music/search', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns mapped playlist results from Spotify search', async () => {
+  it('returns mapped playlist results wrapped with hasMore=false when next is null', async () => {
     seedHost()
     const app = makeApp()
     const res = await app.request('/api/music/search?q=chill', {
       headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
-    const results = await res.json() as Array<{
-      name: string; owner: string; trackCount: number; playlistId: string
-    }>
-    expect(results).toHaveLength(2)
-    expect(results[0]).toEqual({ name: 'Chill Vibes', owner: 'Spotify', trackCount: 50, playlistId: 'pl1' })
-    expect(results[1]).toEqual({ name: 'Party Mix', owner: 'User123', trackCount: 30, playlistId: 'pl2' })
+    const body = await res.json() as {
+      results: Array<{ name: string; owner: string; trackCount: number; playlistId: string }>
+      hasMore: boolean
+    }
+    expect(body.hasMore).toBe(false)
+    expect(body.results).toHaveLength(2)
+    expect(body.results[0]).toEqual({ name: 'Chill Vibes', owner: 'Spotify', trackCount: 50, playlistId: 'pl1' })
+    expect(body.results[1]).toEqual({ name: 'Party Mix', owner: 'User123', trackCount: 30, playlistId: 'pl2' })
+  })
+
+  it('returns hasMore=true when Spotify response includes a next page URL', async () => {
+    seedHost()
+    vi.restoreAllMocks()
+    mockSpotifySearch(
+      [{ id: 'pl1', name: 'Chill Vibes', owner: { display_name: 'Spotify' }, tracks: { total: 50 } }],
+      'https://api.spotify.com/v1/search?offset=10&limit=10&q=chill&type=playlist',
+    )
+    const app = makeApp()
+    const res = await app.request('/api/music/search?q=chill', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { hasMore: boolean }
+    expect(body.hasMore).toBe(true)
+  })
+
+  it('forwards the offset query param to Spotify', async () => {
+    seedHost()
+    vi.restoreAllMocks()
+    const spy = mockSpotifySearch([], null)
+    const app = makeApp()
+    const res = await app.request('/api/music/search?q=chill&offset=20', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const calledUrl = spy.mock.calls[0]?.[0] as string
+    expect(calledUrl).toContain('offset=20')
+    expect(calledUrl).toContain('limit=10')
+  })
+
+  it('returns 400 when offset is non-numeric', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/music/search?q=chill&offset=abc', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when offset exceeds Spotify cap (offset+limit > 1000)', async () => {
+    seedHost()
+    const app = makeApp()
+    const res = await app.request('/api/music/search?q=chill&offset=991', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('accepts offset=990 (Spotify boundary)', async () => {
+    seedHost()
+    vi.restoreAllMocks()
+    mockSpotifySearch([], null)
+    const app = makeApp()
+    const res = await app.request('/api/music/search?q=chill&offset=990', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
   })
 
   it('triggers inline token refresh when token is expired', async () => {

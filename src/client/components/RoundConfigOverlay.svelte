@@ -68,6 +68,9 @@
   let searchResults = $state<PlaylistResult[]>([])
   let searchLoading = $state(false)
   let searchError = $state('')
+  let searchOffset = $state(0)
+  let searchHasMore = $state(false)
+  let paginating = $state(false)
 
   let selectedPlaylist = $state<{ id: string; name: string } | null>(null)
   let playlistRegionEl = $state<HTMLDivElement | null>(null)
@@ -91,40 +94,106 @@
   let searchTimer: ReturnType<typeof setTimeout> | null = null
   let searchSeq = 0
 
+  const PAGE_SIZE = 10
+
   $effect(() => {
     const q = searchQuery.trim()
     if (searchTimer) {
       clearTimeout(searchTimer)
       searchTimer = null
     }
+    // Bump seq unconditionally so any in-flight paginate from a prior query
+    // is invalidated — including the empty-query (clear) branch where no
+    // new search will fire to overwrite stale appends.
+    const seq = ++searchSeq
     if (q === '') {
       searchResults = []
       searchError = ''
       searchLoading = false
+      searchOffset = 0
+      searchHasMore = false
+      paginating = false
       return
     }
     searchLoading = true
     searchError = ''
-    const seq = ++searchSeq
+    searchOffset = 0
+    searchHasMore = false
+    paginating = false
     searchTimer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`)
+        const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}&offset=0`)
         if (seq !== searchSeq) return
         if (!res.ok) throw new Error('Search failed')
-        const data = await res.json()
+        const data = await res.json() as { results: PlaylistResult[]; hasMore: boolean }
         if (seq !== searchSeq) return
-        searchResults = data
+        searchResults = data.results
+        searchHasMore = data.hasMore
+        searchOffset = PAGE_SIZE
         searchError = ''
         if (playlistRegionEl) playlistRegionEl.scrollTop = 0
+        fillIfNotScrollable(seq)
       } catch {
         if (seq !== searchSeq) return
         searchResults = []
+        searchHasMore = false
         searchError = 'Search failed. Please try again.'
       } finally {
         if (seq === searchSeq) searchLoading = false
       }
     }, 250)
   })
+
+  async function loadMoreResults() {
+    if (paginating || !searchHasMore || !isSearching) return
+    const q = searchQuery.trim()
+    if (q === '') return
+    const seq = searchSeq
+    const offset = searchOffset
+    paginating = true
+    try {
+      const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}&offset=${offset}`)
+      if (seq !== searchSeq) return
+      if (!res.ok) throw new Error('Search failed')
+      const data = await res.json() as { results: PlaylistResult[]; hasMore: boolean }
+      if (seq !== searchSeq) return
+      searchResults = [...searchResults, ...data.results]
+      searchOffset = offset + PAGE_SIZE
+      searchHasMore = data.hasMore
+    } catch {
+      if (seq !== searchSeq) return
+      // Silent failure on subsequent pages — stop paginating, keep existing results.
+      searchHasMore = false
+    } finally {
+      if (seq === searchSeq) {
+        paginating = false
+        fillIfNotScrollable(seq)
+      }
+    }
+  }
+
+  // If the region isn't tall enough to scroll but more pages are available,
+  // auto-paginate. Handles short first pages (Spotify filtering nulls) and
+  // very sparse result sets where a scroll event would never fire.
+  function fillIfNotScrollable(seq: number) {
+    if (!playlistRegionEl || !searchHasMore) return
+    if (seq !== searchSeq) return
+    requestAnimationFrame(() => {
+      if (seq !== searchSeq) return
+      if (!playlistRegionEl || paginating) return
+      if (playlistRegionEl.scrollHeight <= playlistRegionEl.clientHeight + 80) {
+        void loadMoreResults()
+      }
+    })
+  }
+
+  function handleRegionScroll() {
+    if (!playlistRegionEl) return
+    const el = playlistRegionEl
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      void loadMoreResults()
+    }
+  }
 
   $effect(() => {
     isSearching
@@ -286,6 +355,7 @@
           role="region"
           aria-live="polite"
           bind:this={playlistRegionEl}
+          onscroll={handleRegionScroll}
         >
           {#if isSearching}
             {#if searchLoading}
@@ -308,6 +378,9 @@
                   </button>
                 {/each}
               </div>
+              {#if paginating}
+                <p class="status-msg status-msg-footer">Loading more…</p>
+              {/if}
             {/if}
           {:else if presetsLoading}
             <p class="status-msg">Loading genres…</p>
@@ -558,6 +631,11 @@
     color: var(--fg-muted);
     text-align: center;
     padding: 2rem 0;
+  }
+
+  .status-msg-footer {
+    padding: 0.75rem 0 0.25rem;
+    font-size: 0.85rem;
   }
 
   .error-msg {

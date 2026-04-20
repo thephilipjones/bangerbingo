@@ -27,6 +27,7 @@ export interface Track {
 
 interface SpotifySearchResponse {
   playlists: {
+    next: string | null
     items: Array<{
       id: string
       name: string
@@ -56,11 +57,21 @@ export interface PlaylistResult {
   playlistId: string
 }
 
-export async function searchPlaylists(query: string, accessToken: string): Promise<PlaylistResult[]> {
+export interface SearchPlaylistsResponse {
+  results: PlaylistResult[]
+  hasMore: boolean
+}
+
+export async function searchPlaylists(
+  query: string,
+  accessToken: string,
+  offset = 0,
+): Promise<SearchPlaylistsResponse> {
   const url = new URL('https://api.spotify.com/v1/search')
   url.searchParams.set('type', 'playlist')
   url.searchParams.set('q', query)
   url.searchParams.set('limit', '10')
+  url.searchParams.set('offset', String(offset))
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -70,12 +81,14 @@ export async function searchPlaylists(query: string, accessToken: string): Promi
 
   const data = await res.json() as SpotifySearchResponse
 
-  return (data.playlists?.items ?? []).filter(item => item !== null).map(item => ({
+  const results = (data.playlists?.items ?? []).filter(item => item !== null).map(item => ({
     name: item.name,
     owner: item.owner.display_name ?? item.owner.id,
     trackCount: item.tracks.total,
     playlistId: item.id,
   }))
+
+  return { results, hasMore: data.playlists?.next != null }
 }
 
 export async function getPlaylistTracks(playlistId: string, accessToken: string): Promise<Track[]> {
