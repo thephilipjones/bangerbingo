@@ -36,6 +36,7 @@ async function callSpotifyOnDevice(
   roomState: RoomState,
   label: 'play' | 'pause',
   buildRequest: (deviceId: string, accessToken: string) => { url: string; init: RequestInit },
+  retryBuildRequest?: (deviceId: string, accessToken: string) => { url: string; init: RequestInit },
 ): Promise<void> {
   const activeDevice = roomState.activeDeviceId
   if (!activeDevice) return
@@ -46,8 +47,8 @@ async function callSpotifyOnDevice(
   }
   const accessToken = sdkHost.access_token
 
-  const attempt = (): Promise<Response> => {
-    const { url, init } = buildRequest(activeDevice, accessToken)
+  const attempt = (builder = buildRequest): Promise<Response> => {
+    const { url, init } = builder(activeDevice, accessToken)
     return fetch(url, init)
   }
 
@@ -81,7 +82,7 @@ async function callSpotifyOnDevice(
         }
         return
       }
-      res = await attempt()
+      res = await attempt(retryBuildRequest ?? buildRequest)
       if (!res.ok) {
         const retryBody = await res.text().catch(() => '')
         console.error(`[spotify:${label}] retry ${res.status}`, retryBody)
@@ -222,20 +223,30 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   if (isTrackChange) runCasualModeSweep(roomCode, roomState)
 
   // Fire-and-forget Spotify play via Web API (AC 5)
-  callSpotifyOnDevice(roomCode, roomState, 'play', (deviceId, token) => ({
+  // Resume-from-pause omits `uris` so Spotify resumes at the current position rather than restarting.
+  // The retryBuildRequest fallback (used after 404 device-reactivation) always includes uris+position_ms
+  // because a dormant device loses its playback context and needs a full restart to produce audio.
+  const startBuildRequest = (deviceId: string, token: string) => ({
     url: `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(deviceId)}`,
     init: {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        uris: [`spotify:track:${track.id}`],
-        position_ms: SEEK_POSITION_MS,
-      }),
+      method: 'PUT' as const,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uris: [`spotify:track:${track.id}`], position_ms: SEEK_POSITION_MS }),
     },
-  })).catch(() => {})
+  })
+  callSpotifyOnDevice(roomCode, roomState, 'play',
+    isTrackChange
+      ? startBuildRequest
+      : (deviceId, token) => ({
+          url: `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(deviceId)}`,
+          init: {
+            method: 'PUT' as const,
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          },
+        }),
+    startBuildRequest,
+  ).catch(() => {})
 
   // P4: capture roundNumber so stale timers from a previous round don't fire against a new one
   const capturedRoundNumber = round.roundNumber
