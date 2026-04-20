@@ -37,8 +37,8 @@ async function callSpotifyOnDevice(
   label: 'play' | 'pause',
   buildRequest: (deviceId: string, accessToken: string) => { url: string; init: RequestInit },
 ): Promise<void> {
-  const sdkDevice = roomState.sdkDeviceId
-  if (!sdkDevice) return
+  const activeDevice = roomState.activeDeviceId
+  if (!activeDevice) return
   const sdkHost = getHostById(roomState.hostUserId)
   if (!sdkHost?.access_token) {
     console.warn(`[spotify:${label}] no access_token for host`, roomState.hostUserId)
@@ -47,7 +47,7 @@ async function callSpotifyOnDevice(
   const accessToken = sdkHost.access_token
 
   const attempt = (): Promise<Response> => {
-    const { url, init } = buildRequest(sdkDevice, accessToken)
+    const { url, init } = buildRequest(activeDevice, accessToken)
     return fetch(url, init)
   }
 
@@ -70,13 +70,13 @@ async function callSpotifyOnDevice(
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ device_ids: [sdkDevice], play: false }),
+        body: JSON.stringify({ device_ids: [activeDevice], play: false }),
       })
       if (!transferRes.ok) {
         const transferBody = await transferRes.text().catch(() => '')
         console.error(`[spotify:${label}] transfer failed ${transferRes.status}`, transferBody)
         if (transferRes.status === 404) {
-          roomState.sdkDeviceId = undefined
+          roomState.activeDeviceId = undefined
           broadcast(roomCode, { type: 'host:sdk-stale' })
         }
         return
@@ -635,11 +635,11 @@ const handleSetPlayerDevice = async (ctx: Context<AuthEnv>) => {
   const isActivePlaying = !!round && round.active && !round.paused
 
   // Same-device no-op during active playback (AC #17)
-  if (isActivePlaying && roomState.sdkDeviceId === newId) {
+  if (isActivePlaying && roomState.activeDeviceId === newId) {
     return ctx.json({})
   }
 
-  if (isActivePlaying && roomState.sdkDeviceId !== newId) {
+  if (isActivePlaying && roomState.activeDeviceId !== newId) {
     const freshHost = await withFreshToken(host)
     if (!freshHost) return ctx.json({ message: 'Spotify auth degraded' }, 503)
 
@@ -676,7 +676,7 @@ const handleSetPlayerDevice = async (ctx: Context<AuthEnv>) => {
     }
   }
 
-  roomState.sdkDeviceId = newId
+  roomState.activeDeviceId = newId
   persistRoomState(code)
   return ctx.json({})
 }

@@ -774,7 +774,7 @@ describe('rehydrateRooms', () => {
       hostUserId: 'host_1',
       hostHasEverConnected: true,
       pendingRound: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1 },
-      sdkDeviceId: 'dev_123',
+      activeDeviceId: 'dev_123',
       currentRound: {
         roundNumber: 1,
         config: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1 },
@@ -802,7 +802,7 @@ describe('rehydrateRooms', () => {
     expect(room!.hostUserId).toBe('host_1')
     expect(room!.hostHasEverConnected).toBe(true)
     expect(room!.guests.size).toBe(0)
-    expect(room!.sdkDeviceId).toBe('dev_123')
+    expect(room!.activeDeviceId).toBe('dev_123')
     expect(room!.currentRound).toBeDefined()
     expect(room!.currentRound!.paused).toBe(true) // force-paused
     expect(room!.currentRound!.timers).toEqual({}) // timers cleared
@@ -816,7 +816,7 @@ describe('rehydrateRooms', () => {
       hostUserId: 'host_1',
       hostHasEverConnected: true,
       pendingRound: undefined,
-      sdkDeviceId: undefined,
+      activeDeviceId: undefined,
       currentRound: undefined,
     }
 

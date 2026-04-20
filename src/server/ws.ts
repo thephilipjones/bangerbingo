@@ -77,7 +77,7 @@ export interface RoomState {
   guests: Map<string, WebSocket> // name → socket
   pendingRound?: RoundConfig
   currentRound?: RoundState
-  sdkDeviceId?: string
+  activeDeviceId?: string
   sessionStats: SessionStats
   // Casual Mode (Story 8-4; Story 9-2 persists across rounds): not persisted —
   // resets between sessions. Only changes via explicit player or host action.
@@ -99,7 +99,7 @@ export function persistRoomState(code: string): void {
     hostUserId: room.hostUserId,
     hostHasEverConnected: room.hostHasEverConnected,
     pendingRound: room.pendingRound,
-    sdkDeviceId: room.sdkDeviceId,
+    activeDeviceId: room.activeDeviceId,
     currentRound: round ? {
       roundNumber: round.roundNumber,
       config: round.config,
@@ -143,7 +143,7 @@ export function rehydrateRooms(): void {
       hostHasEverConnected: true,
       guests: new Map(),
       pendingRound: snap.pendingRound,
-      sdkDeviceId: snap.sdkDeviceId,
+      activeDeviceId: snap.activeDeviceId ?? snap.sdkDeviceId,
       sessionStats: emptySessionStats(),
       playerCasualModes: new Map(),
       currentRound: snap.currentRound ? (() => {

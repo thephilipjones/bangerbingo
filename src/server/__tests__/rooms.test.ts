@@ -1061,7 +1061,7 @@ describe('Spotify Web API device recovery', () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'device_xyz'
+    roomState.activeDeviceId = 'device_xyz'
     seedActiveRound()
     const hostWs = { readyState: 1, send: vi.fn() }
     roomState.host = hostWs as unknown as WebSocket
@@ -1088,14 +1088,14 @@ describe('Spotify Web API device recovery', () => {
     const sent = collectSent(hostWs)
     expect(sent.find((m) => m.type === 'song:start')).toBeDefined()
     expect(sent.find((m) => m.type === 'host:sdk-stale')).toBeUndefined()
-    expect(roomState.sdkDeviceId).toBe('device_xyz')
+    expect(roomState.activeDeviceId).toBe('device_xyz')
   })
 
   it('404 recovery — transfers playback, retries once, keeps device', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'device_xyz'
+    roomState.activeDeviceId = 'device_xyz'
     seedActiveRound()
     const hostWs = { readyState: 1, send: vi.fn() }
     roomState.host = hostWs as unknown as WebSocket
@@ -1127,14 +1127,14 @@ describe('Spotify Web API device recovery', () => {
     const sent = collectSent(hostWs)
     expect(sent.find((m) => m.type === 'song:start')).toBeDefined()
     expect(sent.find((m) => m.type === 'host:sdk-stale')).toBeUndefined()
-    expect(roomState.sdkDeviceId).toBe('device_xyz')
+    expect(roomState.activeDeviceId).toBe('device_xyz')
   })
 
   it('terminal failure — transfer also 404 clears device and broadcasts host:sdk-stale', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'device_xyz'
+    roomState.activeDeviceId = 'device_xyz'
     seedActiveRound()
     const hostWs = { readyState: 1, send: vi.fn() }
     roomState.host = hostWs as unknown as WebSocket
@@ -1151,7 +1151,7 @@ describe('Spotify Web API device recovery', () => {
     expect(res.status).toBe(200)
 
     await vi.waitFor(() => {
-      expect(roomState.sdkDeviceId).toBeUndefined()
+      expect(roomState.activeDeviceId).toBeUndefined()
     })
     expect(fetchSpy).toHaveBeenCalledTimes(2)
 
@@ -1163,7 +1163,7 @@ describe('Spotify Web API device recovery', () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'device_xyz'
+    roomState.activeDeviceId = 'device_xyz'
     seedActiveRound()
     roomState.host = { readyState: 1, send: vi.fn() } as unknown as WebSocket
 
@@ -1403,7 +1403,7 @@ describe('POST /api/rooms/:code/sdk/device', () => {
     roomSockets.clear()
   })
 
-  it('200 — stores deviceId in roomState.sdkDeviceId', async () => {
+  it('200 — stores deviceId in roomState.activeDeviceId', async () => {
     seedHost()
     await seedRoom()
 
@@ -1416,14 +1416,14 @@ describe('POST /api/rooms/:code/sdk/device', () => {
     expect(res.status).toBe(200)
 
     const roomState = roomSockets.get('ABCD')!
-    expect(roomState.sdkDeviceId).toBe('abc123')
+    expect(roomState.activeDeviceId).toBe('abc123')
   })
 
   it('200 — overwrites on subsequent call (reconnect)', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'old-device'
+    roomState.activeDeviceId = 'old-device'
 
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/sdk/device', {
@@ -1432,7 +1432,7 @@ describe('POST /api/rooms/:code/sdk/device', () => {
       body: JSON.stringify({ deviceId: 'new-device' }),
     })
     expect(res.status).toBe(200)
-    expect(roomState.sdkDeviceId).toBe('new-device')
+    expect(roomState.activeDeviceId).toBe('new-device')
   })
 
   it('403 — wrong host', async () => {
@@ -1600,12 +1600,12 @@ describe('POST /api/rooms/:code/player/device', () => {
     vi.restoreAllMocks()
   })
 
-  async function getPersistedState(code = 'ABCD'): Promise<{ sdkDeviceId?: string } | null> {
+  async function getPersistedState(code = 'ABCD'): Promise<{ activeDeviceId?: string } | null> {
     const { getAllActiveRooms } = await import('../db.ts')
     const rows = getAllActiveRooms()
     const row = rows.find(r => r.room_code === code)
     if (!row) return null
-    return JSON.parse(row.state_json) as { sdkDeviceId?: string }
+    return JSON.parse(row.state_json) as { activeDeviceId?: string }
   }
 
   it('200 — no active round: stores deviceId and persists room state', async () => {
@@ -1619,17 +1619,17 @@ describe('POST /api/rooms/:code/player/device', () => {
       body: JSON.stringify({ deviceId: 'new-device' }),
     })
     expect(res.status).toBe(200)
-    expect(roomSockets.get('ABCD')!.sdkDeviceId).toBe('new-device')
+    expect(roomSockets.get('ABCD')!.activeDeviceId).toBe('new-device')
 
     const persisted = await getPersistedState()
-    expect(persisted?.sdkDeviceId).toBe('new-device')
+    expect(persisted?.activeDeviceId).toBe('new-device')
   })
 
-  it('200 — active round: transfers playback, updates sdkDeviceId, leaves round intact', async () => {
+  it('200 — active round: transfers playback, updates activeDeviceId, leaves round intact', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'old-id'
+    roomState.activeDeviceId = 'old-id'
     const round = seedActiveRound()
     round.currentSongIndex = 2
     round.paused = false
@@ -1652,7 +1652,7 @@ describe('POST /api/rooms/:code/player/device', () => {
     expect(init.method).toBe('PUT')
     expect(init.body).toBe(JSON.stringify({ device_ids: ['new-id'], play: true }))
 
-    expect(roomState.sdkDeviceId).toBe('new-id')
+    expect(roomState.activeDeviceId).toBe('new-id')
     expect(roomState.currentRound!.currentSongIndex).toBe(2)
     expect(roomState.currentRound!.active).toBe(true)
     expect(roomState.currentRound!.paused).toBe(false)
@@ -1662,7 +1662,7 @@ describe('POST /api/rooms/:code/player/device', () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'x'
+    roomState.activeDeviceId = 'x'
     const round = seedActiveRound()
     round.paused = false
 
@@ -1678,14 +1678,14 @@ describe('POST /api/rooms/:code/player/device', () => {
     })
     expect(res.status).toBe(200)
     expect(fetchSpy).not.toHaveBeenCalled()
-    expect(roomState.sdkDeviceId).toBe('x')
+    expect(roomState.activeDeviceId).toBe('x')
   })
 
   it('200 — paused round is NOT treated as active-playing (stores without transfer)', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'old-id'
+    roomState.activeDeviceId = 'old-id'
     const round = seedActiveRound()
     round.paused = true
 
@@ -1699,17 +1699,17 @@ describe('POST /api/rooms/:code/player/device', () => {
     })
     expect(res.status).toBe(200)
     expect(fetchSpy).not.toHaveBeenCalled()
-    expect(roomState.sdkDeviceId).toBe('new-id')
+    expect(roomState.activeDeviceId).toBe('new-id')
 
     const persisted = await getPersistedState()
-    expect(persisted?.sdkDeviceId).toBe('new-id')
+    expect(persisted?.activeDeviceId).toBe('new-id')
   })
 
-  it('502 — transfer 404 (device dormant): sdkDeviceId unchanged', async () => {
+  it('502 — transfer 404 (device dormant): activeDeviceId unchanged', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'old-id'
+    roomState.activeDeviceId = 'old-id'
     seedActiveRound().paused = false
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -1725,14 +1725,14 @@ describe('POST /api/rooms/:code/player/device', () => {
     expect(res.status).toBe(502)
     const body = await res.json() as { message: string }
     expect(body.message).toBe('Device unavailable — pick another')
-    expect(roomState.sdkDeviceId).toBe('old-id')
+    expect(roomState.activeDeviceId).toBe('old-id')
   })
 
-  it('503 — transfer 401 (token revoked): sdkDeviceId unchanged, refresh fired', async () => {
+  it('503 — transfer 401 (token revoked): activeDeviceId unchanged, refresh fired', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'old-id'
+    roomState.activeDeviceId = 'old-id'
     seedActiveRound().paused = false
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -1750,16 +1750,16 @@ describe('POST /api/rooms/:code/player/device', () => {
     expect(res.status).toBe(503)
     const body = await res.json() as { message: string }
     expect(body.message).toBe('Spotify auth degraded')
-    expect(roomState.sdkDeviceId).toBe('old-id')
+    expect(roomState.activeDeviceId).toBe('old-id')
 
     await vi.waitFor(() => { expect(refreshSpy).toHaveBeenCalledWith('host_1') }, { timeout: 3000 })
   })
 
-  it('502 — transfer 5xx: sdkDeviceId unchanged', async () => {
+  it('502 — transfer 5xx: activeDeviceId unchanged', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'old-id'
+    roomState.activeDeviceId = 'old-id'
     seedActiveRound().paused = false
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
@@ -1775,14 +1775,14 @@ describe('POST /api/rooms/:code/player/device', () => {
     expect(res.status).toBe(502)
     const body = await res.json() as { message: string }
     expect(body.message).toBe('Device swap failed')
-    expect(roomState.sdkDeviceId).toBe('old-id')
+    expect(roomState.activeDeviceId).toBe('old-id')
   })
 
   it('503 — active round but withFreshToken returns null', async () => {
     seedDegradedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
-    roomState.sdkDeviceId = 'old-id'
+    roomState.activeDeviceId = 'old-id'
     seedActiveRound().paused = false
 
     const app = makeApp()
@@ -1794,7 +1794,7 @@ describe('POST /api/rooms/:code/player/device', () => {
     expect(res.status).toBe(503)
     const body = await res.json() as { message: string }
     expect(body.message).toBe('Spotify auth degraded')
-    expect(roomState.sdkDeviceId).toBe('old-id')
+    expect(roomState.activeDeviceId).toBe('old-id')
   })
 
   it('400 — missing deviceId', async () => {
@@ -1879,7 +1879,7 @@ describe('Alias parity — /sdk/device and /player/device store identical state'
     roomSockets.clear()
   })
 
-  it('both endpoints update roomState.sdkDeviceId identically', async () => {
+  it('both endpoints update roomState.activeDeviceId identically', async () => {
     seedHost()
     await seedRoom()
 
@@ -1891,7 +1891,7 @@ describe('Alias parity — /sdk/device and /player/device store identical state'
     })
     expect(resCanonical.status).toBe(200)
     expect(await resCanonical.json()).toEqual({})
-    expect(roomSockets.get('ABCD')!.sdkDeviceId).toBe('from-canonical')
+    expect(roomSockets.get('ABCD')!.activeDeviceId).toBe('from-canonical')
 
     const resLegacy = await app.request('/api/rooms/ABCD/sdk/device', {
       method: 'POST',
@@ -1900,7 +1900,7 @@ describe('Alias parity — /sdk/device and /player/device store identical state'
     })
     expect(resLegacy.status).toBe(200)
     expect(await resLegacy.json()).toEqual({})
-    expect(roomSockets.get('ABCD')!.sdkDeviceId).toBe('from-legacy')
+    expect(roomSockets.get('ABCD')!.activeDeviceId).toBe('from-legacy')
   })
 })
 
