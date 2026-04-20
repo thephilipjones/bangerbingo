@@ -87,7 +87,7 @@ export interface GuestHandlers {
     casualModeNames: string[],
   ): void
   onError(message: string): void
-  onMessage(event: { data: string }): void
+  onMessage(event: MessageEvent): void
   onHostDisconnected?(): void
   onHostReconnected?(): void
 }

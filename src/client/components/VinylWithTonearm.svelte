@@ -1,3 +1,5 @@
+<script lang="ts"></script>
+
 <div class="vinyl-scene" aria-hidden="true">
   <svg viewBox="0 0 115 90" width="115" height="90">
     <g class="vinyl">

@@ -75,7 +75,7 @@ describe('BingoCard — mode prop (Story 9-1)', () => {
     const tiles = applyWinPath(initTiles(makeCard()), winningIds)
 
     const { container } = render(BingoCard, {
-      tiles, mode: 'gameover-loser-your', playedTrackIds: new Set(),
+      tiles, mode: 'gameover-loser-your', playedTrackIds: new Set<string>(),
     })
     expect(container.querySelectorAll('.win-path')).toHaveLength(0)
   })
