@@ -12,8 +12,9 @@
   import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
   import DevicePicker from '../components/DevicePicker.svelte'
   import { createGameState } from '../lib/gameState.svelte.ts'
-  import { postStartNextRound, postSetDevice } from '../lib/api.ts'
+  import { postStartNextRound, postSetDevice, getDevices } from '../lib/api.ts'
   import type { SpotifyDevice } from '../lib/api.ts'
+  import { readHostPrefs, writeHostPrefs } from '../lib/hostPrefs.ts'
 
   let { code, onRoundEnded, onSessionEnded }: {
     code: string
@@ -40,7 +41,7 @@
   let selectedDevice = $state<{ id: string; name: string; type: string } | null>(null)
   let showDevicePicker = $state(false)
   let pickerError = $state<string | null>(null)
-  let pickerSource = $state<'chip' | 'settings'>('chip')
+  let pickerSource = $state<'chip' | 'settings' | 'banner'>('chip')
   let isSwitchingDevice = $state(false)
   let confirmPill = $state<string | null>(null)
   let deviceSwitchResult = $state<'saved' | 'error' | null>(null)
@@ -53,6 +54,8 @@
   let sdkScript: HTMLScriptElement | undefined
   let sdkErrorFired = false
   let sdkReinitializing = false
+  let preferredDeviceId: string | undefined = undefined
+  let initialDevicesController: AbortController | undefined
 
   const game = createGameState({
     code: untrack(() => code),
@@ -131,7 +134,7 @@
       .catch(() => showPlaybackError())
   }
 
-  function handleOpenDevicePicker(source: 'chip' | 'settings' = 'chip') {
+  function handleOpenDevicePicker(source: 'chip' | 'settings' | 'banner' = 'chip') {
     pickerSource = source
     pickerError = null
     chipRef = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
@@ -156,6 +159,9 @@
         deviceSwitchResult = 'saved'
         clearTimeout(deviceSwitchResultTimer)
         deviceSwitchResultTimer = setTimeout(() => { deviceSwitchResult = null }, 1500)
+        preferredDeviceId = deviceId
+        writeHostPrefs({ preferredDeviceId: deviceId })
+        if (sdkFailed) sdkFailed = false
       } else {
         selectedDevice = prevDevice
         clearTimeout(confirmPillTimer)
@@ -193,6 +199,9 @@
         body: JSON.stringify({ deviceId: device_id }),
       })
       sdkReady = true
+      if (selectedDevice === null) {
+        selectedDevice = { id: device_id, name: 'Bangerbingo (this browser)', type: 'Computer' }
+      }
     })
     player.addListener('not_ready', () => { sdkReady = false })
     player.addListener('initialization_error', () => {
@@ -218,6 +227,7 @@
     sdkReady = false
     sdkFailed = false
     sdkErrorFired = false
+    if (selectedDevice?.name === 'Bangerbingo (this browser)') selectedDevice = null
     initSdkPlayer()
   }
 
@@ -227,6 +237,8 @@
   }
 
   onMount(() => {
+    preferredDeviceId = readHostPrefs()?.preferredDeviceId
+
     if ((window as any).Spotify) {
       initSdkPlayer()
     } else {
@@ -235,6 +247,21 @@
       sdkScript.src = 'https://sdk.scdn.co/spotify-player.js'
       sdkScript.async = true
       document.head.appendChild(sdkScript)
+    }
+
+    if (preferredDeviceId) {
+      const capturedPreferredId = preferredDeviceId
+      initialDevicesController = new AbortController()
+      const ctrl = initialDevicesController
+      getDevices(code, ctrl.signal)
+        .then((result) => {
+          if (ctrl.signal.aborted) return
+          const hit = result.devices.find(d => d.id === capturedPreferredId && !d.is_restricted)
+          if (hit) {
+            selectedDevice = { id: hit.id, name: hit.name, type: hit.type }
+          }
+        })
+        .catch(() => { /* aborted or network error; fall back to SDK default */ })
     }
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -309,6 +336,7 @@
     clearTimeout(nextRoundErrorTimer)
     clearTimeout(confirmPillTimer)
     clearTimeout(deviceSwitchResultTimer)
+    initialDevicesController?.abort()
     ws?.close()
     player?.disconnect()
     if (sdkScript && document.head.contains(sdkScript)) {
@@ -331,7 +359,7 @@
 {/if}
 
 {#if sdkFailed}
-  <SdkFailureBanner trackId={currentTrackId} />
+  <SdkFailureBanner onPickDevice={() => handleOpenDevicePicker('banner')} />
 {/if}
 
 {#if game.showHistory}
@@ -416,6 +444,7 @@
     onDeviceSelected={handleDeviceSelected}
     onClose={() => { showDevicePicker = false }}
     returnFocusEl={chipRef}
+    {sdkFailed}
   />
 {/if}
 

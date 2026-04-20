@@ -103,4 +103,41 @@ describe('hostPrefs', () => {
     })
     expect(readHostPrefs()).toBeNull()
   })
+
+  it('round-trips preferredDeviceId and preserves other fields', () => {
+    writeHostPrefs({ clipDuration: 45, titleRevealDelay: 15, audioPreset: 'hype', allowCasualMode: true })
+    writeHostPrefs({ preferredDeviceId: 'abc123' })
+    expect(readHostPrefs()).toEqual({
+      clipDuration: 45,
+      titleRevealDelay: 15,
+      audioPreset: 'hype',
+      allowCasualMode: true,
+      preferredDeviceId: 'abc123',
+    })
+  })
+
+  it('accepts stored blobs without preferredDeviceId and returns it as undefined', () => {
+    store['bb:host-prefs:v1'] = JSON.stringify({
+      schemaVersion: 1,
+      clipDuration: 30,
+      titleRevealDelay: 10,
+      audioPreset: 'minimal',
+      allowCasualMode: false,
+    })
+    const prefs = readHostPrefs()
+    expect(prefs).not.toBeNull()
+    expect(prefs!.preferredDeviceId).toBeUndefined()
+  })
+
+  it('returns null on invalid preferredDeviceId type', () => {
+    store['bb:host-prefs:v1'] = JSON.stringify({
+      schemaVersion: 1,
+      clipDuration: 30,
+      titleRevealDelay: 10,
+      audioPreset: 'minimal',
+      allowCasualMode: false,
+      preferredDeviceId: 42,
+    })
+    expect(readHostPrefs()).toBeNull()
+  })
 })

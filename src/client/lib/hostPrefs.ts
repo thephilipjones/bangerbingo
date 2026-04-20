@@ -9,6 +9,7 @@ export interface HostPrefs {
   titleRevealDelay: TitleRevealDelay
   audioPreset: AudioPreset
   allowCasualMode: boolean
+  preferredDeviceId?: string
 }
 
 interface StoredHostPrefs extends HostPrefs {
@@ -37,6 +38,7 @@ function isValid(stored: unknown): stored is StoredHostPrefs {
   if (!isValidTitleRevealDelay(s.titleRevealDelay)) return false
   if (!isValidAudioPreset(s.audioPreset)) return false
   if (typeof s.allowCasualMode !== 'boolean') return false
+  if (s.preferredDeviceId !== undefined && typeof s.preferredDeviceId !== 'string') return false
   return true
 }
 
@@ -47,8 +49,8 @@ export function readHostPrefs(): HostPrefs | null {
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch { return null }
   if (!isValid(parsed)) return null
-  const { clipDuration, titleRevealDelay, audioPreset, allowCasualMode } = parsed
-  return { clipDuration, titleRevealDelay, audioPreset, allowCasualMode }
+  const { clipDuration, titleRevealDelay, audioPreset, allowCasualMode, preferredDeviceId } = parsed
+  return { clipDuration, titleRevealDelay, audioPreset, allowCasualMode, preferredDeviceId }
 }
 
 export function writeHostPrefs(partial: Partial<HostPrefs>): void {

@@ -1,15 +1,10 @@
 <script lang="ts">
-  let { trackId }: { trackId: string | null } = $props()
+  let { onPickDevice }: { onPickDevice: () => void } = $props()
 </script>
 
 <div class="sdk-failure-banner" role="alert">
-  <span>Spotify audio unavailable in this browser.</span>
-  {#if trackId}
-    <a href="spotify:track:{trackId}" class="open-link">Open in Spotify app</a>
-  {:else}
-    <a href="https://open.spotify.com" class="open-link">Open Spotify</a>
-  {/if}
-  <span class="hint">Open in the Spotify app to follow along.</span>
+  <span class="msg">Browser playback unavailable — pick a device to play on</span>
+  <button type="button" class="pick-btn" onclick={onPickDevice}>Pick a device</button>
 </div>
 
 <style>
@@ -31,14 +26,19 @@
     flex-wrap: wrap;
   }
 
-  .open-link {
-    color: var(--accent-fg);
-    font-weight: 600;
-    text-decoration: underline;
+  .msg {
+    font-weight: 500;
   }
 
-  .hint {
-    font-size: 13px;
-    opacity: 0.85;
+  .pick-btn {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: none;
+    min-height: 36px;
+    padding: 6px 12px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
   }
+  .pick-btn:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
 </style>

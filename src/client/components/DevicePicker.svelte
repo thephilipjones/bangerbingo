@@ -10,6 +10,7 @@
     onDeviceSelected,
     onClose,
     returnFocusEl,
+    sdkFailed = false,
   }: {
     code: string
     activeDeviceId: string | null
@@ -17,6 +18,7 @@
     onDeviceSelected: (device: SpotifyDevice) => void
     onClose: () => void
     returnFocusEl?: HTMLElement
+    sdkFailed?: boolean
   } = $props()
 
   type FetchState = 'loading' | 'ok' | 'error'
@@ -117,7 +119,18 @@
     {:else if fetchState === 'error'}
       <p class="status-msg error-msg" role="alert">Couldn't load devices — tap Refresh to retry.</p>
     {:else if devices.length === 0}
-      <p class="status-msg" role="status">No Spotify devices found. Open your Spotify app and press play on any song, then tap Refresh.</p>
+      {#if sdkFailed}
+        <div class="status-msg onboarding" role="status">
+          <p class="onboarding-heading">No Spotify devices found.</p>
+          <ol class="onboarding-steps">
+            <li>Open the Spotify app on your phone.</li>
+            <li>Press play on any song.</li>
+            <li>Come back here and tap Refresh.</li>
+          </ol>
+        </div>
+      {:else}
+        <p class="status-msg" role="status">No Spotify devices found. Open your Spotify app and press play on any song, then tap Refresh.</p>
+      {/if}
     {:else}
       <ul class="device-list" role="listbox" aria-label="Available devices">
         {#each devices as device (device.id)}
@@ -244,6 +257,23 @@
 
   .error-msg {
     color: var(--danger);
+  }
+
+  .onboarding {
+    text-align: left;
+  }
+  .onboarding-heading {
+    margin: 0 0 0.5rem;
+    text-align: left;
+  }
+  .onboarding-steps {
+    margin: 0;
+    padding-left: 1.4rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+  .onboarding-steps li {
+    margin-bottom: 0.25rem;
   }
 
   .inline-error {

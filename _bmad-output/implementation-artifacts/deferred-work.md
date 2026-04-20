@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 10-3-sdk-default-preference-persistence-and-failure-path (2026-04-20)
+
+- **Double `onSpotifyWebPlaybackSDKReady` assignment on HMR/fast-nav** — pre-existing: if the component is destroyed before the SDK script `load` event fires and a new instance mounts, a second `onSpotifyWebPlaybackSDKReady` is assigned and a second `<script>` tag appended. Unlikely in production but reachable in HMR. (src/client/pages/HostRoomPage.svelte — initSdkPlayer)
+- **`device.id` could be null as Svelte keyed-each key in DevicePicker** — pre-existing: `SpotifyDevice.id` is typed `string | null`; if a null-id device slips through, Svelte reconciliation may collapse multiple null-id entries. Guard would go in the `loadDevices` fetch path inside DevicePicker. (src/client/components/DevicePicker.svelte)
+
 ## Deferred from: code review of 10-2-device-chip-and-picker-ui (2026-04-20)
 
 - **No focus trap inside DevicePicker modal** — accessibility enhancement beyond spec ACs; #13/#14 only require tap-target size and dismiss behaviour. Consistent with other overlays in this codebase that also lack traps. (src/client/components/DevicePicker.svelte)

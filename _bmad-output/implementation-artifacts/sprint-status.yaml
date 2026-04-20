@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-20 # 10-2 done (post-review)
+last_updated: 2026-04-20 # 10-3 done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -121,5 +121,5 @@ development_status:
   epic-10: in-progress
   10-1-device-list-api-and-live-swap-endpoint: done
   10-2-device-chip-and-picker-ui: done
-  10-3-sdk-default-preference-persistence-and-failure-path: backlog
+  10-3-sdk-default-preference-persistence-and-failure-path: done
   epic-10-retrospective: optional
