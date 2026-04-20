@@ -76,7 +76,7 @@
     justify-content: space-between;
     background: var(--bg);
     border-bottom: var(--rule-thick) solid var(--rule);
-    padding: 6px 8px;
+    padding: 10px 8px;
     box-sizing: border-box;
   }
 
@@ -90,7 +90,7 @@
     background: none;
     border: var(--rule-thin) solid var(--rule);
     color: var(--fg);
-    padding: 6px 14px;
+    padding: 6px 16px;
     font-size: 13px;
     font-family: var(--font-body);
     cursor: pointer;
@@ -107,7 +107,7 @@
   .header-btn.active {
     background: var(--accent);
     color: var(--accent-fg);
-    border-color: var(--accent);
+    border-color: transparent;
   }
 
   .header-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

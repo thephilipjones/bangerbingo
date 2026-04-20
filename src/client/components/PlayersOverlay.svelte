@@ -123,12 +123,8 @@
       height: auto;
       max-height: 60vh;
       width: 260px;
-      border-radius: 10px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-    }
-
-    .sheet-header {
-      display: none;
+      border: var(--rule-thick) solid var(--rule);
+      box-shadow: var(--shadow-overlay);
     }
   }
 

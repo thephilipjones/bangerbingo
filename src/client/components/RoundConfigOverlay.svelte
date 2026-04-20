@@ -400,7 +400,7 @@
     position: relative;
     background: var(--bg);
     color: var(--fg);
-    border: var(--rule-heavy) solid var(--rule);
+    border: var(--rule-thick) solid var(--rule);
     width: 100%;
     max-width: 480px;
     padding: 0;

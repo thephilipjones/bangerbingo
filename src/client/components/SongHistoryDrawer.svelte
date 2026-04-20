@@ -125,6 +125,9 @@
     align-items: center;
     gap: 12px;
     padding: 10px 16px;
+  }
+
+  .entry:not(:last-child) {
     border-bottom: var(--rule-thin) solid var(--rule);
   }
 
@@ -237,12 +240,8 @@
       height: auto;
       max-height: 60vh;
       width: 320px;
-      border-radius: 10px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-    }
-
-    .sheet-header {
-      display: none;
+      border: var(--rule-thick) solid var(--rule);
+      box-shadow: var(--shadow-overlay);
     }
   }
 </style>

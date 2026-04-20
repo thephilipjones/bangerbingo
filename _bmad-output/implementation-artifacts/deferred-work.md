@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of modal-chrome-and-dark-mode-cleanup (2026-04-19)
+
+- **`.header-btn.active { border-color: transparent }` loses affordance in forced-colors mode** — Windows High Contrast strips accent backgrounds; the transparent border gives no edge to replace it. Minor a11y concern, outside the chrome-cleanup plan's scope. (src/client/components/GameHeader.svelte:110)
+- **`.entry:not(:last-child)` may flicker a border for one frame during Svelte transitions** — when the last entry is added/removed the previously-final entry briefly stops being `:last-child`, flashing a border-bottom. Cosmetic; filtering happens upstream in the entries array so no sustained visual bug. (src/client/components/SongHistoryDrawer.svelte:131)
+
 ## Deferred from: code review of 9-3-collapse-continuous-mode-to-gameover-choice (2026-04-19)
 
 - **`session:connect` wire-protocol change without version bump** — `continuousMode` + `countdownRemainingMs` were removed from the payload; pre-deploy browser tabs will see `undefined` on those fields. Deploy practice (coordinated reload) covers this, and the project has no version field to hinge compatibility on. (src/server/rooms.ts)

@@ -69,6 +69,7 @@
   --rule: var(--palette-ink);
   --danger: var(--palette-danger);
   --ok: var(--palette-ok);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 
 /* Dark theme */
@@ -79,7 +80,8 @@
   --fg-muted: var(--palette-muted-dark);
   --accent: var(--palette-signal);
   --accent-fg: var(--palette-paper);
-  --rule: var(--palette-paper);
+  --rule: var(--palette-muted-dark);
   --danger: var(--palette-signal);
   --ok: var(--palette-ok);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(239, 235, 228, 0.06);
 }
