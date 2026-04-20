@@ -103,6 +103,20 @@
     padding: 8px 0;
   }
 
+  /* In-game overlay: match SongHistoryDrawer row styling —
+     full-width horizontal dividers, no side borders, no row background. */
+  .sheet-body :global(.players-list) {
+    gap: 0;
+  }
+  .sheet-body :global(.player-row) {
+    background: transparent;
+    border: none;
+    padding: 10px 16px;
+  }
+  .sheet-body :global(.player-row:not(:last-child)) {
+    border-bottom: var(--rule-thin) solid var(--rule);
+  }
+
   .empty {
     color: var(--fg-muted);
     text-align: center;
