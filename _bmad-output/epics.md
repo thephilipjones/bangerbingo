@@ -198,6 +198,16 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 
 **Depends on:** Epic 1 (host token + `withFreshToken`), Epic 5 (`callSpotifyOnDevice`, round timer), Epic 8 (casual mode auto-mark engine), Epic 10 (device picker, device chip, SDK-default-and-fallback path).
 
-**Stories:** 12-1 (WebSocket Heartbeat, Visibility & Auto-Reconnect Infrastructure), 12-2 (Spotify-First Mobile Playback, `/host/resume` Reconcile & Desktop SDK Reinit Gating), 12-3 (Marks & Casual-Mode Reconnect Reliability for Hosts and Guests)
+**Stories:** 12-1 (WebSocket Heartbeat, Visibility & Auto-Reconnect Infrastructure), 12-2 (Spotify-First Mobile Playback, `/host/resume` Reconcile & Desktop SDK Reinit Gating), 12-3 (Marks & Casual-Mode Reconnect Reliability for Hosts and Guests), 12-4 (Playtest Reliability Followup Fixes) ✅ DONE
 
 **Acceptance bar:** iPhone host can lock phone mid-round — Spotify keeps playing, WS auto-reconnects silently on unlock, previously-matched tiles auto-mark via catch-up replay, manually-marked tiles persist; no "refresh page" banner, no toggle-off-toggle-on needed. Mobile host arrives on an empty room with no SDK script loaded and the phone's Spotify app pre-selected as the device (if active). Desktop host hitting an SDK 404 silently auto-recovers with a transient "Reconnecting playback…" chip and one auto-retry; no user action needed. On any visibility resume, client calls `POST /host/resume` and the server reconciles with Spotify's `/me/player` — adopting new active devices, re-issuing expected tracks when Spotify drifted, offering a one-tap resume if Spotify is paused, showing an empty state if no device is active. Host marks survive refresh on par with guest marks.
+
+---
+
+## Epic 13: Reliability & Tech Debt
+
+*Targeted cleanup sprint after Epic 12 playtesting. Two user-journey bugs (reconnect-after-win, Casual Mode state loss on restart), a bundle of independent server/client micro-fixes, test quality hardening, light security hardening for public-internet exposure, and win audio.*
+
+**Stories:** 13-1 (Reconnect-After-Win State Replay), 13-2 (Casual Mode Persistence Across Restart), 13-3 (Server & Client Micro-Fixes Bundle), 13-4 (Test Quality Pass), 13-5 (Light Security Hardening), 13-6 (Win Jingle Audio)
+
+**Acceptance bar:** A reconnecting winner lands back on the Game Over screen with full CTAs. Casual Mode opt-ins survive a server restart. Session cookie is HMAC-signed. Playlist ID input is validated. Guest join is rate-limited. Win jingle plays on bingo (preset-matched). All 507 tests pass.

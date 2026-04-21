@@ -1731,10 +1731,10 @@ describe('POST /api/rooms/:code/player/device', () => {
     expect(res.status).toBe(200)
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://api.spotify.com/v1/me/player')
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://api.spotify.com/v1/me/player/play?device_id=new-id')
     const init = fetchSpy.mock.calls[0][1] as RequestInit
     expect(init.method).toBe('PUT')
-    expect(init.body).toBe(JSON.stringify({ device_ids: ['new-id'], play: true }))
+    expect(init.body).toBe(JSON.stringify({ uris: ['spotify:track:track_2'], position_ms: 60000 }))
 
     expect(roomState.activeDeviceId).toBe('new-id')
     expect(roomState.currentRound!.currentSongIndex).toBe(2)
@@ -1794,7 +1794,9 @@ describe('POST /api/rooms/:code/player/device', () => {
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
     roomState.activeDeviceId = 'old-id'
-    seedActiveRound().paused = false
+    const round404 = seedActiveRound()
+    round404.paused = false
+    round404.currentSongIndex = 2
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('device not found', { status: 404 }) as unknown as Response,
@@ -1812,18 +1814,18 @@ describe('POST /api/rooms/:code/player/device', () => {
     expect(roomState.activeDeviceId).toBe('old-id')
   })
 
-  it('503 — transfer 401 (token revoked): activeDeviceId unchanged, refresh fired', async () => {
+  it('502 — transfer 401 (reissue rejected): activeDeviceId unchanged', async () => {
     seedHost()
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
     roomState.activeDeviceId = 'old-id'
-    seedActiveRound().paused = false
+    const round401 = seedActiveRound()
+    round401.paused = false
+    round401.currentSongIndex = 2
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('unauthorized', { status: 401 }) as unknown as Response,
     )
-    const refreshModule = await import('../refresh.ts')
-    const refreshSpy = vi.spyOn(refreshModule, 'refreshWithRetry').mockResolvedValue(undefined)
 
     const app = makeApp()
     const res = await app.request('/api/rooms/ABCD/player/device', {
@@ -1831,12 +1833,10 @@ describe('POST /api/rooms/:code/player/device', () => {
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: 'new-id' }),
     })
-    expect(res.status).toBe(503)
+    expect(res.status).toBe(502)
     const body = await res.json() as { message: string }
-    expect(body.message).toBe('Spotify auth degraded')
+    expect(body.message).toBe('Device unavailable — pick another')
     expect(roomState.activeDeviceId).toBe('old-id')
-
-    await vi.waitFor(() => { expect(refreshSpy).toHaveBeenCalledWith('host_1') }, { timeout: 3000 })
   })
 
   it('502 — transfer 5xx: activeDeviceId unchanged', async () => {
@@ -1844,7 +1844,9 @@ describe('POST /api/rooms/:code/player/device', () => {
     await seedRoom()
     const roomState = roomSockets.get('ABCD')!
     roomState.activeDeviceId = 'old-id'
-    seedActiveRound().paused = false
+    const round5xx = seedActiveRound()
+    round5xx.paused = false
+    round5xx.currentSongIndex = 2
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('server error', { status: 500 }) as unknown as Response,
@@ -1858,7 +1860,7 @@ describe('POST /api/rooms/:code/player/device', () => {
     })
     expect(res.status).toBe(502)
     const body = await res.json() as { message: string }
-    expect(body.message).toBe('Device swap failed')
+    expect(body.message).toBe('Device unavailable — pick another')
     expect(roomState.activeDeviceId).toBe('old-id')
   })
 

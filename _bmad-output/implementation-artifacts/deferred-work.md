@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Resolved inline (2026-04-21)
+
+- ~~**"Use desktop Chrome or Firefox for audio" disclaimer removed from LoginPage**~~ — deleted from `src/client/pages/LoginPage.svelte`. Epic 10 + 12 make this obsolete.
+- ~~**4 failing tests in rooms.test.ts (POST /api/rooms/:code/player/device)**~~ — test expectations updated to match Story 12-4 Track B's reissueExpectedTrack implementation. All 507 tests pass.
+
+---
+
 ## Deferred from: code review of song-masking-re-blur fix (2026-04-21)
 
 - **Guest reconnect path not patched with `currentSongRevealed`** — `ws.ts` fix only targets the host reconnect unicast (lines 337–358). Guest reconnect `round:start` (separate branch in ws.ts) does not include `currentSongRevealed`, so guests can still see a spurious re-blur on reconnect after reveal. Out of scope for host-focused bug report; fix when the guest reconnect path is next touched. (src/server/ws.ts — guest connect branch)

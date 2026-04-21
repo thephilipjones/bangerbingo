@@ -31,7 +31,6 @@
   {#if loginError}
     <p class="error u-small">Login failed. Try again.</p>
   {/if}
-  <p class="disclaimer u-small">Use desktop Chrome or Firefox for audio</p>
 </div>
 
 <style>
@@ -52,11 +51,6 @@
     position: absolute;
     top: var(--space-4);
     right: var(--space-5);
-  }
-
-  .disclaimer {
-    color: var(--fg-muted);
-    margin-top: var(--space-2);
   }
 
   .error {
