@@ -5,7 +5,7 @@ import type { ServerType } from '@hono/node-server'
 import { authEvents } from './refresh.ts'
 import { verifySession } from './auth.ts'
 import { getRoomByCode, getHostById, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms } from './db.ts'
-import { runCasualModeSweep } from './rooms.ts'
+import { runCasualModeSweep, replayAutoMarksToSocket } from './rooms.ts'
 import type { Track } from './music/spotify.ts'
 import { generateCard, type Tile } from './game/cards.ts'
 import { startHeartbeat, stopHeartbeat, recordPong } from './heartbeat.ts'
@@ -339,6 +339,17 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     if (activeRound?.active) {
       const hostCard = activeRound.cards.get(sessionUserId) ?? []
       ws.send(JSON.stringify({ ...activeRound.roundStartPayload, card: hostCard, songHistory: activeRound.songHistory }))
+
+      // Story 12-3: on host reconnect, fold any songs played during the disconnect
+      // window into autoMarkedTileIndices (suppressEmit — we don't want the sweep
+      // to fire its own catchUp event), then unicast the full set to the returning
+      // socket in a single square:auto-marked event. One event = one catch-up toast.
+      // playerCasualModes/autoMarkedTileIndices are keyed by host_name.
+      const hostName = room.host_name
+      if (hostName && roomState.playerCasualModes.get(hostName) === true) {
+        runCasualModeSweep(code, roomState, { playerName: hostName, suppressEmit: true })
+        replayAutoMarksToSocket(roomState, ws, hostName)
+      }
     }
 
     if (isReconnect) {
@@ -431,8 +442,13 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
       // Casual Mode (Story 8-5) — catch-up sweep on reconnect. AC #5. Must be AFTER
       // ws.send(round:start) so the client has the card before the auto-mark event.
+      // Story 12-3: fold any new songs played during the disconnect window into
+      // autoMarkedTileIndices (suppressEmit), then unicast the full set to the
+      // returning socket in a single square:auto-marked event. One event = one
+      // catch-up toast.
       if (roomState.playerCasualModes.get(name) === true) {
-        runCasualModeSweep(code, roomState, { playerName: name, isCatchUp: true })
+        runCasualModeSweep(code, roomState, { playerName: name, suppressEmit: true })
+        replayAutoMarksToSocket(roomState, ws, name)
       }
     }
 

@@ -108,7 +108,7 @@ async function callSpotifyOnDevice(
 export function runCasualModeSweep(
   roomCode: string,
   roomState: RoomState,
-  options: { playerName?: string; isCatchUp?: boolean; includeCurrent?: boolean } = {},
+  options: { playerName?: string; isCatchUp?: boolean; includeCurrent?: boolean; suppressEmit?: boolean } = {},
 ): void {
   void roomCode
   const round = roomState.currentRound
@@ -165,6 +165,7 @@ export function runCasualModeSweep(
     }
 
     if (newIndices.length === 0) continue
+    if (options.suppressEmit === true) continue
     try {
       ws.send(JSON.stringify({
         type: 'square:auto-marked',
@@ -173,6 +174,31 @@ export function runCasualModeSweep(
       }))
     } catch { /* ignore broken socket */ }
   }
+}
+
+// Story 12-3: unicast replay of previously-swept auto-mark indices to a
+// reconnecting socket. runCasualModeSweep's idempotency guard prevents
+// re-emitting existing indices to the room, but a reconnected client has
+// lost those marks from memory — this helper fills that gap by sending
+// the current set once to the returning socket only. Pure read: does not
+// mutate autoMarkedTileIndices.
+export function replayAutoMarksToSocket(
+  roomState: RoomState,
+  socket: WebSocket,
+  playerName: string,
+): void {
+  const round = roomState.currentRound
+  if (!round || !round.active) return
+  const indices = round.autoMarkedTileIndices.get(playerName)
+  if (!indices || indices.size === 0) return
+  if (socket.readyState !== WebSocket.OPEN) return
+  try {
+    socket.send(JSON.stringify({
+      type: 'square:auto-marked',
+      tileIndices: Array.from(indices),
+      catchUp: true,
+    }))
+  } catch { /* ignore broken socket */ }
 }
 
 function startSong(roomCode: string, roomState: RoomState, songIndex: number): void {

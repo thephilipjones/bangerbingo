@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createGameState } from '../lib/gameState.svelte.ts'
+import { cardFingerprint } from '../lib/bingo.ts'
+import type { Tile } from '../lib/bingo.ts'
 
 function mockFetch(status: number) {
   return vi.fn().mockResolvedValue({ status } as Response)
@@ -131,5 +133,106 @@ describe('handleBingoClick — auto-claim guard (Story 9-1)', () => {
 
     await game.handleBingoClick()
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+// Story 12-3: host marks persistence — parity with guest mechanism.
+describe('host marks persistence wiring (Story 12-3)', () => {
+  let cleanup: (() => void) | undefined
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup?.()
+    cleanup = undefined
+    localStorage.clear()
+  })
+
+  function makeCard(): Tile[] {
+    return Array.from({ length: 25 }, (_, i) => ({
+      trackId: `t${i}`, title: '', artist: '', albumArtUrl: '', ...(i === 12 ? { free: true as const } : {}),
+    }))
+  }
+
+  // Replicates HostRoomPage.svelte's mark-persistence wiring. If the host
+  // wiring ever drifts from this shape, this test will not detect it — but
+  // it pins the behavior of the createGameState callback contract that host
+  // relies on, and by construction matches the guest key scheme.
+  function mountHostGame(code = 'ABCD') {
+    let marksKey = ''
+    const loadMarks = (): Set<string> => {
+      if (!marksKey) return new Set()
+      try { return new Set(JSON.parse(localStorage.getItem(marksKey) ?? '[]')) } catch { return new Set() }
+    }
+    let game!: ReturnType<typeof createGameState>
+    cleanup = $effect.root(() => {
+      game = createGameState({
+        code,
+        getPlayerName: () => 'Host',
+        getMarksForCard: (card: Tile[]) => {
+          marksKey = `bangerbingo:marks:${code}:${cardFingerprint(card)}`
+          return loadMarks()
+        },
+        onTileMark: (tiles) => {
+          if (!marksKey) return
+          const ids = tiles.filter(t => t.state === 'marked').map(t => t.trackId)
+          localStorage.setItem(marksKey, JSON.stringify(ids))
+        },
+      })
+    })
+    return { game, getMarksKey: () => marksKey }
+  }
+
+  it('getMarksForCard returns the same Set guests get under the same key', () => {
+    const card = makeCard()
+    const key = `bangerbingo:marks:ABCD:${cardFingerprint(card)}`
+    localStorage.setItem(key, JSON.stringify(['t0', 't5']))
+
+    const { game, getMarksKey } = mountHostGame()
+    game.processWsMessage({
+      type: 'round:start', card, titleRevealDelay: 0, songHistory: [
+        { trackId: 't0', title: '', artist: '', albumArtUrl: '', songIndex: 0 },
+        { trackId: 't5', title: '', artist: '', albumArtUrl: '', songIndex: 1 },
+      ], roundNumber: 1,
+    })
+
+    expect(getMarksKey()).toBe(key)
+    const markedTrackIds = game.tiles.filter(t => t.state === 'marked').map(t => t.trackId)
+    expect(new Set(markedTrackIds)).toEqual(new Set(['t0', 't5']))
+  })
+
+  it('onTileMark persists marked trackIds to localStorage under the fingerprint key', () => {
+    const card = makeCard()
+    const { game } = mountHostGame()
+    game.processWsMessage({
+      type: 'round:start', card, titleRevealDelay: 0, songHistory: [
+        { trackId: 't3', title: '', artist: '', albumArtUrl: '', songIndex: 0 },
+      ], roundNumber: 1,
+    })
+
+    game.handleTileClick(3) // mark t3
+
+    const key = `bangerbingo:marks:ABCD:${cardFingerprint(card)}`
+    const stored = JSON.parse(localStorage.getItem(key) ?? '[]')
+    expect(stored).toEqual(['t3'])
+  })
+
+  it('onTileMark writes the empty list when the last mark is toggled off', () => {
+    const card = makeCard()
+    const key = `bangerbingo:marks:ABCD:${cardFingerprint(card)}`
+    localStorage.setItem(key, JSON.stringify(['t3']))
+
+    const { game } = mountHostGame()
+    game.processWsMessage({
+      type: 'round:start', card, titleRevealDelay: 0, songHistory: [
+        { trackId: 't3', title: '', artist: '', albumArtUrl: '', songIndex: 0 },
+      ], roundNumber: 1,
+    })
+
+    // Toggle off — state flips marked → unmarked, onTileMark writes empty list.
+    game.handleTileClick(3)
+    expect(JSON.parse(localStorage.getItem(key) ?? '[]')).toEqual([])
   })
 })

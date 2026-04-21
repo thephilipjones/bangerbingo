@@ -12,6 +12,8 @@
   import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
   import DevicePicker from '../components/DevicePicker.svelte'
   import { createGameState } from '../lib/gameState.svelte.ts'
+  import { cardFingerprint } from '../lib/bingo.ts'
+  import type { Tile } from '../lib/bingo.ts'
   import { postStartNextRound, postSetDevice, getDevices } from '../lib/api.ts'
   import type { SpotifyDevice } from '../lib/api.ts'
   import { readHostPrefs, writeHostPrefs } from '../lib/hostPrefs.ts'
@@ -82,9 +84,30 @@
   // Serialize resume requests so two quick reconnects can't race each other.
   let resumeInFlight = false
 
+  // Story 12-3: persist host marks to localStorage so refresh/reconnect restores
+  // them. Mirrors guest RoomPage wiring verbatim — `bangerbingo:marks:{code}:{fingerprint}`.
+  let marksKey = ''
+  function loadMarks(): Set<string> {
+    if (!marksKey) return new Set()
+    try {
+      return new Set(JSON.parse(localStorage.getItem(marksKey) ?? '[]'))
+    } catch {
+      return new Set()
+    }
+  }
+
   const game = createGameState({
     code: untrack(() => code),
     getPlayerName: () => hostName,
+    getMarksForCard: (card: Tile[]) => {
+      marksKey = `bangerbingo:marks:${code}:${cardFingerprint(card)}`
+      return loadMarks()
+    },
+    onTileMark: (tiles) => {
+      if (!marksKey) return
+      const ids = tiles.filter(t => t.state === 'marked').map(t => t.trackId)
+      localStorage.setItem(marksKey, JSON.stringify(ids))
+    },
   })
 
   let casualModeOn = $state(false)

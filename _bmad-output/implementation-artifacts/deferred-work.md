@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 12-3-marks-and-casual-mode-reconnect-reliability (2026-04-20)
+
+- **Guest name collision with `host_name` replays host indices to guest** — pre-existing system-wide ambiguity. Nothing prevents a guest joining with `name === room.host_name`; 12-3's unicast replay surfaces this because swept indices computed against the host's card would be emitted to that guest's socket. Fix belongs with a broader name-uniqueness pass, not this story. (src/server/ws.ts — guest connect branch)
+- **Host marks persistence test bypasses real Svelte component binding** — [src/client/__tests__/gameState.svelte.test.ts](src/client/__tests__/gameState.svelte.test.ts) replicates the `createGameState` callback contract inline rather than mounting `HostRoomPage.svelte`. A comment in the test file acknowledges it "will not detect" drift. Manual Journey 3 covers it today. Upgrading to a component-level test is a broader harness investment.
+
 ## Deferred from: code review of 12-2-spotify-first-mobile-playback-and-resume-reconcile (2026-04-20)
 
 - **Server clock skew vs Spotify continuous drift** — absolute-time comparison between `Date.now() - clipStartedAt` and Spotify's reported progress will produce persistent false drift on hosts with NTP skew. A broader fix (relative deltas between consecutive resumes) is worth its own story. (src/server/rooms.ts — /host/resume drift branch)

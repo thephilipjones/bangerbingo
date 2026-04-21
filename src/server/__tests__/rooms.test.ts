@@ -14,7 +14,7 @@ vi.stubEnv('SESSION_SECRET', 'test_session_secret')
 vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
-const { generateRoomCode, createRoomWithRetry, roomsRouter, runCasualModeSweep } = await import('../rooms.ts')
+const { generateRoomCode, createRoomWithRetry, roomsRouter, runCasualModeSweep, replayAutoMarksToSocket } = await import('../rooms.ts')
 const { roomSockets } = await import('../ws.ts')
 const { signUserId } = await import('../auth.ts')
 
@@ -2651,6 +2651,169 @@ describe('Casual Mode — Auto-Mark Engine', () => {
     expect(autoMarks).toHaveLength(1)
     expect(autoMarks[0].catchUp).toBe(true)
     expect(autoMarks[0].tileIndices).toEqual([0])
+  })
+})
+
+// ── Story 12-3: replayAutoMarksToSocket ───────────────────────────────────
+
+describe('replayAutoMarksToSocket (Story 12-3)', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+  })
+
+  it('emits one square:auto-marked event on only the given socket with catchUp: true and every index', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.autoMarkedTileIndices.set('Alice', new Set([0, 3, 7]))
+
+    const aliceWs = makeMockWs()
+    const bobWs = makeMockWs()
+    roomState.guests.set('Alice', aliceWs as unknown as WebSocket)
+    roomState.guests.set('Bob', bobWs as unknown as WebSocket)
+
+    replayAutoMarksToSocket(roomState, aliceWs as unknown as WebSocket, 'Alice')
+
+    const aliceMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(aliceMarks).toHaveLength(1)
+    expect(aliceMarks[0].catchUp).toBe(true)
+    expect(new Set(aliceMarks[0].tileIndices as number[])).toEqual(new Set([0, 3, 7]))
+
+    // Bob's socket must not receive anything — unicast only.
+    expect(bobWs.getSent().filter(m => m.type === 'square:auto-marked')).toHaveLength(0)
+  })
+
+  it('is a no-op when the player has no entries in autoMarkedTileIndices', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    seedActiveRound()
+    const aliceWs = makeMockWs()
+    roomState.guests.set('Alice', aliceWs as unknown as WebSocket)
+
+    replayAutoMarksToSocket(roomState, aliceWs as unknown as WebSocket, 'Alice')
+
+    expect(aliceWs.getSent()).toHaveLength(0)
+  })
+
+  it('is a no-op when the entry exists but is an empty Set', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.autoMarkedTileIndices.set('Alice', new Set())
+    const aliceWs = makeMockWs()
+
+    replayAutoMarksToSocket(roomState, aliceWs as unknown as WebSocket, 'Alice')
+
+    expect(aliceWs.getSent()).toHaveLength(0)
+  })
+
+  it('does not mutate autoMarkedTileIndices (pure read)', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.autoMarkedTileIndices.set('Alice', new Set([1, 4]))
+    const aliceWs = makeMockWs()
+
+    replayAutoMarksToSocket(roomState, aliceWs as unknown as WebSocket, 'Alice')
+
+    expect(Array.from(round.autoMarkedTileIndices.get('Alice')!).sort()).toEqual([1, 4])
+  })
+
+  it('is a no-op when no active round exists', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const aliceWs = makeMockWs()
+
+    replayAutoMarksToSocket(roomState, aliceWs as unknown as WebSocket, 'Alice')
+
+    expect(aliceWs.getSent()).toHaveLength(0)
+  })
+
+  it('is a no-op when socket is not OPEN', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+    round.autoMarkedTileIndices.set('Alice', new Set([2]))
+    const closedWs = makeMockWs(WebSocket.CLOSED)
+
+    replayAutoMarksToSocket(roomState, closedWs as unknown as WebSocket, 'Alice')
+
+    expect(closedWs.getSent()).toHaveLength(0)
+  })
+
+  it('reconnect: sweep(suppressEmit) + replay produces exactly one catchUp event even when new songs played during disconnect', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+
+    const tracks = round.playlist
+    const card: Tile[] = tracks.slice(0, 10).map(t => ({
+      trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: t.albumArtUrl,
+    }))
+    while (card.length < 25) card.push({ trackId: `pad_${card.length}`, title: '', artist: '', albumArtUrl: '' })
+    card[12] = { trackId: '', title: '', artist: '', albumArtUrl: '', free: true }
+    round.cards.set('Alice', card)
+    roomState.playerCasualModes.set('Alice', true)
+
+    // Pre-existing swept indices (marks the client had before disconnect).
+    round.autoMarkedTileIndices.set('Alice', new Set([0, 2]))
+    // A new song played during the disconnect window — its tile (index 3) should
+    // be folded into the set by the suppressed sweep, then unicast with the rest.
+    round.songHistory = [
+      { trackId: tracks[0].id, title: '', artist: '', albumArtUrl: '', songIndex: 0 },
+      { trackId: tracks[2].id, title: '', artist: '', albumArtUrl: '', songIndex: 1 },
+      { trackId: tracks[3].id, title: '', artist: '', albumArtUrl: '', songIndex: 2 },
+    ]
+    round.currentSongIndex = 2 // current song excluded from sweep
+
+    const aliceWs = makeMockWs()
+    roomState.guests.set('Alice', aliceWs as unknown as WebSocket)
+
+    runCasualModeSweep('ABCD', roomState, { playerName: 'Alice', suppressEmit: true })
+    replayAutoMarksToSocket(roomState, aliceWs as unknown as WebSocket, 'Alice')
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks).toHaveLength(1)
+    expect(autoMarks[0].catchUp).toBe(true)
+    expect(new Set(autoMarks[0].tileIndices as number[])).toEqual(new Set([0, 2, 3]))
+    expect(Array.from(round.autoMarkedTileIndices.get('Alice')!).sort()).toEqual([0, 2, 3])
+  })
+
+  it('suppressEmit skips the sweep send but still updates autoMarkedTileIndices', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound()
+
+    const tracks = round.playlist
+    const card: Tile[] = tracks.slice(0, 10).map(t => ({
+      trackId: t.id, title: t.title, artist: t.artist, albumArtUrl: t.albumArtUrl,
+    }))
+    while (card.length < 25) card.push({ trackId: `pad_${card.length}`, title: '', artist: '', albumArtUrl: '' })
+    card[12] = { trackId: '', title: '', artist: '', albumArtUrl: '', free: true }
+    round.cards.set('Alice', card)
+    roomState.playerCasualModes.set('Alice', true)
+    round.songHistory = [
+      { trackId: tracks[0].id, title: '', artist: '', albumArtUrl: '', songIndex: 0 },
+      { trackId: tracks[1].id, title: '', artist: '', albumArtUrl: '', songIndex: 1 },
+    ]
+    round.currentSongIndex = 1
+
+    const aliceWs = makeMockWs()
+    roomState.guests.set('Alice', aliceWs as unknown as WebSocket)
+
+    runCasualModeSweep('ABCD', roomState, { playerName: 'Alice', suppressEmit: true })
+
+    expect(aliceWs.getSent().filter(m => m.type === 'square:auto-marked')).toHaveLength(0)
+    expect(Array.from(round.autoMarkedTileIndices.get('Alice')!).sort()).toEqual([0])
   })
 })
 
