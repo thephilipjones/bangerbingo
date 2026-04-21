@@ -99,8 +99,8 @@ describe('heartbeat', () => {
   it('stopHeartbeat clears the registered interval', () => {
     const ws = new FakeWs()
     const cleared: unknown[] = []
-    const setIntervalFn = (() => 42 as unknown as NodeJS.Timeout) as typeof setInterval
-    const clearIntervalFn = ((id: unknown) => { cleared.push(id) }) as typeof clearInterval
+    const setIntervalFn = (() => 42 as unknown as NodeJS.Timeout) as unknown as typeof setInterval
+    const clearIntervalFn = ((id: unknown) => { cleared.push(id) }) as unknown as typeof clearInterval
 
     startHeartbeat(ws as unknown as import('ws').WebSocket, { setIntervalFn, clearIntervalFn })
     stopHeartbeat(ws as unknown as import('ws').WebSocket, { clearIntervalFn })
