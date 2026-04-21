@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 12-4-playtest-reliability-followup-fixes.md (2026-04-21)
+
+- **Track C client test is a vacuous tautology** — `applyRoundStart` in `gameState.svelte.test.ts` is a pure identity function; test cannot catch a future regression where `round:start` mutates `casualModeOn`. Fix requires either mounting `HostRoomPage.svelte` or extracting the handler into a testable unit — a broader test-harness investment. (src/client/__tests__/gameState.svelte.test.ts:~310-325)
+- **Track A client test mirrors handler logic in a local copy** — the `hydrate()` helper in `gameState.svelte.test.ts` reimplements the `round:start` branch from `HostRoomPage.svelte` rather than exercising it; a regression in the actual handler would not be caught. Consistent with project testing convention but worth upgrading when the broader harness supports Svelte component mounting. (src/client/__tests__/gameState.svelte.test.ts:~241-295)
+
 ## Deferred from: code review of 12-3-marks-and-casual-mode-reconnect-reliability (2026-04-20)
 
 - **Guest name collision with `host_name` replays host indices to guest** — pre-existing system-wide ambiguity. Nothing prevents a guest joining with `name === room.host_name`; 12-3's unicast replay surfaces this because swept indices computed against the host's card would be emitted to that guest's socket. Fix belongs with a broader name-uniqueness pass, not this story. (src/server/ws.ts — guest connect branch)

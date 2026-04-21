@@ -25,7 +25,6 @@
     onLeave?: () => void
   } = $props()
 
-  let hostDisconnected = $state(false)
   let sessionEnded = $state(false)
   let wsState = $state<WsState>('open')
   let wsClient: WsClient | null = null
@@ -34,10 +33,6 @@
   let marksKey = ''
   let toastMessage = $state<string | null>(null)
   let toastTimer: ReturnType<typeof setTimeout> | undefined
-  // Reconnect into an existing round delivers a buffered round:start whose reset
-  // would clobber `casualModeOn` seeded from session:connect. Skip the reset the
-  // first time so reconnected casual players keep their server-truth state.
-  let hasSeenRoundStart = false
 
   function loadMarks(): Set<string> {
     if (!marksKey) return new Set()
@@ -104,27 +99,15 @@
       const casualNames = (data.casualModeNames as string[] | undefined) ?? []
       game.casualModePlayers = new Set(casualNames)
       casualModeOn = casualNames.includes(name)
-      hasSeenRoundStart = false
     } else if (data.type === 'round:start') {
-      if (hasSeenRoundStart) {
-        casualModeOn = false
-      }
-      hasSeenRoundStart = true
       clearTimeout(toastTimer)
       toastMessage = null
-      statusLine = 'Waiting for next song…'
-    } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
-      statusLine = 'Waiting for next song…'
     } else if (data.type === 'round:end') {
       game.resetRound()
       statusLine = 'Waiting for the host to start a round...'
     } else if (data.type === 'session:end') {
       sessionEnded = true
       setTimeout(() => onLeave?.(), 2500)
-    } else if (data.type === 'host:disconnected') {
-      hostDisconnected = true
-    } else if (data.type === 'host:reconnected') {
-      hostDisconnected = false
     }
   }
 
@@ -175,12 +158,6 @@
 
 {#if wsState === 'dead'}
   <div class="error-banner" role="alert">Connection lost — please refresh the page.</div>
-{/if}
-
-{#if hostDisconnected}
-  <div class="host-disconnected-banner" role="status">
-    Host disconnected — waiting for them to reconnect…
-  </div>
 {/if}
 
 {#if game.showHistory}
@@ -278,19 +255,6 @@
     padding: var(--space-2) var(--space-4);
     text-align: center;
     z-index: 200;
-    font-size: 14px;
-  }
-
-  .host-disconnected-banner {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: var(--accent);
-    color: var(--accent-fg);
-    padding: 8px 16px;
-    text-align: center;
-    z-index: 100;
     font-size: 14px;
   }
 

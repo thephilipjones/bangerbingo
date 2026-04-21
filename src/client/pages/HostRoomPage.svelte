@@ -111,9 +111,6 @@
   })
 
   let casualModeOn = $state(false)
-  // Mirrors guest RoomPage — skip the first round:start after session:connect so a
-  // reconnect-into-active-round doesn't clobber casualModeOn seeded from session:connect.
-  let hasSeenRoundStart = false
 
   function handleCasualToggle() {
     if (!hostName) return
@@ -477,14 +474,12 @@
       try {
         game.processWsMessage(data)
         if (data.type === 'round:start') {
-          if (hasSeenRoundStart) {
-            casualModeOn = false
-          }
-          hasSeenRoundStart = true
           isPlaying = false
           nextRoundError = null
           clearTimeout(nextRoundErrorTimer)
-          const history = (data as Record<string, unknown>).songHistory as unknown[] | undefined
+          const history = (data as Record<string, unknown>).songHistory as Array<{ trackId: string; title: string; artist: string }> | undefined
+          const currentSongIndex = (data as Record<string, unknown>).currentSongIndex as number | undefined
+          const paused = (data as Record<string, unknown>).paused as boolean | undefined
           if (!history || history.length === 0) {
             if (sdkReady && !sdkFailed) {
               fetch(`/api/rooms/${code}/round/play`, { method: 'POST' })
@@ -493,6 +488,14 @@
             } else {
               pendingAutoPlay = true
             }
+          } else if (currentSongIndex !== undefined && currentSongIndex >= 0) {
+            // Reconnect into an active round: hydrate the mini-player UI from the
+            // last history entry (always the currently playing track — see
+            // rooms.ts songHistory.push only on isTrackChange).
+            const last = history[history.length - 1]
+            currentTrack = { title: last.title, artist: last.artist }
+            currentTrackId = last.trackId
+            isPlaying = !(paused === true)
           }
         } else if (data.type === 'session:connect') {
           game.players = data.players ?? []

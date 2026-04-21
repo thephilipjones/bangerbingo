@@ -602,6 +602,54 @@ describe('Late-join includes songHistory', () => {
     vi.restoreAllMocks()
     host2.close()
   })
+
+  // Story 12-4 Track A: the reconnect unicast must also carry currentSongIndex
+  // and paused so the client can rehydrate the mini-player without waiting for
+  // the next song:start.
+  it('host reconnect mid-round round:start includes currentSongIndex and paused', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg` }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host1 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host1.next('session:connect')
+
+    const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+    })
+    expect(roundRes.status).toBe(200)
+    await host1.next('round:start')
+
+    const playRes = await honoApp.request('/api/rooms/AAAA/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(playRes.status).toBe(200)
+    await host1.next('song:start')
+
+    await new Promise<void>((resolve) => {
+      host1.ws.once('close', () => resolve())
+      host1.close()
+    })
+
+    const host2 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host2.next('session:connect')
+    const roundMsg = await host2.next('round:start')
+
+    expect(roundMsg.currentSongIndex).toBe(0)
+    expect(roundMsg.paused).toBe(false)
+
+    vi.restoreAllMocks()
+    host2.close()
+  })
 })
 
 // ── auth:restored (Story 5-6) ─────────────────────────────────────────────

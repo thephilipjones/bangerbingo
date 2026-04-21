@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-20 # 12-3 code review complete
+last_updated: 2026-04-21 # 12-4 code review complete; status: done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -133,4 +133,5 @@ development_status:
   12-1-websocket-heartbeat-and-auto-reconnect: done
   12-2-spotify-first-mobile-playback-and-resume-reconcile: done
   12-3-marks-and-casual-mode-reconnect-reliability: done
+  12-4-playtest-reliability-followup-fixes: done
   epic-12-retrospective: optional

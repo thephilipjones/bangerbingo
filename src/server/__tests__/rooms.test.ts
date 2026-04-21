@@ -1077,13 +1077,18 @@ describe('Spotify Web API device recovery', () => {
     })
     expect(res.status).toBe(200)
 
+    // Story 12-4 Track B: first song of a fresh round fires a defensive pause
+    // before the play call. Both calls target the active device.
     await vi.waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
     })
 
-    const url = String(fetchSpy.mock.calls[0][0])
-    expect(url).toContain('/me/player/play')
-    expect(url).toContain('device_id=device_xyz')
+    const pauseUrl = String(fetchSpy.mock.calls[0][0])
+    expect(pauseUrl).toContain('/me/player/pause')
+    expect(pauseUrl).toContain('device_id=device_xyz')
+    const playUrl = String(fetchSpy.mock.calls[1][0])
+    expect(playUrl).toContain('/me/player/play')
+    expect(playUrl).toContain('device_id=device_xyz')
 
     const sent = collectSent(hostWs)
     expect(sent.find((m) => m.type === 'song:start')).toBeDefined()
@@ -1100,7 +1105,11 @@ describe('Spotify Web API device recovery', () => {
     const hostWs = { readyState: 1, send: vi.fn() }
     roomState.host = hostWs as unknown as WebSocket
 
+    // Story 12-4 Track B: first call is the defensive pause (returns 200 here so
+    // it exits cleanly without triggering its own 404 recovery). The play call is
+    // the second fetch and exercises the 404 → transfer → retry path.
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 200 }) as unknown as Response)
       .mockResolvedValueOnce(new Response('Device not found', { status: 404 }) as unknown as Response)
       .mockResolvedValueOnce(new Response(null, { status: 204 }) as unknown as Response)
       .mockResolvedValueOnce(new Response(null, { status: 200 }) as unknown as Response)
@@ -1113,16 +1122,17 @@ describe('Spotify Web API device recovery', () => {
     expect(res.status).toBe(200)
 
     await vi.waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledTimes(3)
+      expect(fetchSpy).toHaveBeenCalledTimes(4)
     })
 
-    expect(String(fetchSpy.mock.calls[0][0])).toContain('/me/player/play')
-    const transferUrl = String(fetchSpy.mock.calls[1][0])
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('/me/player/pause')
+    expect(String(fetchSpy.mock.calls[1][0])).toContain('/me/player/play')
+    const transferUrl = String(fetchSpy.mock.calls[2][0])
     expect(transferUrl).toBe('https://api.spotify.com/v1/me/player')
-    const transferInit = fetchSpy.mock.calls[1][1] as RequestInit
+    const transferInit = fetchSpy.mock.calls[2][1] as RequestInit
     expect(transferInit.method).toBe('PUT')
     expect(transferInit.body).toBe(JSON.stringify({ device_ids: ['device_xyz'], play: false }))
-    expect(String(fetchSpy.mock.calls[2][0])).toContain('/me/player/play')
+    expect(String(fetchSpy.mock.calls[3][0])).toContain('/me/player/play')
 
     const sent = collectSent(hostWs)
     expect(sent.find((m) => m.type === 'song:start')).toBeDefined()
@@ -1139,7 +1149,10 @@ describe('Spotify Web API device recovery', () => {
     const hostWs = { readyState: 1, send: vi.fn() }
     roomState.host = hostWs as unknown as WebSocket
 
+    // Story 12-4 Track B: defensive pause fires first (gets 200 so it exits
+    // cleanly); play then hits the 404 → transfer-404 terminal path.
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, { status: 200 }) as unknown as Response)
       .mockResolvedValueOnce(new Response('Device not found', { status: 404 }) as unknown as Response)
       .mockResolvedValueOnce(new Response('Device not found', { status: 404 }) as unknown as Response)
 
@@ -1153,7 +1166,7 @@ describe('Spotify Web API device recovery', () => {
     await vi.waitFor(() => {
       expect(roomState.activeDeviceId).toBeUndefined()
     })
-    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
 
     const sent = collectSent(hostWs)
     expect(sent.find((m) => m.type === 'host:sdk-stale')).toBeDefined()
@@ -1183,7 +1196,78 @@ describe('Spotify Web API device recovery', () => {
     await vi.waitFor(() => {
       expect(refreshSpy).toHaveBeenCalledWith('host_1')
     })
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    // Story 12-4 Track B: pause + play both hit 401; each fires its own
+    // refreshWithRetry and returns without retry. Two fetches, not one.
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ── Story 12-4 Track B — defensive first-song pause ───────────────────────
+
+describe('Story 12-4 Track B — defensive first-song pause', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('fresh round fires pause before play', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'device_xyz'
+    seedActiveRound()
+    roomState.host = { readyState: 1, send: vi.fn() } as unknown as WebSocket
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 200 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+    })
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('/me/player/pause')
+    expect(String(fetchSpy.mock.calls[1][0])).toContain('/me/player/play')
+  })
+
+  it('subsequent track change does not fire pause', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'device_xyz'
+    const round = seedActiveRound()
+    // Simulate the round already being mid-song (e.g. a /round/next after the
+    // first /round/play). Track B's defensive pause must only fire on the
+    // first song of a fresh round.
+    round.currentSongIndex = 0
+
+    roomState.host = { readyState: 1, send: vi.fn() } as unknown as WebSocket
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 200 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/next', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+    expect(String(fetchSpy.mock.calls[0][0])).toContain('/me/player/play')
   })
 })
 

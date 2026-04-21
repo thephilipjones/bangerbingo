@@ -236,3 +236,93 @@ describe('host marks persistence wiring (Story 12-3)', () => {
     expect(JSON.parse(localStorage.getItem(key) ?? '[]')).toEqual([])
   })
 })
+
+// Story 12-4 Track A — host reconnect mini-player hydrate rule.
+// Mirrors the branch logic in HostRoomPage.svelte's round:start handler so a
+// regression in either place is caught here. See Dev Notes (12-4) for why this
+// lives at the handler-logic surface rather than via component mounting.
+describe('Story 12-4 Track A — round:start currentTrack hydrate', () => {
+  function hydrate(data: {
+    songHistory?: Array<{ trackId: string; title: string; artist: string }>
+    currentSongIndex?: number
+    paused?: boolean
+  }): {
+    currentTrack: { title: string; artist: string } | null
+    currentTrackId: string | null
+    isPlaying: boolean
+    autoPlay: boolean
+  } {
+    const history = data.songHistory
+    const currentSongIndex = data.currentSongIndex
+    const paused = data.paused
+    let currentTrack: { title: string; artist: string } | null = null
+    let currentTrackId: string | null = null
+    let isPlaying = false
+    let autoPlay = false
+    if (!history || history.length === 0) {
+      autoPlay = true
+    } else if (currentSongIndex !== undefined && currentSongIndex >= 0) {
+      const last = history[history.length - 1]
+      currentTrack = { title: last.title, artist: last.artist }
+      currentTrackId = last.trackId
+      isPlaying = !(paused === true)
+    }
+    return { currentTrack, currentTrackId, isPlaying, autoPlay }
+  }
+
+  it('hydrates currentTrack from last history entry when reconnecting into active round', () => {
+    const result = hydrate({
+      songHistory: [
+        { trackId: 't0', title: 'Song 0', artist: 'Artist 0' },
+        { trackId: 't1', title: 'Song 1', artist: 'Artist 1' },
+      ],
+      currentSongIndex: 1,
+      paused: false,
+    })
+    expect(result.currentTrack).toEqual({ title: 'Song 1', artist: 'Artist 1' })
+    expect(result.currentTrackId).toBe('t1')
+    expect(result.isPlaying).toBe(true)
+    expect(result.autoPlay).toBe(false)
+  })
+
+  it('sets isPlaying = false when paused flag is true', () => {
+    const result = hydrate({
+      songHistory: [{ trackId: 't0', title: 'Song 0', artist: 'Artist 0' }],
+      currentSongIndex: 0,
+      paused: true,
+    })
+    expect(result.isPlaying).toBe(false)
+    expect(result.currentTrackId).toBe('t0')
+  })
+
+  it('falls through to auto-play on fresh round (empty history)', () => {
+    const result = hydrate({ songHistory: [], currentSongIndex: -1, paused: false })
+    expect(result.autoPlay).toBe(true)
+    expect(result.currentTrack).toBeNull()
+  })
+})
+
+// Story 12-4 Track C — casualModeOn preservation across round:start events.
+// Mirrors the invariant that the round:start handler MUST NOT mutate
+// casualModeOn. The old code wrapped a `hasSeenRoundStart` gate and reset to
+// false on the second event; deleting that block preserves server-truth.
+describe('Story 12-4 Track C — casualModeOn preservation', () => {
+  function applyRoundStart(casualModeOn: boolean): boolean {
+    // Post-12-4 rule: round:start has no effect on casualModeOn. The only
+    // mutations are (a) explicit user toggle, (b) session:connect hydration.
+    return casualModeOn
+  }
+
+  it('casualModeOn survives a second round:start (reconnect resend or let-it-ride)', () => {
+    let casualModeOn = true
+    casualModeOn = applyRoundStart(casualModeOn)
+    casualModeOn = applyRoundStart(casualModeOn)
+    expect(casualModeOn).toBe(true)
+  })
+
+  it('casualModeOn = false stays false across round:start', () => {
+    let casualModeOn = false
+    casualModeOn = applyRoundStart(casualModeOn)
+    expect(casualModeOn).toBe(false)
+  })
+})

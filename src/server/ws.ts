@@ -338,7 +338,13 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     const activeRound = roomState.currentRound
     if (activeRound?.active) {
       const hostCard = activeRound.cards.get(sessionUserId) ?? []
-      ws.send(JSON.stringify({ ...activeRound.roundStartPayload, card: hostCard, songHistory: activeRound.songHistory }))
+      ws.send(JSON.stringify({
+        ...activeRound.roundStartPayload,
+        card: hostCard,
+        songHistory: activeRound.songHistory,
+        currentSongIndex: activeRound.currentSongIndex,
+        paused: activeRound.paused === true,
+      }))
 
       // Story 12-3: on host reconnect, fold any songs played during the disconnect
       // window into autoMarkedTileIndices (suppressEmit — we don't want the sweep

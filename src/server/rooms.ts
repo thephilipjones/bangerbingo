@@ -224,6 +224,13 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     }
     round.songHistory.push(entry)
   }
+  // Story 12-4 Track B: on first song of a fresh round, defensively pause the
+  // active device before the play call so Spotify's prior context (e.g. a track
+  // the user manually paused to activate the app) can't bleed through the
+  // round's first-track transition. Pausing an already-paused device is a 403/404
+  // which callSpotifyOnDevice's handlers swallow. Must be evaluated here because
+  // round.currentSongIndex is about to be mutated.
+  const needsDefensivePause = isTrackChange && round.currentSongIndex === -1
   round.currentSongIndex = songIndex
   round.currentSongRevealed = round.config.titleRevealDelay === 0
   round.paused = false
@@ -260,6 +267,25 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
       body: JSON.stringify({ uris: [`spotify:track:${track.id}`], position_ms: SEEK_POSITION_MS }),
     },
   })
+
+  console.log('[spotify:play]', {
+    code: roomCode,
+    songIndex,
+    isTrackChange,
+    trackId: track.id,
+    activeDeviceId: roomState.activeDeviceId,
+  })
+
+  if (needsDefensivePause) {
+    callSpotifyOnDevice(roomCode, roomState, 'pause', (deviceId, token) => ({
+      url: `https://api.spotify.com/v1/me/player/pause?device_id=${encodeURIComponent(deviceId)}`,
+      init: {
+        method: 'PUT' as const,
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    })).catch(() => {})
+  }
+
   callSpotifyOnDevice(roomCode, roomState, 'play',
     isTrackChange
       ? startBuildRequest
