@@ -15,6 +15,7 @@
   import { postStartNextRound, postSetDevice, getDevices } from '../lib/api.ts'
   import type { SpotifyDevice } from '../lib/api.ts'
   import { readHostPrefs, writeHostPrefs } from '../lib/hostPrefs.ts'
+  import { createWsClient, type WsClient, type WsState } from '../lib/wsClient.ts'
 
   let { code, onRoundEnded, onSessionEnded }: {
     code: string
@@ -25,7 +26,7 @@
   // Host-only state
   let currentTrack = $state<{ title: string; artist: string } | null>(null)
   let isPlaying = $state(false)
-  let wsError = $state(false)
+  let wsState = $state<WsState>('connecting')
   let sdkReady = $state(false)
   let sdkFailed = $state(false)
   let currentTrackId = $state<string | null>(null)
@@ -49,7 +50,8 @@
   let deviceSwitchResultTimer: ReturnType<typeof setTimeout> | undefined
   let chipRef = $state<HTMLElement | undefined>(undefined)
   let sessionEnded = false
-  let ws: WebSocket
+  let wsClient: WsClient | null = null
+  let visibilityListener: (() => void) | null = null
   let player: Spotify.Player | undefined
   let sdkScript: HTMLScriptElement | undefined
   let sdkErrorFired = false
@@ -71,7 +73,7 @@
     if (!hostName) return
     const next = !casualModeOn
     casualModeOn = next
-    ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: next }))
+    wsClient?.send({ type: 'player:casual-mode-changed', enabled: next })
   }
 
   function handleSessionEnd() {
@@ -265,11 +267,10 @@
     }
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?code=${code}`)
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws?code=${code}`
 
-    ws.onmessage = (event) => {
+    function handleWsMessage(data: Record<string, unknown>) {
       try {
-        const data = JSON.parse(event.data)
         game.processWsMessage(data)
         if (data.type === 'round:start') {
           if (hasSeenRoundStart) {
@@ -326,8 +327,17 @@
       }
     }
 
-    ws.onerror = () => { wsError = true }
-    ws.onclose = (event) => { if (event.code !== 1000) wsError = true }
+    wsClient = createWsClient({
+      url: wsUrl,
+      onMessage: (raw) => handleWsMessage(raw as Record<string, unknown>),
+      onStateChange: (s) => { wsState = s },
+    })
+
+    function onVisible() {
+      if (document.visibilityState === 'visible') wsClient?.nudge()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    visibilityListener = onVisible
   })
 
   onDestroy(() => {
@@ -337,7 +347,12 @@
     clearTimeout(confirmPillTimer)
     clearTimeout(deviceSwitchResultTimer)
     initialDevicesController?.abort()
-    ws?.close()
+    if (visibilityListener) {
+      document.removeEventListener('visibilitychange', visibilityListener)
+      visibilityListener = null
+    }
+    wsClient?.close()
+    wsClient = null
     player?.disconnect()
     if (sdkScript && document.head.contains(sdkScript)) {
       document.head.removeChild(sdkScript)
@@ -350,7 +365,11 @@
   <AuthDegradedBanner onReauth={handleReauth} />
 {/if}
 
-{#if wsError}
+{#if wsState === 'reconnecting'}
+  <div class="reconnecting-chip" role="status" aria-live="polite">Reconnecting…</div>
+{/if}
+
+{#if wsState === 'dead'}
   <div class="error-banner" role="alert">Connection lost — please refresh the page.</div>
 {/if}
 
@@ -497,6 +516,20 @@
     text-align: center;
     z-index: 200;
     font-size: 14px;
+  }
+
+  .reconnecting-chip {
+    position: fixed;
+    top: var(--space-3);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg-muted);
+    padding: var(--space-1) var(--space-3);
+    font-size: 12px;
+    z-index: 210;
+    letter-spacing: 0.04em;
   }
 
   .host-game {

@@ -8,6 +8,7 @@ import { getRoomByCode, getHostById, upsertActiveRoom, deleteActiveRoom, getAllA
 import { runCasualModeSweep } from './rooms.ts'
 import type { Track } from './music/spotify.ts'
 import { generateCard, type Tile } from './game/cards.ts'
+import { startHeartbeat, stopHeartbeat, recordPong } from './heartbeat.ts'
 
 // ── Round config types ─────────────────────────────────────────────────────
 
@@ -263,6 +264,17 @@ function parseCookies(header: string | undefined): Record<string, string> {
 
 function handleConnection(ws: WebSocket, req: IncomingMessage): void {
   ws.on('error', () => { /* prevent unhandled error crash */ })
+
+  // Heartbeat: every HEARTBEAT_INTERVAL_MS send ping; terminate if no pong in
+  // PONG_TIMEOUT_MS. The close handler below stops the interval.
+  startHeartbeat(ws)
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data.toString())
+      if (msg?.type === 'pong') recordPong(ws)
+    } catch { /* ignore malformed */ }
+  })
+  ws.on('close', () => { stopHeartbeat(ws) })
 
   const url = new URL(req.url ?? '/', 'http://localhost')
   const code = url.searchParams.get('code') ?? ''

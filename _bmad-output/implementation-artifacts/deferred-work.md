@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 12-1-websocket-heartbeat-and-auto-reconnect (2026-04-20)
+
+- **`connectAsHost` wrapper + 10 unit tests deleted out-of-scope** — inline LobbyPage handler is the sole caller and new wsClient tests cover the WS-client layer; unit coverage of host session:connect defaults and unparseable-message tolerance was dropped but not behaviorally regressed. (src/client/lib/ws.ts, src/client/__tests__/dashboard.test.ts)
+- **LobbyPage `dead`-state banner copy silently changed** — old copy "Connection lost — player list may be stale. Refresh to reconnect." replaced with host-page copy "Connection lost — please refresh the page." Minor UX consistency change; no spec mandate either way. (src/client/pages/LobbyPage.svelte:169)
+
 ## Deferred from: code review of 10-3-sdk-default-preference-persistence-and-failure-path (2026-04-20)
 
 - **Double `onSpotifyWebPlaybackSDKReady` assignment on HMR/fast-nav** — pre-existing: if the component is destroyed before the SDK script `load` event fires and a new instance mounts, a second `onSpotifyWebPlaybackSDKReady` is assigned and a second `<script>` tag appended. Unlikely in production but reachable in HMR. (src/client/pages/HostRoomPage.svelte — initSdkPlayer)

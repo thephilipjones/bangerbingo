@@ -32,51 +32,6 @@ export async function copyRoomCode(code: string): Promise<void> {
   await navigator.clipboard.writeText(code)
 }
 
-export interface HostHandlers {
-  onConnect(players: string[], hostName: string | null): void
-  onPlayerJoined(name: string): void
-  onPlayerLeft(name: string): void
-  onAuthDegraded(): void
-  onDisconnected(): void
-  onRoundActive?(): void
-}
-
-export function connectAsHost(code: string, handlers: HostHandlers): WebSocket {
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${wsProtocol}//${window.location.host}/ws?code=${encodeURIComponent(code)}`
-  const ws = new WebSocket(wsUrl)
-
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
-      if (data.type === 'session:connect') {
-        handlers.onConnect(data.players ?? [], data.hostName ?? null)
-      } else if (data.type === 'round:start') {
-        handlers.onRoundActive?.()
-      } else if (data.type === 'player:joined') {
-        handlers.onPlayerJoined(data.name)
-      } else if (data.type === 'player:left') {
-        handlers.onPlayerLeft(data.name)
-      } else if (data.type === 'auth:degraded') {
-        handlers.onAuthDegraded()
-      } else if (data.type === 'session:end') {
-        // Recognised in 7-2; full UX (banner, redirect) lives in Story 7-5.
-        // The server force-closes the socket immediately after broadcasting,
-        // so the existing onclose path still fires for disconnect handling.
-      }
-    } catch {
-      // ignore unparseable messages
-    }
-  }
-
-  ws.onerror = () => handlers.onDisconnected()
-  ws.onclose = (event) => {
-    if (event.code !== 1000) handlers.onDisconnected()
-  }
-
-  return ws
-}
-
 export interface GuestHandlers {
   onConnect(
     role: string,

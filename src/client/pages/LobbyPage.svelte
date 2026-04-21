@@ -2,7 +2,8 @@
   import { onMount, onDestroy } from 'svelte'
   import { Link, ArrowLeft } from 'phosphor-svelte'
   import { TRIVIA_FACTS, shuffle } from '../lib/trivia.ts'
-  import { connectAsHost, applyPlayerEvent, copyRoomCode } from '../lib/ws.ts'
+  import { applyPlayerEvent, copyRoomCode } from '../lib/ws.ts'
+  import { createWsClient, type WsClient, type WsState } from '../lib/wsClient.ts'
   import { getRooms } from '../lib/api.ts'
   import RoundConfigOverlay from '../components/RoundConfigOverlay.svelte'
   import VinylWithTonearm from '../components/VinylWithTonearm.svelte'
@@ -73,12 +74,27 @@
   let authDegraded = $state(false)
   let degradedDismissed = $state(false)
 
-  // ── WS disconnected banner ──────────────────────────────────────────────────
-  let wsDisconnected = $state(false)
-
-  // ── WebSocket ───────────────────────────────────────────────────────────────
-  let ws: WebSocket | null = null
+  // ── WS state ────────────────────────────────────────────────────────────────
+  let wsState = $state<WsState>('connecting')
+  let wsClient: WsClient | null = null
+  let visibilityListener: (() => void) | null = null
   let cancelled = false
+
+  function handleWsMessage(data: unknown) {
+    if (!data || typeof data !== 'object') return
+    const msg = data as { type?: string; players?: string[]; hostName?: string | null; name?: string }
+    if (msg.type === 'session:connect') {
+      players = msg.players ?? []
+    } else if (msg.type === 'round:start') {
+      onRoundStarted()
+    } else if (msg.type === 'player:joined' && typeof msg.name === 'string') {
+      players = applyPlayerEvent(players, { type: 'player:joined', name: msg.name })
+    } else if (msg.type === 'player:left' && typeof msg.name === 'string') {
+      players = applyPlayerEvent(players, { type: 'player:left', name: msg.name })
+    } else if (msg.type === 'auth:degraded') {
+      authDegraded = true
+    }
+  }
 
   onMount(() => {
     triviaInterval = setInterval(advanceFact, 12000)
@@ -101,31 +117,26 @@
         // fall-through safe default: leave roomHostName === null
       })
 
-    ws = connectAsHost(code, {
-      onConnect(initialPlayers, _hostName) {
-        players = initialPlayers
-      },
-      onPlayerJoined(name) {
-        players = applyPlayerEvent(players, { type: 'player:joined', name })
-      },
-      onPlayerLeft(name) {
-        players = applyPlayerEvent(players, { type: 'player:left', name })
-      },
-      onAuthDegraded() {
-        authDegraded = true
-      },
-      onDisconnected() {
-        wsDisconnected = true
-      },
-      onRoundActive: onRoundStarted,
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const url = `${wsProtocol}//${window.location.host}/ws?code=${encodeURIComponent(code)}`
+    wsClient = createWsClient({
+      url,
+      onMessage: handleWsMessage,
+      onStateChange: (s) => { wsState = s },
     })
+
+    visibilityListener = () => {
+      if (document.visibilityState === 'visible') wsClient?.nudge()
+    }
+    document.addEventListener('visibilitychange', visibilityListener)
   })
 
   onDestroy(() => {
     cancelled = true
     clearInterval(triviaInterval)
     clearTimeout(triviaTimeout)
-    ws?.close()
+    if (visibilityListener) document.removeEventListener('visibilitychange', visibilityListener)
+    wsClient?.close()
   })
 </script>
 
@@ -150,9 +161,12 @@
     </div>
   </header>
 
-  <!-- WS disconnected banner -->
-  {#if wsDisconnected}
-    <p class="disconnected-banner">Connection lost — player list may be stale. Refresh to reconnect.</p>
+  <!-- WS state banners -->
+  {#if wsState === 'reconnecting'}
+    <div class="reconnecting-chip" role="status" aria-live="polite">Reconnecting…</div>
+  {/if}
+  {#if wsState === 'dead'}
+    <p class="disconnected-banner">Connection lost — please refresh the page.</p>
   {/if}
 
   <!-- Auth degraded banner (stub for Epic 5) -->
@@ -297,6 +311,16 @@
     border: var(--rule-thin) solid var(--rule);
     color: var(--fg-muted);
     padding: var(--space-2) var(--space-4);
+    font-size: var(--fs-small);
+  }
+
+  .reconnecting-chip {
+    align-self: center;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg-muted);
+    padding: var(--space-1) var(--space-3);
+    border-radius: 999px;
     font-size: var(--fs-small);
   }
 

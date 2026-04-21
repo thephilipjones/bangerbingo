@@ -10,6 +10,7 @@
   import { cardFingerprint } from '../lib/bingo.ts'
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
+  import { createWsClient, type WsClient, type WsState } from '../lib/wsClient.ts'
 
   let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialCasualModeNames = [], pendingMessages = [], onLeave }: {
     name: string
@@ -26,6 +27,9 @@
 
   let hostDisconnected = $state(false)
   let sessionEnded = $state(false)
+  let wsState = $state<WsState>('open')
+  let wsClient: WsClient | null = null
+  let visibilityListener: (() => void) | null = null
   let statusLine = $state('Waiting for the host to start a round...')
   let marksKey = ''
   let toastMessage = $state<string | null>(null)
@@ -49,7 +53,7 @@
   function handleCasualToggle() {
     const next = !casualModeOn
     casualModeOn = next
-    ws.send(JSON.stringify({ type: 'player:casual-mode-changed', enabled: next }))
+    wsClient?.send({ type: 'player:casual-mode-changed', enabled: next })
   }
 
   const game = createGameState({
@@ -89,7 +93,19 @@
 
   function handleWsData(data: Record<string, unknown>) {
     game.processWsMessage(data)
-    if (data.type === 'round:start') {
+    if (data.type === 'session:connect') {
+      // Fires on reconnect via wsClient — refresh server-truth state so the
+      // subsequent buffered round:start (if any) doesn't stomp casualModeOn,
+      // and the player list / wins stay accurate.
+      const players = (data.players as string[] | undefined) ?? []
+      game.players = players
+      game.winsByName = (data.winsByName as Record<string, number> | undefined) ?? {}
+      game.lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
+      const casualNames = (data.casualModeNames as string[] | undefined) ?? []
+      game.casualModePlayers = new Set(casualNames)
+      casualModeOn = casualNames.includes(name)
+      hasSeenRoundStart = false
+    } else if (data.type === 'round:start') {
       if (hasSeenRoundStart) {
         casualModeOn = false
       }
@@ -113,18 +129,37 @@
   }
 
   onMount(() => {
+    // Replay messages buffered between JoinPage's session:connect and handoff.
     for (const event of pendingMessages) {
       try { handleWsData(JSON.parse(event.data)) } catch { /* ignore */ }
     }
-    ws.onmessage = (event) => {
-      try { handleWsData(JSON.parse(event.data)) } catch { /* ignore */ }
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws?name=${encodeURIComponent(name)}&code=${encodeURIComponent(code)}`
+
+    wsClient = createWsClient({
+      url: wsUrl,
+      existingSocket: ws,
+      onMessage: (raw) => handleWsData(raw as Record<string, unknown>),
+      onStateChange: (s) => { wsState = s },
+    })
+
+    function onVisible() {
+      if (document.visibilityState === 'visible') wsClient?.nudge()
     }
+    document.addEventListener('visibilitychange', onVisible)
+    visibilityListener = onVisible
   })
 
   onDestroy(() => {
     clearTimeout(toastTimer)
     game.cleanup()
-    ws.close()
+    if (visibilityListener) {
+      document.removeEventListener('visibilitychange', visibilityListener)
+      visibilityListener = null
+    }
+    wsClient?.close()
+    wsClient = null
   })
 </script>
 
@@ -132,6 +167,14 @@
   <div class="session-ended-banner" role="status">
     This session has ended.
   </div>
+{/if}
+
+{#if wsState === 'reconnecting'}
+  <div class="reconnecting-chip" role="status" aria-live="polite">Reconnecting…</div>
+{/if}
+
+{#if wsState === 'dead'}
+  <div class="error-banner" role="alert">Connection lost — please refresh the page.</div>
 {/if}
 
 {#if hostDisconnected}
@@ -208,6 +251,33 @@
     padding: 8px 16px;
     text-align: center;
     z-index: 100;
+    font-size: 14px;
+  }
+
+  .reconnecting-chip {
+    position: fixed;
+    top: var(--space-3);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg-muted);
+    padding: var(--space-1) var(--space-3);
+    font-size: 12px;
+    z-index: 110;
+    letter-spacing: 0.04em;
+  }
+
+  .error-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: var(--danger);
+    color: var(--accent-fg);
+    padding: var(--space-2) var(--space-4);
+    text-align: center;
+    z-index: 200;
     font-size: 14px;
   }
 
