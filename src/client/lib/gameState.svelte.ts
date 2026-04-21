@@ -206,11 +206,11 @@ export function createGameState({
       lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
       hasStats = true
     } else if (data.type === 'song:start') {
-      if (roundConfig) {
+      currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
+      if (roundConfig && !currentRevealed) {
         tiles = applyMask(tiles, data.trackId as string, roundConfig.titleRevealDelay, data.songIndex as number)
       }
       songIndex = data.songIndex as number
-      currentRevealed = false
       songHistory = [
         {
           trackId: data.trackId as string,

@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Deferred from: code review of song-masking-re-blur fix (2026-04-21)
+
+- **Guest reconnect path not patched with `currentSongRevealed`** — `ws.ts` fix only targets the host reconnect unicast (lines 337–358). Guest reconnect `round:start` (separate branch in ws.ts) does not include `currentSongRevealed`, so guests can still see a spurious re-blur on reconnect after reveal. Out of scope for host-focused bug report; fix when the guest reconnect path is next touched. (src/server/ws.ts — guest connect branch)
+- **Mid-reveal-delay reconnect: tile not re-masked even though `currentRevealed = false`** — the `round:start` handler rebuilds tiles via `initTiles` (all `masked: false`) but never calls `applyMask` for the in-progress song. A host reconnecting during the 5-second mask window sees the title immediately. Pre-existing gap; the plan's scope is post-reveal reconnect, not mid-delay. (src/client/lib/gameState.svelte.ts — `round:start` handler ~line 154)
+- **`titleRevealDelay` config mutation mid-song + resume cross-product** — if the host PATCHes `titleRevealDelay` while a song is playing then pauses/resumes, `isTrackChange = false` means `currentSongRevealed` is never reset to match the new config. The reveal timer guard (`!currentSongRevealed`) short-circuits and no re-reveal fires. Pre-existing design gap; config changes were never retroactive to the current song. (src/server/rooms.ts — `startSong`)
+- **Reveal timer restart on resume resets full delay, ignoring pre-pause elapsed time** — pausing at second 3 of a 5-second reveal, then resuming, re-arms a fresh 5-second timer. The UX implication (players wait an additional 5 seconds on resume) is now slightly more visible because `currentSongRevealed` propagates to clients. Pre-existing behavior, preserved intentionally. (src/server/rooms.ts — reveal timer block ~line 306)
+
 ## Deferred from: code review of 12-4-playtest-reliability-followup-fixes.md (2026-04-21)
 
 - **Track C client test is a vacuous tautology** — `applyRoundStart` in `gameState.svelte.test.ts` is a pure identity function; test cannot catch a future regression where `round:start` mutates `casualModeOn`. Fix requires either mounting `HostRoomPage.svelte` or extracting the handler into a testable unit — a broader test-harness investment. (src/client/__tests__/gameState.svelte.test.ts:~310-325)

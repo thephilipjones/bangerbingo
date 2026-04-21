@@ -344,6 +344,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         songHistory: activeRound.songHistory,
         currentSongIndex: activeRound.currentSongIndex,
         paused: activeRound.paused === true,
+        currentSongRevealed: activeRound.currentSongRevealed,
       }))
 
       // Story 12-3: on host reconnect, fold any songs played during the disconnect

@@ -232,7 +232,9 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   // round.currentSongIndex is about to be mutated.
   const needsDefensivePause = isTrackChange && round.currentSongIndex === -1
   round.currentSongIndex = songIndex
-  round.currentSongRevealed = round.config.titleRevealDelay === 0
+  if (isTrackChange) {
+    round.currentSongRevealed = round.config.titleRevealDelay === 0
+  }
   round.paused = false
 
   broadcast(roomCode, {
@@ -246,6 +248,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     titleRevealDelay: round.config.titleRevealDelay,
     songIndex,
     roundNumber: round.roundNumber,
+    currentSongRevealed: round.currentSongRevealed,
   })
 
   persistRoomState(roomCode)
@@ -303,7 +306,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   // P4: capture roundNumber so stale timers from a previous round don't fire against a new one
   const capturedRoundNumber = round.roundNumber
 
-  if (round.config.titleRevealDelay && round.config.titleRevealDelay > 0) {
+  if (!round.currentSongRevealed && round.config.titleRevealDelay && round.config.titleRevealDelay > 0) {
     round.timers.reveal = setTimeout(() => {
       if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
       roomState.currentRound.currentSongRevealed = true
