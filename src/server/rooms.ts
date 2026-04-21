@@ -709,37 +709,22 @@ const handleSetPlayerDevice = async (ctx: Context<AuthEnv>) => {
     const freshHost = await withFreshToken(host)
     if (!freshHost) return ctx.json({ message: 'Spotify auth degraded' }, 503)
 
-    let res: Response
-    try {
-      res = await fetch('https://api.spotify.com/v1/me/player', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${freshHost.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ device_ids: [newId], play: true }),
-      })
-    } catch (err) {
-      console.error('[spotify:transfer]', err)
-      return ctx.json({ message: 'Device swap failed' }, 502)
+    const expectedTrack = round!.currentSongIndex >= 0 ? round!.playlist[round!.currentSongIndex] : null
+    if (expectedTrack) {
+      // Temporarily adopt the new device so reissueExpectedTrack targets it, then
+      // re-issue the current BB track. A plain PUT /me/player { play: true } would
+      // resume whatever was last playing on the new device instead of the BB song
+      // (the "test song" activation problem on mobile).
+      const prevDeviceId = roomState.activeDeviceId
+      roomState.activeDeviceId = newId
+      const ok = await reissueExpectedTrack(code, roomState, expectedTrack.id, SEEK_POSITION_MS, freshHost.access_token)
+      if (!ok) {
+        console.error('[spotify:transfer] reissue failed', { code, deviceId: newId })
+        roomState.activeDeviceId = prevDeviceId
+        return ctx.json({ message: 'Device unavailable — pick another' }, 502)
+      }
     }
-
-    if (res.status === 401) {
-      const text = await res.text().catch(() => '')
-      console.error('[spotify:transfer] 401', text)
-      refreshWithRetry(host.user_id).catch(() => {})
-      return ctx.json({ message: 'Spotify auth degraded' }, 503)
-    }
-    if (res.status === 404) {
-      const text = await res.text().catch(() => '')
-      console.error('[spotify:transfer] 404', text)
-      return ctx.json({ message: 'Device unavailable — pick another' }, 502)
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      console.error(`[spotify:transfer] ${res.status}`, text)
-      return ctx.json({ message: 'Device swap failed' }, 502)
-    }
+    // index = -1: no song yet — skip; the upcoming startSong call will target the new activeDeviceId.
   }
 
   roomState.activeDeviceId = newId
