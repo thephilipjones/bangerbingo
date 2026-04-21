@@ -189,3 +189,15 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 **Stories:** 10-1 (Device List API & Live-Swap Endpoint), 10-2 (Device Chip + Picker UI), 10-3 (SDK Default, Preference Persistence & Failure Path)
 
 **Acceptance bar:** Host's Mini Player shows a device chip; tapping it opens a bottom-sheet picker of the host's Spotify Connect devices. Picking a different device mid-round transfers audio seamlessly via `PUT /v1/me/player` without interrupting the round, song index, or player state. SDK remains the zero-config default when it initialises; on SDK failure (iOS Safari primary case) the failure banner routes the host into the picker instead of a dead-end. Last-chosen device persists across reloads via `hostPrefs`. The failure path is driven only by observed SDK events — no UA sniffing.
+
+---
+
+## Epic 12: Mobile-First Playback & Reliability Hardening
+
+*Two real-world failure classes hit hosts hard: the Spotify Web SDK 404 loop (Spotify deregisters dormant SDK devices, especially on iOS Safari), and state loss on mobile focus changes (screen-lock silently kills the WebSocket, losing marks and de-syncing casual mode). The root cause is that we treat our app as the source of truth for playback, when on mobile the Spotify app is the real one — it keeps running through interruptions. Epic 12 flips the model: on mobile the phone's Spotify app is the default playback target; on any resume (any platform) we actively re-align with Spotify's own `/me/player` state; and we finally build the WS hardening (heartbeat, visibility-triggered auto-reconnect, targeted catch-up replay) that both platforms need.*
+
+**Depends on:** Epic 1 (host token + `withFreshToken`), Epic 5 (`callSpotifyOnDevice`, round timer), Epic 8 (casual mode auto-mark engine), Epic 10 (device picker, device chip, SDK-default-and-fallback path).
+
+**Stories:** 12-1 (WebSocket Heartbeat, Visibility & Auto-Reconnect Infrastructure), 12-2 (Spotify-First Mobile Playback, `/host/resume` Reconcile & Desktop SDK Reinit Gating), 12-3 (Marks & Casual-Mode Reconnect Reliability for Hosts and Guests)
+
+**Acceptance bar:** iPhone host can lock phone mid-round — Spotify keeps playing, WS auto-reconnects silently on unlock, previously-matched tiles auto-mark via catch-up replay, manually-marked tiles persist; no "refresh page" banner, no toggle-off-toggle-on needed. Mobile host arrives on an empty room with no SDK script loaded and the phone's Spotify app pre-selected as the device (if active). Desktop host hitting an SDK 404 silently auto-recovers with a transient "Reconnecting playback…" chip and one auto-retry; no user action needed. On any visibility resume, client calls `POST /host/resume` and the server reconciles with Spotify's `/me/player` — adopting new active devices, re-issuing expected tracks when Spotify drifted, offering a one-tap resume if Spotify is paused, showing an empty state if no device is active. Host marks survive refresh on par with guest marks.
