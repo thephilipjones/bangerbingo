@@ -2979,3 +2979,255 @@ describe('PATCH /api/rooms/:code/round-config', () => {
     expect(roomState.playerCasualModes.get('Alice')).toBe(false)
   })
 })
+
+// ── POST /api/rooms/:code/host/resume (Story 12-2) ────────────────────────
+
+describe('POST /api/rooms/:code/host/resume', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+    roomSockets.clear()
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function collectSent(ws: { send: unknown }): Record<string, unknown>[] {
+    const mock = ws.send as unknown as { mock: { calls: unknown[][] } }
+    return mock.mock.calls.map((c) => JSON.parse(c[0] as string))
+  }
+
+  function spotifyPlayerResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }) as unknown as Response
+  }
+
+  it('returns no-device when Spotify /me/player returns 204', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'device_x'
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('no-device')
+  })
+
+  it('returns ok and adopts active device when round is inactive', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'old_device'
+    const hostWs = { readyState: 1, send: vi.fn() }
+    roomState.host = hostWs as unknown as WebSocket
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'new_device', name: 'Pixel', type: 'Smartphone', is_active: true },
+        item: { uri: 'spotify:track:whatever' },
+        progress_ms: 0,
+        is_playing: false,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('ok')
+    expect(json.device).toEqual({ id: 'new_device', name: 'Pixel', type: 'Smartphone' })
+    expect(roomState.activeDeviceId).toBe('new_device')
+
+    const sent = collectSent(hostWs)
+    const deviceChanged = sent.find(m => m.type === 'host:device-changed')
+    expect(deviceChanged).toBeDefined()
+    expect(deviceChanged!.device).toEqual({ id: 'new_device', name: 'Pixel', type: 'Smartphone' })
+  })
+
+  it('returns spotify-paused when round is active but Spotify reports paused', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound()
+    round.currentSongIndex = 0
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: `spotify:track:${round.playlist[0].id}` },
+        progress_ms: 60_000,
+        is_playing: false,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('spotify-paused')
+    expect(json.device).toEqual({ id: 'dev', name: 'Phone', type: 'Smartphone' })
+  })
+
+  it('returns drift-corrected and re-issues play when Spotify plays the wrong track', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound()
+    round.currentSongIndex = 1
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: 'spotify:track:unexpected' },
+        progress_ms: 12_345,
+        is_playing: true,
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }) as unknown as Response)
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('drift-corrected')
+    expect(json.track).toBe(`spotify:track:${round.playlist[1].id}`)
+
+    const playCall = fetchSpy.mock.calls[1]
+    expect(String(playCall[0])).toContain('/me/player/play')
+    const init = playCall[1] as RequestInit
+    expect(init.method).toBe('PUT')
+    expect(init.body).toBe(JSON.stringify({
+      uris: [`spotify:track:${round.playlist[1].id}`],
+      position_ms: 60_000,
+    }))
+  })
+
+  it('returns drift-unresolvable when the re-issue play returns 404', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound()
+    round.currentSongIndex = 1
+
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: 'spotify:track:unexpected' },
+        progress_ms: 0,
+        is_playing: true,
+      }))
+      .mockResolvedValueOnce(new Response('Device not found', { status: 404 }) as unknown as Response)
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('drift-unresolvable')
+  })
+
+  it('returns drift-corrected and realigns autoAdvance timer on position drift >2s', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound('ABCD', 30, null)
+    round.currentSongIndex = 0
+    // Server thinks the clip started 10s ago (expected elapsed = 10s), but
+    // Spotify reports only 2s elapsed — drift of 8s triggers realignment.
+    round.clipStartedAt = Date.now() - 10_000
+    round.timers.autoAdvance = setTimeout(() => {}, 20_000)
+    const preTimer = round.timers.autoAdvance
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: `spotify:track:${round.playlist[0].id}` },
+        // 60_000 (seek offset) + 2s elapsed
+        progress_ms: 62_000,
+        is_playing: true,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('drift-corrected')
+    expect(round.timers.autoAdvance).toBeDefined()
+    expect(round.timers.autoAdvance).not.toBe(preTimer)
+    clearTimeout(round.timers.autoAdvance)
+  })
+
+  it('returns ok when Spotify matches server expectations (same track, playing, minimal drift)', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound()
+    round.currentSongIndex = 0
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: `spotify:track:${round.playlist[0].id}` },
+        progress_ms: 60_500, // within 2s tolerance of seek position
+        is_playing: true,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('ok')
+  })
+
+  it('rejects unauthenticated requests', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', { method: 'POST' })
+    expect(res.status).toBe(401)
+  })
+
+  it('rejects when host is not owner of the room', async () => {
+    seedHost('host_1')
+    seedHost('host_2')
+    await seedRoom('host_1', 'ABCD')
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie('host_2') },
+    })
+    expect(res.status).toBe(403)
+  })
+})

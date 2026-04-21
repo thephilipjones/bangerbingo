@@ -260,10 +260,13 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   }
 
   if (round.config.clipDuration !== 'full') {
+    round.clipStartedAt = Date.now()
     round.timers.autoAdvance = setTimeout(() => {
       if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
       advanceToNext(roomCode, roomState)
     }, (round.config.clipDuration as number) * 1000)
+  } else {
+    round.clipStartedAt = undefined
   }
 }
 
@@ -737,6 +740,216 @@ roomsRouter.get('/rooms/:code/player/devices', requireAuth, async (ctx) => {
 
   return ctx.json({ devices })
 })
+
+// Story 12-2: reconcile room state with Spotify's /me/player truth. Called by
+// the host client on initial session:connect and on every wsClient.onResume.
+// Handles device drift (adopt new active device), track drift (re-issue play),
+// position drift (realign next-song timer), and paused state. See AC #5/#6.
+const POSITION_DRIFT_TOLERANCE_MS = 2_000
+
+function clipDurationMs(cd: ClipDuration): number | null {
+  return cd === 'full' ? null : cd * 1000
+}
+
+roomsRouter.post('/rooms/:code/host/resume', requireAuth, async (ctx) => {
+  const host = ctx.var.host
+  const code = ctx.req.param('code')
+
+  const room = getRoomByCode(code)
+  if (!room) return ctx.json({ message: 'Room not found' }, 404)
+  if (room.host_user_id !== host.user_id) return ctx.json({ message: 'Forbidden' }, 403)
+
+  const roomState = roomSockets.get(code)
+  if (!roomState) return ctx.json({ message: 'Room session not active' }, 503)
+
+  const freshHost = await withFreshToken(host)
+  if (!freshHost) return ctx.json({ message: 'Spotify auth degraded' }, 503)
+
+  let res: Response
+  try {
+    res = await fetch('https://api.spotify.com/v1/me/player', {
+      headers: { Authorization: `Bearer ${freshHost.access_token}` },
+    })
+  } catch (err) {
+    console.error('[host:resume] fetch failed', err)
+    return ctx.json({ state: 'no-device' })
+  }
+
+  // 204 = no active player/device
+  if (res.status === 204 || res.status === 404) {
+    console.log(`[host:resume] code=${code} state=no-device device=${roomState.activeDeviceId ?? 'none'}`)
+    return ctx.json({ state: 'no-device' })
+  }
+  if (res.status === 401) {
+    refreshWithRetry(host.user_id).catch(() => {})
+    return ctx.json({ message: 'Spotify auth degraded' }, 503)
+  }
+  if (!res.ok) {
+    console.error(`[host:resume] spotify ${res.status}`)
+    return ctx.json({ state: 'no-device' })
+  }
+
+  const body = await res.json().catch(() => null) as {
+    device?: { id: string | null; name: string; type: string; is_active?: boolean } | null
+    item?: { uri?: string; id?: string } | null
+    progress_ms?: number | null
+    is_playing?: boolean
+  } | null
+
+  const device = body?.device
+  if (!device || !device.id) {
+    console.log(`[host:resume] code=${code} state=no-device device=none`)
+    return ctx.json({ state: 'no-device' })
+  }
+
+  // Spotify is the source of truth for device shape but strings may rarely be
+  // absent on partial responses — guard downstream clients from `undefined`.
+  const spotifyDevice = {
+    id: device.id,
+    name: typeof device.name === 'string' ? device.name : 'Spotify device',
+    type: typeof device.type === 'string' ? device.type : 'Unknown',
+  }
+  const spotifyTrackUri: string | null = body?.item?.uri ?? null
+  const spotifyPositionMs: number = typeof body?.progress_ms === 'number' ? body.progress_ms : 0
+  const spotifyIsPlaying: boolean = body?.is_playing === true
+
+  const round = roomState.currentRound
+  const roundActive = !!round && round.active
+
+  // Adopt a new active device whenever the server's view differs. This covers
+  // the case where the user transferred playback from Spotify directly.
+  if (roomState.activeDeviceId !== device.id) {
+    roomState.activeDeviceId = device.id
+    persistRoomState(code)
+    broadcast(code, { type: 'host:device-changed', device: spotifyDevice })
+  }
+
+  // Round not active: just adopt and return ok.
+  if (!roundActive) {
+    console.log(`[host:resume] code=${code} state=ok device=${device.id}`)
+    return ctx.json({
+      state: 'ok',
+      device: spotifyDevice,
+      track: spotifyTrackUri,
+      position: spotifyPositionMs,
+      isPlaying: spotifyIsPlaying,
+    })
+  }
+
+  // Round is active. Consult expected track.
+  const expectedTrack = round.currentSongIndex >= 0 ? round.playlist[round.currentSongIndex] : null
+  if (!expectedTrack) {
+    // Round active but no current song yet (index -1). Nothing to reconcile.
+    console.log(`[host:resume] code=${code} state=ok device=${device.id}`)
+    return ctx.json({ state: 'ok', device: spotifyDevice, track: spotifyTrackUri, position: spotifyPositionMs, isPlaying: spotifyIsPlaying })
+  }
+  const expectedUri = `spotify:track:${expectedTrack.id}`
+
+  // Paused: surface "Tap to resume" to the client — do not auto-resume.
+  if (!spotifyIsPlaying) {
+    console.log(`[host:resume] code=${code} state=spotify-paused device=${device.id}`)
+    return ctx.json({
+      state: 'spotify-paused',
+      device: spotifyDevice,
+      track: spotifyTrackUri,
+      position: spotifyPositionMs,
+    })
+  }
+
+  // Playing a different track than expected → drift-correct via re-issue play.
+  if (spotifyTrackUri !== expectedUri) {
+    // Re-check the round hasn't ended/advanced while awaiting Spotify — without
+    // this guard we could PUT play for a stale track over a game-over screen.
+    const roundStillMatches = roomState.currentRound?.active
+      && roomState.currentRound.roundNumber === round.roundNumber
+      && roomState.currentRound.currentSongIndex === round.currentSongIndex
+    if (!roundStillMatches) {
+      console.log(`[host:resume] code=${code} state=ok device=${device.id} (round advanced mid-resume)`)
+      return ctx.json({ state: 'ok', device: spotifyDevice, track: spotifyTrackUri, position: spotifyPositionMs, isPlaying: spotifyIsPlaying })
+    }
+    const reissueOk = await reissueExpectedTrack(code, roomState, expectedTrack.id, SEEK_POSITION_MS, freshHost.access_token)
+    if (!reissueOk) {
+      console.log(`[host:resume] code=${code} state=drift-unresolvable device=${device.id}`)
+      return ctx.json({ state: 'drift-unresolvable' })
+    }
+    console.log(`[host:resume] code=${code} state=drift-corrected device=${device.id}`)
+    return ctx.json({
+      state: 'drift-corrected',
+      device: spotifyDevice,
+      track: expectedUri,
+      position: SEEK_POSITION_MS,
+    })
+  }
+
+  // Same track, playing. Check position drift against server's expected elapsed.
+  // Skip when round.paused — the server is in a pause window where clipStartedAt
+  // is stale relative to the playback clock; falsely "correcting" would re-arm
+  // the autoAdvance timer against a phantom elapsed time.
+  const clipMs = clipDurationMs(round.config.clipDuration)
+  if (clipMs !== null && round.clipStartedAt !== undefined && !round.paused) {
+    const spotifyElapsedMs = Math.max(0, spotifyPositionMs - SEEK_POSITION_MS)
+    const expectedElapsedMs = Date.now() - round.clipStartedAt
+    const driftMs = Math.abs(spotifyElapsedMs - expectedElapsedMs)
+    if (driftMs > POSITION_DRIFT_TOLERANCE_MS && spotifyElapsedMs < clipMs) {
+      const newRemaining = Math.max(0, clipMs - spotifyElapsedMs)
+      const capturedRoundNumber = round.roundNumber
+      clearTimeout(round.timers.autoAdvance)
+      round.clipStartedAt = Date.now() - spotifyElapsedMs
+      round.timers.autoAdvance = setTimeout(() => {
+        if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
+        advanceToNext(code, roomState)
+      }, newRemaining)
+      console.log(`[host:resume] code=${code} state=drift-corrected device=${device.id} (timer realigned drift=${driftMs}ms remaining=${newRemaining}ms)`)
+      return ctx.json({
+        state: 'drift-corrected',
+        device: spotifyDevice,
+        track: spotifyTrackUri,
+        position: spotifyPositionMs,
+      })
+    }
+  }
+
+  console.log(`[host:resume] code=${code} state=ok device=${device.id}`)
+  return ctx.json({
+    state: 'ok',
+    device: spotifyDevice,
+    track: spotifyTrackUri,
+    position: spotifyPositionMs,
+    isPlaying: spotifyIsPlaying,
+  })
+})
+
+// Helper: re-issue `PUT /me/player/play` for the expected track on the current device.
+// 404 → device went away → drift-unresolvable. Returns true on success.
+async function reissueExpectedTrack(
+  code: string,
+  roomState: RoomState,
+  trackId: string,
+  positionMs: number,
+  accessToken: string,
+): Promise<boolean> {
+  const deviceId = roomState.activeDeviceId
+  if (!deviceId) return false
+  try {
+    const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(deviceId)}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uris: [`spotify:track:${trackId}`], position_ms: positionMs }),
+    })
+    if (res.status === 404) {
+      // Device vanished between /me/player and our play re-issue.
+      return false
+    }
+    if (!res.ok) {
+      console.error(`[host:resume] reissue ${res.status} code=${code}`)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('[host:resume] reissue fetch failed', err)
+    return false
+  }
+}
 
 roomsRouter.post('/rooms/:code/round/end', requireAuth, (ctx) => {
   const host = ctx.var.host

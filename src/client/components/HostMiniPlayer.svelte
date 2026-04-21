@@ -19,6 +19,7 @@
     onDeviceChipClick,
     confirmPill = null,
     devicePickerOpen = false,
+    disabled = false,
   }: {
     currentTrack: { title: string; artist: string } | null
     isPlaying: boolean
@@ -35,6 +36,7 @@
     onDeviceChipClick?: () => void
     confirmPill?: string | null
     devicePickerOpen?: boolean
+    disabled?: boolean
   } = $props()
 
   let hostRevealed = $state(false)
@@ -55,11 +57,11 @@
         href={currentTrackId ? `spotify:track:${currentTrackId}` : 'https://open.spotify.com'}
       >Open Spotify</a>
     {:else}
-      <button class="ctrl-btn play-pause-btn" onclick={onPlayPause} disabled={!sdkReady} aria-label={isPlaying ? 'Pause' : 'Play'}>
+      <button class="ctrl-btn play-pause-btn" onclick={onPlayPause} disabled={!sdkReady || disabled} aria-label={isPlaying ? 'Pause' : 'Play'}>
         <span class="btn-icon">{#if isPlaying}<Pause size={20} weight="fill" aria-hidden="true" />{:else}<Play size={20} weight="fill" aria-hidden="true" />{/if}</span><span class="btn-label">{isPlaying ? 'Pause' : 'Play'}</span>
       </button>
     {/if}
-    <button class="ctrl-btn next-btn" onclick={onNext} aria-label="Next">
+    <button class="ctrl-btn next-btn" onclick={onNext} disabled={disabled} aria-label="Next">
       <span class="btn-icon"><SkipForward size={18} weight="fill" aria-hidden="true" /></span><span class="btn-label">Next</span>
     </button>
   </div>

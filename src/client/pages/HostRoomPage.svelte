@@ -16,6 +16,8 @@
   import type { SpotifyDevice } from '../lib/api.ts'
   import { readHostPrefs, writeHostPrefs } from '../lib/hostPrefs.ts'
   import { createWsClient, type WsClient, type WsState } from '../lib/wsClient.ts'
+  import { isMobileHost } from '../lib/isMobileHost.ts'
+  import { shouldFlushPending, type PendingPlayAction } from '../lib/pendingPlayAction.ts'
 
   let { code, onRoundEnded, onSessionEnded }: {
     code: string
@@ -59,6 +61,27 @@
   let preferredDeviceId: string | undefined = undefined
   let initialDevicesController: AbortController | undefined
 
+  // Story 12-2: mobile-first branch state
+  const mobileHost = isMobileHost()
+  // On mobile the Spotify app is the player — there's no SDK to wait for, so
+  // treat the "audio ready" gate as satisfied from the start. This lets play,
+  // pause, autoplay, and the "Connecting to Spotify audio…" hint not block.
+  if (mobileHost) sdkReady = true
+  let mobileNoDevice = $state(false)
+  let mobileDeviceRefreshing = $state(false)
+  // Resume-reconcile UI state (desktop + mobile)
+  let resumePausedChip = $state(false)
+  // Desktop SDK reinit gating
+  let sdkReconnecting = $state(false)
+  let pendingPlayAction: PendingPlayAction | null = null
+  let sdkReconnectTimer: ReturnType<typeof setTimeout> | undefined
+  // Safety ceiling: if the SDK never fires `ready` (or fires an error we don't
+  // listen for), clear the reconnect gate so controls don't hang forever.
+  const SDK_RECONNECT_TIMEOUT_MS = 12_000
+  let mobileDeviceController: AbortController | undefined
+  // Serialize resume requests so two quick reconnects can't race each other.
+  let resumeInFlight = false
+
   const game = createGameState({
     code: untrack(() => code),
     getPlayerName: () => hostName,
@@ -86,6 +109,35 @@
     playbackError = true
     clearTimeout(playbackErrorTimer)
     playbackErrorTimer = setTimeout(() => { playbackError = false }, 3000)
+  }
+
+  // Story 12-2: unified clear for the SDK-reconnect gate. Cancels the safety
+  // timer and drops any pending play action so controls aren't stuck disabled
+  // if the SDK never emits `ready` (error, throw, or just silence).
+  function clearSdkReconnecting() {
+    sdkReconnecting = false
+    clearTimeout(sdkReconnectTimer)
+    sdkReconnectTimer = undefined
+    pendingPlayAction = null
+  }
+
+  function beginSdkReconnect() {
+    if (mobileHost) return
+    sdkReconnecting = true
+    clearTimeout(sdkReconnectTimer)
+    sdkReconnectTimer = setTimeout(() => {
+      // Timeout: SDK never re-readied. Surface an error chip and re-enable
+      // controls so the host can try again rather than hang on "Reconnecting…".
+      clearSdkReconnecting()
+      showPlaybackError()
+    }, SDK_RECONNECT_TIMEOUT_MS)
+    try {
+      reinitSdk()
+    } catch (err) {
+      console.error('[host] reinitSdk threw', err)
+      clearSdkReconnecting()
+      showPlaybackError()
+    }
   }
 
   function handleChangeItUp() {
@@ -125,15 +177,35 @@
   })
 
   function handlePlayPause() {
-    fetch(`/api/rooms/${code}/round/${isPlaying ? 'pause' : 'play'}`, { method: 'POST' })
-      .then(res => { if (!res.ok) showPlaybackError() })
+    const wasResumingPaused = resumePausedChip
+    const action = () => fetch(`/api/rooms/${code}/round/${isPlaying ? 'pause' : 'play'}`, { method: 'POST' })
+      .then(res => {
+        if (!res.ok) {
+          showPlaybackError()
+        } else if (wasResumingPaused) {
+          // Only dismiss the "Tap to resume" chip once the POST actually
+          // succeeded — otherwise a failed tap leaves the host with no cue
+          // that Spotify is still paused.
+          resumePausedChip = false
+        }
+      })
       .catch(() => showPlaybackError())
+    if (sdkReconnecting) {
+      pendingPlayAction = { fn: action, t: Date.now() }
+      return
+    }
+    action()
   }
 
   function handleNext() {
-    fetch(`/api/rooms/${code}/round/next`, { method: 'POST' })
+    const action = () => fetch(`/api/rooms/${code}/round/next`, { method: 'POST' })
       .then(res => { if (!res.ok) showPlaybackError() })
       .catch(() => showPlaybackError())
+    if (sdkReconnecting) {
+      pendingPlayAction = { fn: action, t: Date.now() }
+      return
+    }
+    action()
   }
 
   function handleOpenDevicePicker(source: 'chip' | 'settings' | 'banner' = 'chip') {
@@ -204,24 +276,38 @@
       if (selectedDevice === null) {
         selectedDevice = { id: device_id, name: 'Bangerbingo (this browser)', type: 'Computer' }
       }
+      // Story 12-2 AC #9/#10: clear reconnect gate and flush any pending play action.
+      if (sdkReconnecting) {
+        const pending = pendingPlayAction
+        clearSdkReconnecting()
+        if (shouldFlushPending(pending, Date.now())) {
+          try { pending!.fn() } catch { /* ignore */ }
+        }
+      }
     })
     player.addListener('not_ready', () => { sdkReady = false })
     player.addListener('initialization_error', () => {
       if (sdkErrorFired) return
       sdkErrorFired = true; sdkReady = false; sdkFailed = true
+      // Controls must recover even when reinit fails — otherwise they'd stay
+      // `disabled={sdkReconnecting}` forever.
+      if (sdkReconnecting) clearSdkReconnecting()
     })
     player.addListener('authentication_error', () => {
       if (sdkErrorFired) return
       sdkErrorFired = true; sdkReady = false; sdkFailed = true
+      if (sdkReconnecting) clearSdkReconnecting()
     })
     player.addListener('account_error', () => {
       if (sdkErrorFired) return
       sdkErrorFired = true; sdkReady = false; sdkFailed = true
+      if (sdkReconnecting) clearSdkReconnecting()
     })
     player.connect()
   }
 
   function reinitSdk() {
+    if (mobileHost) return // Story 12-2: no SDK on mobile
     if (sdkReinitializing) return
     sdkReinitializing = true
     pendingAutoPlay = false
@@ -233,6 +319,95 @@
     initSdkPlayer()
   }
 
+  // Story 12-2 AC #2/#3: choose the best Spotify device for mobile host.
+  // Preference: active → saved preferredDeviceId → Smartphone → first non-restricted.
+  // preferredDeviceId is checked before the fallback so we don't silently clobber
+  // the host's saved pick with whatever device happens to be listed first.
+  async function pickMobileDevice() {
+    if (mobileDeviceRefreshing) return
+    mobileDeviceRefreshing = true
+    mobileDeviceController?.abort()
+    mobileDeviceController = new AbortController()
+    const ctrl = mobileDeviceController
+    try {
+      const result = await getDevices(code, ctrl.signal)
+      if (ctrl.signal.aborted) return
+      const usable = (result.devices ?? []).filter(d => d.id !== null && !d.is_restricted)
+      if (usable.length === 0) {
+        mobileNoDevice = true
+        return
+      }
+      const active = usable.find(d => d.is_active)
+      const preferred = preferredDeviceId ? usable.find(d => d.id === preferredDeviceId) : undefined
+      const phone = usable.find(d => d.type === 'Smartphone')
+      const pick = active ?? preferred ?? phone ?? usable[0]
+      if (pick.id === null) {
+        mobileNoDevice = true
+        return
+      }
+      const deviceId = pick.id
+      const res = await postSetDevice(code, deviceId).catch(() => null)
+      if (ctrl.signal.aborted) return
+      if (res && res.ok) {
+        selectedDevice = { id: deviceId, name: pick.name, type: pick.type }
+        // Only persist to hostPrefs when the pick matches an intentional
+        // signal (host was actively using it, saved it before, or it's a
+        // phone). Otherwise `usable[0]` could sticky-adopt a forgotten TV.
+        if (pick === active || pick === preferred || pick === phone) {
+          preferredDeviceId = deviceId
+          writeHostPrefs({ preferredDeviceId: deviceId })
+        }
+        mobileNoDevice = false
+      } else {
+        mobileNoDevice = true
+      }
+    } catch {
+      if (!ctrl.signal.aborted) mobileNoDevice = true
+    } finally {
+      mobileDeviceRefreshing = false
+    }
+  }
+
+  // Story 12-2 AC #5/#7: reconcile server + client state with Spotify's truth.
+  async function postHostResume() {
+    if (resumeInFlight) return
+    resumeInFlight = true
+    try {
+      const res = await fetch(`/api/rooms/${code}/host/resume`, { method: 'POST' })
+      if (!res.ok) {
+        // 503 (auth degraded) and 500s get swallowed otherwise; log so the
+        // failure is visible in dev and observable from the console.
+        console.warn(`[host] /host/resume responded ${res.status}`)
+        return
+      }
+      const payload = await res.json().catch(() => null) as
+        | { state: 'ok' | 'drift-corrected'; device?: { id: string; name: string; type: string } }
+        | { state: 'spotify-paused'; device?: { id: string; name: string; type: string } }
+        | { state: 'no-device' | 'drift-unresolvable' }
+        | null
+      if (!payload) return
+      if (payload.state === 'ok' || payload.state === 'drift-corrected') {
+        resumePausedChip = false
+        if (mobileHost) mobileNoDevice = false
+        if (payload.state === 'drift-corrected' && payload.device) {
+          selectedDevice = payload.device
+        }
+      } else if (payload.state === 'spotify-paused') {
+        resumePausedChip = true
+      } else if (payload.state === 'no-device') {
+        if (mobileHost) mobileNoDevice = true
+      } else if (payload.state === 'drift-unresolvable') {
+        if (mobileHost) mobileNoDevice = true
+      } else {
+        // Future server states will be seen here — warn so the gap surfaces
+        // during development rather than silently no-op'ing.
+        console.warn('[host] unknown /host/resume state', (payload as { state?: string }).state)
+      }
+    } catch { /* network hiccup — wait for next resume */ } finally {
+      resumeInFlight = false
+    }
+  }
+
   function handleReauth() {
     const popup = window.open('/auth/login?popup=1', 'reauth', 'width=500,height=700,menubar=no,toolbar=no')
     if (!popup) window.location.href = '/auth/login'
@@ -241,17 +416,23 @@
   onMount(() => {
     preferredDeviceId = readHostPrefs()?.preferredDeviceId
 
-    if ((window as any).Spotify) {
-      initSdkPlayer()
-    } else {
-      ;(window as any).onSpotifyWebPlaybackSDKReady = initSdkPlayer
-      sdkScript = document.createElement('script')
-      sdkScript.src = 'https://sdk.scdn.co/spotify-player.js'
-      sdkScript.async = true
-      document.head.appendChild(sdkScript)
+    // Story 12-2 AC #1: on mobile, skip Web Playback SDK entirely. Spotify app
+    // acts as the default Connect target.
+    if (!mobileHost) {
+      if ((window as any).Spotify) {
+        initSdkPlayer()
+      } else {
+        ;(window as any).onSpotifyWebPlaybackSDKReady = initSdkPlayer
+        sdkScript = document.createElement('script')
+        sdkScript.src = 'https://sdk.scdn.co/spotify-player.js'
+        sdkScript.async = true
+        document.head.appendChild(sdkScript)
+      }
     }
 
-    if (preferredDeviceId) {
+    if (mobileHost) {
+      pickMobileDevice()
+    } else if (preferredDeviceId) {
       const capturedPreferredId = preferredDeviceId
       initialDevicesController = new AbortController()
       const ctrl = initialDevicesController
@@ -298,6 +479,18 @@
           const casualNames = (data.casualModeNames as string[] | undefined) ?? []
           game.casualModePlayers = new Set(casualNames)
           if (hostName !== null) casualModeOn = casualNames.includes(hostName)
+          // Story 12-2 AC #7: reconcile with Spotify's truth on initial connect.
+          postHostResume()
+        } else if (data.type === 'host:device-changed') {
+          const d = (data as Record<string, unknown>).device as { id: string; name: string; type: string } | undefined
+          if (d && typeof d.id === 'string') {
+            selectedDevice = { id: d.id, name: d.name, type: d.type }
+            // Server-driven adoption is transient; don't persist to hostPrefs
+            // here or a phone sleep/wake flap could clobber the host's saved
+            // preference. Only explicit user picks and the mobile auto-pick
+            // write to hostPrefs.
+            if (mobileHost) mobileNoDevice = false
+          }
         } else if (data.type === 'song:start') {
           currentTrack = { title: data.title, artist: data.artist }
           currentTrackId = data.trackId
@@ -317,10 +510,18 @@
           authDegraded = true
         } else if (data.type === 'auth:restored') {
           authDegraded = false
-          reinitSdk()
+          // Gate with sdkReconnecting so a click during the reinit window is
+          // captured as pendingPlayAction rather than hitting a stale SDK.
+          beginSdkReconnect()
         } else if (data.type === 'host:sdk-stale') {
-          console.warn('[host] server reports SDK device stale; reinitializing')
-          reinitSdk()
+          // Story 12-2 AC #9: ignore on mobile (no SDK to reinit). On desktop,
+          // gate controls while the SDK re-initializes.
+          if (mobileHost) {
+            console.warn('[host] host:sdk-stale on mobile — no-op')
+          } else {
+            console.warn('[host] server reports SDK device stale; reinitializing')
+            beginSdkReconnect()
+          }
         }
       } catch {
         // ignore unparseable messages
@@ -331,6 +532,14 @@
       url: wsUrl,
       onMessage: (raw) => handleWsMessage(raw as Record<string, unknown>),
       onStateChange: (s) => { wsState = s },
+    })
+
+    // Story 12-2 AC #7/#8: reconcile with Spotify on every resume. On mobile,
+    // also re-run device auto-pick (after resume resolves, so host:device-changed
+    // has already landed if the server adopted a new device).
+    wsClient.onResume(async () => {
+      await postHostResume()
+      if (mobileHost) pickMobileDevice()
     })
 
     function onVisible() {
@@ -346,7 +555,9 @@
     clearTimeout(nextRoundErrorTimer)
     clearTimeout(confirmPillTimer)
     clearTimeout(deviceSwitchResultTimer)
+    clearTimeout(sdkReconnectTimer)
     initialDevicesController?.abort()
+    mobileDeviceController?.abort()
     if (visibilityListener) {
       document.removeEventListener('visibilitychange', visibilityListener)
       visibilityListener = null
@@ -455,7 +666,27 @@
   onDeviceChipClick={() => handleOpenDevicePicker('chip')}
   {confirmPill}
   devicePickerOpen={showDevicePicker}
+  disabled={sdkReconnecting}
 />
+
+{#if mobileHost && mobileNoDevice}
+  <div class="mobile-no-device" role="status">
+    <p>Open Spotify on your phone and play any song to activate it, then tap Refresh.</p>
+    <button class="mobile-refresh-btn" onclick={pickMobileDevice} disabled={mobileDeviceRefreshing}>
+      {mobileDeviceRefreshing ? 'Refreshing…' : 'Refresh'}
+    </button>
+  </div>
+{/if}
+
+{#if sdkReconnecting}
+  <div class="status-chip" role="status" aria-live="polite">Reconnecting playback…</div>
+{/if}
+
+{#if resumePausedChip}
+  <button type="button" class="status-chip resume-chip" onclick={handlePlayPause} aria-label="Tap to resume">
+    Tap to resume
+  </button>
+{/if}
 
 {#if showDevicePicker}
   <DevicePicker
@@ -531,6 +762,54 @@
     z-index: 210;
     letter-spacing: 0.04em;
   }
+
+  .status-chip {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
+    padding: var(--space-1) var(--space-3);
+    font-size: 13px;
+    z-index: 25;
+    letter-spacing: 0.04em;
+  }
+  .resume-chip {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+    cursor: pointer;
+    min-height: 36px;
+  }
+  .resume-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .mobile-no-device {
+    position: fixed;
+    bottom: 80px;
+    left: 16px;
+    right: 16px;
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
+    padding: var(--space-3);
+    font-size: 14px;
+    z-index: 25;
+    text-align: center;
+  }
+  .mobile-no-device p { margin: 0 0 var(--space-2); }
+  .mobile-refresh-btn {
+    min-height: 44px;
+    padding: 0 var(--space-4);
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: var(--rule-thin) solid var(--accent);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mobile-refresh-btn:disabled { opacity: 0.4; cursor: default; }
+  .mobile-refresh-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .host-game {
     display: flex;

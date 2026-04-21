@@ -1,5 +1,18 @@
 # Deferred Work
 
+## Deferred from: code review of 12-2-spotify-first-mobile-playback-and-resume-reconcile (2026-04-20)
+
+- **Server clock skew vs Spotify continuous drift** — absolute-time comparison between `Date.now() - clipStartedAt` and Spotify's reported progress will produce persistent false drift on hosts with NTP skew. A broader fix (relative deltas between consecutive resumes) is worth its own story. (src/server/rooms.ts — /host/resume drift branch)
+- **`postHostResume` double-POSTs `/player/device` on every mobile resume** — `pickMobileDevice` after `postHostResume` will re-set the same device id the server just adopted. Task 4's spec ordering explicitly requires this to avoid a race, so it's inefficiency, not correctness. (src/client/pages/HostRoomPage.svelte — wsClient.onResume handler)
+- **Past-clip-end branch (`spotifyElapsedMs >= clipMs`) not explicitly handled** — current code clamps and re-arms the timer; rare case but could double-advance. (src/server/rooms.ts — /host/resume position-drift branch)
+- **`reissueExpectedTrack` doesn't verify 202/200 resulted in actual playback** — returning `drift-corrected` without a follow-up `/me/player` check is optimistic; silent device failures would mis-report to the client. (src/server/rooms.ts)
+- **Malformed Spotify response body (valid JSON, wrong shape) not schema-validated** — optional-chain coverage is defensive for known shapes; a zod-style schema would catch API regressions explicitly. (src/server/rooms.ts — /host/resume parse)
+- **Missing server tests: 401 from /me/player, malformed JSON body, progress_ms missing/null** — coverage nits; not required by AC #12 but would harden future changes. (src/server/__tests__/rooms.test.ts)
+- **Missing client tests: navigator undefined (SSR), innerWidth=900 boundary** — coverage nits for `isMobileHost`. (src/client/__tests__/isMobileHost.test.ts)
+- **`host:device-changed` broadcast assertion only checks host socket, not absence-on-other-sockets** — test-strength nit; broadcast-to-all is correct but under-asserted. (src/server/__tests__/rooms.test.ts)
+- **Unauth `/host/resume` test doesn't assert Spotify fetch wasn't called** — security-adjacent ordering nit; current test only checks the 401 status. (src/server/__tests__/rooms.test.ts)
+- **Guest `RoomPage` `host:device-changed` handler check (Task 6 subtask b)** — Task 6 says to safely ignore if guest UI doesn't display host device. Diff has no guest changes; verify on next touch of RoomPage. (src/client/pages/RoomPage.svelte)
+
 ## Deferred from: code review of 12-1-websocket-heartbeat-and-auto-reconnect (2026-04-20)
 
 - **`connectAsHost` wrapper + 10 unit tests deleted out-of-scope** — inline LobbyPage handler is the sole caller and new wsClient tests cover the WS-client layer; unit coverage of host session:connect defaults and unparseable-message tolerance was dropped but not behaviorally regressed. (src/client/lib/ws.ts, src/client/__tests__/dashboard.test.ts)

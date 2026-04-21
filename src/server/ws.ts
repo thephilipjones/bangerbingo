@@ -51,6 +51,10 @@ export interface RoundState {
     autoAdvance?: ReturnType<typeof setTimeout>
     reveal?: ReturnType<typeof setTimeout>
   }
+  // Wall-clock ms (Date.now()) when the current clip's autoAdvance timer was
+  // armed. Used by /host/resume (Story 12-2) to compute Spotify drift vs.
+  // server-expected elapsed. Not persisted.
+  clipStartedAt?: number
   // Casual Mode (Story 8-5): per-player set of already-swept tile indices.
   // Not persisted — reset to empty Map() on rehydrate. Note: `playerCasualModes`
   // is also not persisted, so after a server restart no sweep targets exist and
