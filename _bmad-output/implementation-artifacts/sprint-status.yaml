@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-21 # 12-4 code review complete; status: done
+last_updated: 2026-04-21 # Epic 13 planned; all stories ready-for-dev
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -125,13 +125,22 @@ development_status:
   epic-10-retrospective: done
 
   # Epic 11: Icon System Overhaul
-  epic-11: in-progress
+  epic-11: done
   11-1-phosphor-icon-system: done
 
   # Epic 12: Mobile-First Playback & Reliability Hardening
-  epic-12: in-progress
+  epic-12: done
   12-1-websocket-heartbeat-and-auto-reconnect: done
   12-2-spotify-first-mobile-playback-and-resume-reconcile: done
   12-3-marks-and-casual-mode-reconnect-reliability: done
   12-4-playtest-reliability-followup-fixes: done
   epic-12-retrospective: optional
+
+  # Epic 13: Reliability & Tech Debt
+  epic-13: in-progress
+  13-1-reconnect-after-win-state-replay: ready-for-dev
+  13-2-casual-mode-persistence-across-restart: ready-for-dev
+  13-3-server-client-micro-fixes: ready-for-dev
+  13-4-test-quality-pass: ready-for-dev
+  13-5-light-security-hardening: ready-for-dev
+  13-6-win-jingle-audio: ready-for-dev
