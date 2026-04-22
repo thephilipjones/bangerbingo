@@ -204,7 +204,7 @@ describe('POST /api/rooms/:code/round', () => {
     )
   })
 
-  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
+  const validPayload = { playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
 
   it('returns 401 without a session cookie', async () => {
     const app = makeApp()
@@ -252,6 +252,20 @@ describe('POST /api/rooms/:code/round', () => {
     expect(res.status).toBe(400)
   })
 
+  it('returns 400 for path traversal characters in playlistId (Story 13-5 review)', async () => {
+    seedHost()
+    await seedRoom()
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: '../../me', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toContain('Invalid playlist ID')
+  })
+
   it('returns 400 when clipDuration is invalid', async () => {
     seedHost()
     await seedRoom()
@@ -259,7 +273,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 99, titleRevealDelay: 5 }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 99, titleRevealDelay: 5 }),
     })
     expect(res.status).toBe(400)
   })
@@ -271,7 +285,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 99 }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 99 }),
     })
     expect(res.status).toBe(400)
   })
@@ -288,7 +302,7 @@ describe('POST /api/rooms/:code/round', () => {
     expect(res.status).toBe(200)
     const body = await res.json() as { roundNumber: number; playlistId: string; clipDuration: number; titleRevealDelay: number }
     expect(body.roundNumber).toBe(1)
-    expect(body.playlistId).toBe('pl_abc')
+    expect(body.playlistId).toBe('aaaaaaaaaaaaaaaaaaaaaa')
     expect(body.clipDuration).toBe(30)
     expect(body.titleRevealDelay).toBe(5)
   })
@@ -319,7 +333,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: '  Sarah  ' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: '  Sarah  ' }),
     })
     expect(res.status).toBe(200)
     const { getDb } = await import('../db.ts')
@@ -334,7 +348,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5 }),
     })
     expect(res.status).toBe(200)
     const { getDb } = await import('../db.ts')
@@ -350,7 +364,7 @@ describe('POST /api/rooms/:code/round', () => {
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Sarah' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Sarah' }),
     })
     // Second round omits hostName — should still be 200, and roundNumber must be 2
     // (confirms the code path actually exercised the room.host_name !== null branch
@@ -358,7 +372,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5 }),
     })
     expect(res.status).toBe(200)
     const body = await res.json() as { roundNumber: number }
@@ -376,7 +390,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: '   ' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: '   ' }),
     })
     expect(res.status).toBe(200)
     const { getDb } = await import('../db.ts')
@@ -391,7 +405,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'X'.repeat(31) }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'X'.repeat(31) }),
     })
     expect(res.status).toBe(400)
     const body = await res.json() as { message: string }
@@ -405,7 +419,7 @@ describe('POST /api/rooms/:code/round', () => {
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Sarah' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Sarah' }),
     })
     const res = await app.request('/api/rooms', { headers: { Cookie: sessionCookie() } })
     expect(res.status).toBe(200)
@@ -421,7 +435,7 @@ describe('POST /api/rooms/:code/round', () => {
     const res = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: null, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 'full', titleRevealDelay: null, hostName: 'Host' }),
     })
     expect(res.status).toBe(200)
     const body = await res.json() as { clipDuration: string; titleRevealDelay: null }
@@ -493,7 +507,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     vi.restoreAllMocks()
   })
 
-  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
+  const validPayload = { playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
 
   it('returns 422 when playlist has fewer than 25 tracks', async () => {
     const spotifyModule = await import('../music/spotify.ts')
@@ -2433,7 +2447,7 @@ describe('Casual Mode — round:start includes allowCasualMode', () => {
     )
   })
 
-  const validPayload = { playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
+  const validPayload = { playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }
 
   it('round:start broadcast includes allowCasualMode: true when set', async () => {
     seedHost()
@@ -2669,7 +2683,7 @@ describe('Casual Mode — Auto-Mark Engine', () => {
     const startRes = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5 }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5 }),
     })
     expect(startRes.status).toBe(200)
 
@@ -2922,7 +2936,7 @@ describe('PATCH /api/rooms/:code/round-config', () => {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        playlistId: 'pl_abc',
+        playlistId: 'aaaaaaaaaaaaaaaaaaaaaa',
         clipDuration: 30,
         titleRevealDelay: 5,
         hostName: 'Host',
@@ -3221,7 +3235,7 @@ describe('PATCH /api/rooms/:code/round-config', () => {
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, allowCasualMode: false }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, allowCasualMode: false }),
     })
 
     expect(roomState.priorCasualModes).toEqual(new Set(['Alice']))

@@ -566,6 +566,8 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
 
   if (!playlistId || typeof playlistId !== 'string' || !playlistId.trim())
     return ctx.json({ message: 'playlistId is required' }, 400)
+  if (!/^[A-Za-z0-9]{20,30}$/.test(playlistId))
+    return ctx.json({ message: 'Invalid playlist ID' }, 400)
   if (!isValidClipDuration(clipDuration))
     return ctx.json({ message: 'Invalid clipDuration' }, 400)
   if (!isValidTitleRevealDelay(titleRevealDelay))

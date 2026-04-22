@@ -1,5 +1,13 @@
 # Deferred Work
 
+## Deferred from: code review of 13-5-light-security-hardening (2026-04-22)
+
+- **Pre-existing flake: `square:auto-marked is NOT sent to other players` times out under full-suite parallelism** — Confirmed flaky on main BEFORE Story 13-5 changes (~2/4 runs of `npm test -- --run` fail with `next(square:auto-marked) timed out`; passes 100% in isolation). Not caused by 13-5; surfaced during the review test runs. Likely a vitest cross-file timing issue. Worth chasing in a future test-stability story. (src/server/__tests__/ws.test.ts:1383-1442)
+- **No HTTP-endpoint rate limiting** — `/api/music/search`, `/api/music/tracks/:id`, room lookup, etc. are all unrate-limited. AC-4 explicitly excludes host endpoints from 13-5 scope; would need a separate hardening story if friends-only assumption widens. (src/server/music/router.ts, src/server/rooms.ts)
+- **Session cookie has no expiry, rotation, or server-side revocation** — Signed payload is `userId` only, no `iat`/version field, no revocation list. A leaked cookie is valid for 30 days; logout clears tokens but the signed cookie still verifies if replayed. Pre-existing; out of scope for 13-5. (src/server/auth.ts:19-22, 182-188)
+- **No Origin check on WebSocket upgrade (CSWSH)** — Nothing rejects cross-site WS connects on the upgrade. Pre-existing; not introduced by 13-5. (src/server/ws.ts setupWebSocketServer)
+- **Within rate-limit budget, name-spray reconnaissance against a known room is unmitigated** — 10 attempts/60s is enough for an attacker to enumerate "is name X taken?" via 4009/4004 distinguishability on a known room code. Inherent to the chosen 10/60s spec limit; would need a per-room or per-name throttle. (src/server/ws.ts:438-460)
+
 ## Deferred from: code review of 13-4-test-quality-pass (2026-04-22)
 
 - **`roomSockets.get('AAAA')?.host` optional chaining masks room-deleted vs host-nulled** — in `ws.test.ts` host-disconnect test, `?.host` returns `undefined` if the room entry were deleted; `.toBeNull()` would fail with confusing message. Current server does `r.host = null` (not delete), so safe today. (src/server/__tests__/ws.test.ts:384)
@@ -225,7 +233,6 @@
 
 ## Deferred from: code review of 1-1-pkce-oauth-and-session (2026-04-03)
 
-- SESSION_SECRET is required/validated at startup but never used to sign the session cookie. Spec says "wire up now, use later" — wire actual signing when needed.
 - requireAuth middleware does not check token_expires_at. Expired access tokens remain valid until re-login. Story 1.2 handles refresh.
 - access_token and refresh_token stored as plaintext in SQLite. Acceptable for friends-use MVP; consider encryption at rest for any broader deployment.
 - No AbortController timeout on fetch() calls to Spotify token endpoint and /v1/me. A hung Spotify response will hang the callback handler indefinitely.
@@ -245,7 +252,6 @@
 ## Deferred from: code review of 3-1-room-creation-api-and-code-generation (2026-04-03)
 
 - No rate limiting or per-host room cap on POST /api/rooms — a single authenticated host can hammer the endpoint or exhaust the 24^5 code space over time. Harden in a future epic.
-- Session cookie is raw `user_id` with no signature/MAC — trivially forgeable by anyone who knows a valid Spotify user ID. Pre-existing auth design; address when hardening auth.
 - Prepared statements re-created on every DB call — `better-sqlite3` recommends caching. Pre-existing pattern in `db.ts`; optimize if performance becomes a concern.
 - `SELECT *` in `getRoomsByHost`/`getRoomByCode` — future schema additions will silently appear in API responses. Low risk now; explicit projection preferred at hardening time.
 - Test alphabet regex does not pin exact 24-char set — `/^[A-Z]+$/` and `/[OI]/` pass even with a wrong alphabet. Tighten in a future test-quality pass.
@@ -262,7 +268,6 @@
 
 ## Deferred from: code review of 3-2-websocket-room-session-and-player-presence (2026-04-03)
 
-- Session cookie value used as literal user ID — no HMAC signing; pre-existing auth pattern from Story 3-1, acceptable for MVP.
 - `getHostRoom` O(n) linear scan over all rooms on every `auth:degraded` event — not a correctness concern at friends-use scale.
 - `auth:degraded` event listener registered at module load and never removed — acceptable for production singleton, latent issue if module is ever re-evaluated.
 - `parseCookies` does not handle RFC 6265 quoted cookie values — session cookie writer does not produce quoted values in practice.
@@ -284,7 +289,6 @@
 
 ## Deferred from: code review of 4-1-track-pool-api (2026-04-04)
 
-- `playlistId` path param not sanitized before URL interpolation — authenticated host can reach arbitrary Spotify API paths through the server's token (src/server/music/router.ts:44).
 - Concurrent token refresh race: two simultaneous requests both see expiring token and call `refreshWithRetry` in parallel — low risk at ≤5 users but wastes Spotify quota (src/server/music/router.ts:21-28).
 - Inline token refresh block duplicated verbatim in `/music/search` and `/music/tracks/:playlistId` handlers — future fix must be applied twice (src/server/music/router.ts).
 - `token_expires_at` ms/seconds unit not enforced at DB schema level — if written in seconds, every request would attempt an inline refresh (src/server/music/router.ts:24).

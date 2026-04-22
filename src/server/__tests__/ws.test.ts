@@ -12,7 +12,7 @@ vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
 const { app } = await import('../index.ts')
-const { setupWebSocketServer, roomSockets, getPlayerList, rehydrateRooms } = await import('../ws.ts')
+const { setupWebSocketServer, roomSockets, getPlayerList, rehydrateRooms, joinRateLimit } = await import('../ws.ts')
 const { authEvents } = await import('../refresh.ts')
 const { signUserId } = await import('../auth.ts')
 
@@ -131,6 +131,10 @@ let port: number
 beforeEach(async () => {
   initDb(':memory:')
   roomSockets.clear()
+  // Load-bearing: every guest test connects from 127.0.0.1; without this clear,
+  // 10 connects per file would exhaust the per-IP budget and following tests
+  // would close 4429 instead of their expected codes.
+  joinRateLimit.clear()
   server = createAdaptorServer({ fetch: app.fetch })
   setupWebSocketServer(server)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -475,7 +479,7 @@ describe('Late-join after round:start', () => {
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
 
@@ -525,7 +529,7 @@ describe('Late-join includes songHistory', () => {
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
     await host.next('round:start')
@@ -569,7 +573,7 @@ describe('Late-join includes songHistory', () => {
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
     await host1.next('round:start')
@@ -620,7 +624,7 @@ describe('Late-join includes songHistory', () => {
     const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
     await host1.next('round:start')
@@ -896,7 +900,7 @@ describe('persistRoomState triggers', () => {
     const roundRes = await app.request('/api/rooms/PERS/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     expect(roundRes.status).toBe(200)
     await host.next('round:start')
@@ -923,7 +927,7 @@ describe('persistRoomState triggers', () => {
     await app.request('/api/rooms/ENDR/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
     })
     await host.next('round:start')
 
@@ -966,7 +970,7 @@ describe('Reconnect after win', () => {
     await honoApp.request('/api/rooms/WINR/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
     })
     await host.next('round:start')
 
@@ -1020,7 +1024,7 @@ describe('Reconnect after win', () => {
     await honoApp.request('/api/rooms/WING/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
     })
     await host.next('round:start')
     await alice.next('round:start')
@@ -1254,7 +1258,7 @@ describe('square:auto-marked', () => {
     const roundRes = await honoApp.request(`/api/rooms/${code}/round`, {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: 0, hostName: 'Host', allowCasualMode: true }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 'full', titleRevealDelay: 0, hostName: 'Host', allowCasualMode: true }),
     })
     expect(roundRes.status).toBe(200)
 
@@ -1401,7 +1405,7 @@ describe('square:auto-marked', () => {
     const roundRes = await honoApp.request('/api/rooms/CAS4/round', {
       method: 'POST',
       headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 'full', titleRevealDelay: 0, hostName: 'Host', allowCasualMode: true }),
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 'full', titleRevealDelay: 0, hostName: 'Host', allowCasualMode: true }),
     })
     expect(roundRes.status).toBe(200)
 
@@ -1439,5 +1443,23 @@ describe('square:auto-marked', () => {
     host.close()
     alice.close()
     bob.close()
+  })
+})
+
+// ── Guest join rate limit (Story 13-5) ───────────────────────────────────
+
+describe('Guest join rate limit', () => {
+  it('11th guest join attempt from same IP within 60s receives close code 4429', async () => {
+    // First 10 attempts go to a non-existent room — rate limit counts them, room lookup fails with 4004
+    for (let i = 0; i < 10; i++) {
+      const ws = rawConnect(`/ws?code=ZZZZ&name=Attempt${i}`)
+      const closed = await waitClose(ws)
+      expect(closed.code).toBe(4004)
+    }
+    // 11th attempt — rate limit exceeded
+    const ws = rawConnect('/ws?code=ZZZZ&name=Attempt11')
+    const closed = await waitClose(ws)
+    expect(closed.code).toBe(4429)
+    expect(closed.reason).toBe('Too many requests')
   })
 })

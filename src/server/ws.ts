@@ -273,10 +273,55 @@ function parseCookies(header: string | undefined): Record<string, string> {
   )
 }
 
+// ── Guest join rate limit ──────────────────────────────────────────────────
+
+export const joinRateLimit = new Map<string, { count: number; resetAt: number }>()
+
+function checkJoinRateLimit(ip: string): boolean {
+  const now = Date.now()
+  const entry = joinRateLimit.get(ip)
+  if (!entry || entry.resetAt <= now) {
+    joinRateLimit.set(ip, { count: 1, resetAt: now + 60_000 })
+    return true
+  }
+  if (entry.count >= 10) return false
+  entry.count++
+  return true
+}
+
+// Periodic sweep: per-IP entries are only refreshed when that same IP returns
+// after its window expires, so without a sweep, IPs that connect once would
+// stay in the map forever. .unref() so this timer doesn't keep the process alive.
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, entry] of joinRateLimit) {
+    if (entry.resetAt <= now) joinRateLimit.delete(ip)
+  }
+}, 60_000).unref()
+
 // ── Connection handler ─────────────────────────────────────────────────────
 
 function handleConnection(ws: WebSocket, req: IncomingMessage): void {
   ws.on('error', () => { /* prevent unhandled error crash */ })
+
+  const url = new URL(req.url ?? '/', 'http://localhost')
+  const code = url.searchParams.get('code') ?? ''
+  const guestName = url.searchParams.get('name')
+
+  const cookies = parseCookies(req.headers.cookie)
+  const sessionUserId = cookies['session'] ? verifySession(cookies['session']) : null
+
+  // Rate-limit guest joins (no valid session cookie) before allocating heartbeat
+  // resources, so blocked attempts don't leak ping intervals. IP comes from
+  // req.socket.remoteAddress and assumes no reverse proxy in front of Node — if
+  // one is reintroduced, switch to a trusted X-Forwarded-For parse.
+  if (!sessionUserId) {
+    const ip = req.socket.remoteAddress ?? 'unknown'
+    if (!checkJoinRateLimit(ip)) {
+      ws.close(4429, 'Too many requests')
+      return
+    }
+  }
 
   // Heartbeat: every HEARTBEAT_INTERVAL_MS send ping; terminate if no pong in
   // PONG_TIMEOUT_MS. The close handler below stops the interval.
@@ -288,13 +333,6 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     } catch { /* ignore malformed */ }
   })
   ws.on('close', () => { stopHeartbeat(ws) })
-
-  const url = new URL(req.url ?? '/', 'http://localhost')
-  const code = url.searchParams.get('code') ?? ''
-  const guestName = url.searchParams.get('name')
-
-  const cookies = parseCookies(req.headers.cookie)
-  const sessionUserId = cookies['session'] ? verifySession(cookies['session']) : null
 
   // A request with a session cookie is always the host path, regardless of ?name=
   if (sessionUserId) {
@@ -413,6 +451,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     })
   } else {
     // ── Guest path ─────────────────────────────────────────────────────────
+    // Rate-limit already enforced at the top of handleConnection.
     const name = guestName?.trim() ?? ''
     if (!name) {
       ws.close(4000, 'missing name')

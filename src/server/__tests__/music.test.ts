@@ -220,6 +220,18 @@ describe('GET /api/music/tracks/:playlistId', () => {
     expect(body.message).toContain('Invalid playlist ID')
   })
 
+  it('returns 400 for path traversal characters in playlistId (AC-5)', async () => {
+    seedHost()
+    const app = makeApp()
+    // %2F = URL-encoded slash; param value becomes ../etc — non-alphanumeric, rejected
+    const res = await app.request('/api/music/tracks/..%2F..%2Fetc', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { message: string }
+    expect(body.message).toContain('Invalid playlist ID')
+  })
+
   it('returns mapped tracks for a playlist with >= 25 tracks', async () => {
     seedHost()
 

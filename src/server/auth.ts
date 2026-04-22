@@ -16,6 +16,8 @@ export type AuthEnv = {
 
 // ── Session signing ────────────────────────────────────────────────────────
 
+// Signature is full 64-char SHA-256 HMAC hex (spec gave us 16-char or full —
+// full is simpler with no measurable downside on a cookie this small).
 export function signUserId(id: string): string {
   const sig = crypto.createHmac('sha256', config.sessionSecret).update(id).digest('hex')
   return `${id}.${sig}`
@@ -23,7 +25,9 @@ export function signUserId(id: string): string {
 
 export function verifySession(cookie: string): string | null {
   const lastDot = cookie.lastIndexOf('.')
-  if (lastDot === -1) return null
+  // Reject cookies with no dot (lastDot === -1) and cookies with empty userId
+  // (lastDot === 0, e.g. ".<sig of empty string>") as defense-in-depth.
+  if (lastDot <= 0) return null
   const userId = cookie.slice(0, lastDot)
   const sig = cookie.slice(lastDot + 1)
   const expected = crypto.createHmac('sha256', config.sessionSecret).update(userId).digest('hex')
