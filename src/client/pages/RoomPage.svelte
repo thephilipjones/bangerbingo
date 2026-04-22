@@ -29,7 +29,6 @@
   let wsState = $state<WsState>('open')
   let wsClient: WsClient | null = null
   let visibilityListener: (() => void) | null = null
-  let statusLine = $state('Waiting for the host to start a round...')
   let marksKey = ''
   let toastMessage = $state<string | null>(null)
   let toastTimer: ReturnType<typeof setTimeout> | undefined
@@ -108,7 +107,6 @@
       toastMessage = null
     } else if (data.type === 'round:end') {
       game.resetRound()
-      statusLine = 'Waiting for the host to start a round...'
     } else if (data.type === 'session:end') {
       sessionEnded = true
       setTimeout(() => onLeave?.(), 2500)
@@ -200,7 +198,6 @@
       onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
     />
     <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
-    <p class="status-line" role="status">{statusLine}</p>
     {#if toastMessage}
       <div class="casual-toast" role="status" aria-live="polite">{toastMessage}</div>
     {/if}
@@ -277,13 +274,6 @@
   .room-page.game-active {
     justify-content: flex-start;
     padding-top: 80px;
-  }
-
-  .status-line {
-    margin-top: 12px;
-    font-size: 14px;
-    color: var(--fg-muted);
-    text-align: center;
   }
 
   .casual-toggle-row {

@@ -43,7 +43,7 @@ export type WinData = {
  * Call this once during component initialisation; it uses Svelte 5 runes internally.
  *
  * Both pages call processWsMessage() for every incoming WS message and then handle
- * any page-specific state changes themselves (statusLine, isPlaying, etc.).
+ * any page-specific state changes themselves (isPlaying, etc.).
  */
 export function createGameState({
   code,
@@ -148,7 +148,7 @@ export function createGameState({
   /**
    * Process a parsed WS message for all shared game state.
    * Call this first in every WS message handler, then handle page-specific
-   * state (statusLine, isPlaying, etc.) for messages you also care about.
+   * state (isPlaying, etc.) for messages you also care about.
    */
   function processWsMessage(data: Record<string, unknown>): void {
     if (data.type === 'round:start') {
