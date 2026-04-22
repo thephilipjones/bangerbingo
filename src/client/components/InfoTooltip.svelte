@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
   import { Info } from 'phosphor-svelte'
 
   let { label, text }: { label: string; text: string } = $props()
@@ -9,6 +9,10 @@
 
   let open = $state(false)
   let triggerEl = $state<HTMLButtonElement | null>(null)
+  let popoverEl = $state<HTMLSpanElement | null>(null)
+  let popTop = $state(0)
+  let popLeft = $state(0)
+  let positioned = $state(false)
   // Suppress mouseenter/mouseleave on touch devices: iOS Safari synthesizes
   // mouse events after tap, racing the click toggle and making the tooltip
   // flicker open/closed. Any pointerdown with pointerType==='touch' locks
@@ -30,21 +34,76 @@
   function onOutsidePointer(e: PointerEvent) {
     if (!open) return
     if (triggerEl && e.target instanceof Node && !triggerEl.contains(e.target)) {
-      // If click lands outside both trigger and popover, close.
-      const popover = document.getElementById(popoverId)
-      if (!popover || !popover.contains(e.target)) open = false
+      if (!popoverEl || !popoverEl.contains(e.target)) open = false
     }
   }
 
+  let rafHandle: number | null = null
+
+  function reposition() {
+    if (!triggerEl || !popoverEl) return
+    const trigger = triggerEl.getBoundingClientRect()
+    const pop = popoverEl.getBoundingClientRect()
+    const margin = 8
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null
+    const vw = vv?.width ?? document.documentElement.clientWidth
+    const vh = vv?.height ?? document.documentElement.clientHeight
+    const offsetLeft = vv?.offsetLeft ?? 0
+    const offsetTop = vv?.offsetTop ?? 0
+
+    let left = trigger.left
+    if (left + pop.width > offsetLeft + vw - margin) left = offsetLeft + vw - margin - pop.width
+    if (left < offsetLeft + margin) left = offsetLeft + margin
+
+    let top = trigger.bottom + 6
+    if (top + pop.height > offsetTop + vh - margin) {
+      const above = trigger.top - 6 - pop.height
+      if (above >= offsetTop + margin) top = above
+      else top = Math.max(offsetTop + margin, offsetTop + vh - margin - pop.height)
+    }
+
+    popLeft = left
+    popTop = top
+    positioned = true
+  }
+
+  function scheduleReposition() {
+    if (rafHandle !== null) return
+    rafHandle = requestAnimationFrame(() => {
+      rafHandle = null
+      reposition()
+    })
+  }
+
   $effect(() => {
-    if (open) {
-      document.addEventListener('pointerdown', onOutsidePointer, true)
-      return () => document.removeEventListener('pointerdown', onOutsidePointer, true)
+    if (!open) {
+      positioned = false
+      return
+    }
+
+    document.addEventListener('pointerdown', onOutsidePointer, true)
+    window.addEventListener('scroll', scheduleReposition, true)
+    window.addEventListener('resize', scheduleReposition)
+    window.visualViewport?.addEventListener('resize', scheduleReposition)
+    window.visualViewport?.addEventListener('scroll', scheduleReposition)
+
+    tick().then(reposition)
+
+    return () => {
+      if (rafHandle !== null) {
+        cancelAnimationFrame(rafHandle)
+        rafHandle = null
+      }
+      document.removeEventListener('pointerdown', onOutsidePointer, true)
+      window.removeEventListener('scroll', scheduleReposition, true)
+      window.removeEventListener('resize', scheduleReposition)
+      window.visualViewport?.removeEventListener('resize', scheduleReposition)
+      window.visualViewport?.removeEventListener('scroll', scheduleReposition)
     }
   })
 
   onDestroy(() => {
-    document.removeEventListener('pointerdown', onOutsidePointer, true)
+    if (rafHandle !== null) cancelAnimationFrame(rafHandle)
   })
 </script>
 
@@ -66,7 +125,14 @@
   ><Info size={16} aria-hidden="true" /></button>
 
   {#if open}
-    <span class="popover" id={popoverId} role="tooltip">{text}</span>
+    <span
+      bind:this={popoverEl}
+      class="popover"
+      class:positioned
+      id={popoverId}
+      role="tooltip"
+      style="top: {popTop}px; left: {popLeft}px;"
+    >{text}</span>
   {/if}
 </span>
 
@@ -97,9 +163,7 @@
   .trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .popover {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
+    position: fixed;
     z-index: 200;
     background: var(--bg-2);
     color: var(--fg);
@@ -108,16 +172,10 @@
     font-size: 0.8rem;
     line-height: 1.3;
     width: max-content;
-    max-width: min(260px, calc(100vw - 32px));
+    max-width: min(260px, calc(100vw - 16px));
     white-space: normal;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    visibility: hidden;
   }
-
-  /* Keep the popover from clipping off the right edge on mobile overlays. */
-  @media (max-width: 480px) {
-    .popover {
-      left: auto;
-      right: 0;
-    }
-  }
+  .popover.positioned { visibility: visible; }
 </style>
