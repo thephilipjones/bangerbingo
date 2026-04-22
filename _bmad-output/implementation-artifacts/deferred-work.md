@@ -7,6 +7,12 @@
 
 ---
 
+## Deferred from: code review of 13-1-reconnect-after-win-state-replay (2026-04-21)
+
+- **Reconnect-after-win tests mutate `round.winData` directly rather than exercising `/round/claim`** — new tests at `src/server/__tests__/ws.test.ts` (describe "Reconnect after win") set `round.ended = true` and `(round as any).winData = {...}` inline, bypassing the real claim handler that populates `winData` in `rooms.ts`. A regression in the claim-path write would not be caught by these tests. Addresses in 13-4 test-quality pass. (src/server/__tests__/ws.test.ts:979-985, 1033-1039)
+- **`round:end` not replayed on reconnect — client stuck in mid-game UI if it missed the broadcast** — `ws.ts` reconnect replay only handles `round:start` / `round:win`. A client that disconnected before `round:end` was sent, and reconnects after `currentRound` was cleared, never receives a reset signal. Pre-existing; not caused by 13-1. (src/server/ws.ts:340-386)
+- **Reconnect-replay widens the existing guest-name-collision / host-name-spoof surface to ended rounds** — widening the guest reconnect guard from `round?.active` to `round?.active || round?.ended` means new guests (or typo'd names) now generate cards against ended rounds and mutate `round.cards`. Pre-existing name-collision pattern; tracked under Story 12-3 deferred work. (src/server/ws.ts:447-465)
+
 ## Deferred from: code review of song-masking-re-blur fix (2026-04-21)
 
 - **Guest reconnect path not patched with `currentSongRevealed`** — `ws.ts` fix only targets the host reconnect unicast (lines 337–358). Guest reconnect `round:start` (separate branch in ws.ts) does not include `currentSongRevealed`, so guests can still see a spurious re-blur on reconnect after reveal. Out of scope for host-focused bug report; fix when the guest reconnect path is next touched. (src/server/ws.ts — guest connect branch)
@@ -84,7 +90,6 @@
 
 ## Deferred from: code review of 9-1-game-over-page-state-and-auto-bingo (2026-04-19)
 
-- **Reconnect after a win loses Game Over view** — `session:connect` replay in `src/server/ws.ts` does not re-broadcast `round:win` when `round.ended === true`. A reconnecting winner sees an empty active-round shell and can't access the Start Next Round CTA. Already flagged as a known pre-existing limitation in story 9-1's Dev Notes. (src/server/ws.ts)
 - **No CSRF / origin check / rate-limit on `POST /round/next-round`** — endpoint is intentionally unauthenticated (guest-callable) and gated only by `playerName === round.winnerName`. Consistent with the project's friends-only model and documented in the story's Dev Notes. Would need revisiting if the model ever widens beyond friends. (src/server/rooms.ts)
 - **`handleStartNextRound` error copy is generic for permanent failures** — 403/409 responses (wrong name, no pending round) display "Couldn't start next round — try again." where retry will never succeed. UX polish; correctness unaffected. (src/client/pages/RoomPage.svelte, src/client/pages/HostRoomPage.svelte)
 - **No server-side debounce when host + winning guest tap Start Next Round near-simultaneously** — both authorized callers pass their auth branch and both run `startContinuousRound`, which could double-broadcast `round:start`. Worth observing in real play before adding a guard. (src/server/rooms.ts)

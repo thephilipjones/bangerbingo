@@ -472,6 +472,8 @@
 
     function handleWsMessage(data: Record<string, unknown>) {
       try {
+        // Capture before processWsMessage sets winData — guards audio replay in Story 13-6.
+        const isWinReplay = data.type === 'round:win' && game.winData !== null
         game.processWsMessage(data)
         if (data.type === 'round:start') {
           isPlaying = false
@@ -526,6 +528,9 @@
           isPlaying = false
         } else if (data.type === 'round:win') {
           isPlaying = false
+          if (!isWinReplay) {
+            // Story 13-6: play win jingle here
+          }
         } else if (data.type === 'round:end') {
           pendingAutoPlay = false
           onRoundEnded()

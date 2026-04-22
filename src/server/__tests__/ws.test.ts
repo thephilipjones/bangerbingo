@@ -949,6 +949,115 @@ describe('persistRoomState triggers', () => {
   })
 })
 
+// ── Reconnect after win — round:win replay (Story 13-1) ───────────────────
+
+describe('Reconnect after win', () => {
+  it('host reconnects into ended round → receives round:start then round:win', async () => {
+    seedHost('host_1')
+    createRoom('WINR', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=WINR', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    await honoApp.request('/api/rooms/WINR/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+
+    // Directly set ended state + winData (mirrors what /round/claim does)
+    const rs = roomSockets.get('WINR')!
+    const round = rs.currentRound!
+    round.active = false
+    round.ended = true
+    ;(round as any).winData = {
+      winnerName: 'Alice',
+      winningTileIds: ['t0', 'FREE'],
+      songHistory: [],
+      winnerCard: [],
+    }
+
+    // Host disconnects
+    await new Promise<void>((resolve) => { host.ws.once('close', () => resolve()); host.close() })
+
+    // Host reconnects — should get round:start then round:win
+    const host2 = await connect('/ws?code=WINR', { cookie: sessionCookie() })
+    await host2.next('session:connect')
+    const roundStartMsg = await host2.next('round:start')
+    expect(roundStartMsg.type).toBe('round:start')
+    const winMsg = await host2.next('round:win')
+    expect(winMsg.type).toBe('round:win')
+    expect(winMsg.winnerName).toBe('Alice')
+    expect(winMsg.winningTileIds).toEqual(['t0', 'FREE'])
+
+    vi.restoreAllMocks()
+    host2.close()
+  })
+
+  it('guest reconnects into ended round → receives round:start then round:win', async () => {
+    seedHost('host_1')
+    createRoom('WING', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=WING', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=WING&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    await honoApp.request('/api/rooms/WING/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'pl_abc', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+    await alice.next('round:start')
+
+    // Simulate win
+    const rs = roomSockets.get('WING')!
+    const round = rs.currentRound!
+    round.active = false
+    round.ended = true
+    ;(round as any).winData = {
+      winnerName: 'Alice',
+      winningTileIds: ['t0', 'FREE'],
+      songHistory: [],
+      winnerCard: [],
+    }
+
+    // Alice disconnects
+    await new Promise<void>((resolve) => { alice.ws.once('close', () => resolve()); alice.close() })
+
+    // Alice reconnects — should get round:start then round:win
+    const alice2 = await connect('/ws?code=WING&name=Alice')
+    await alice2.next('session:connect')
+    const roundStartMsg = await alice2.next('round:start')
+    expect(roundStartMsg.type).toBe('round:start')
+    const winMsg = await alice2.next('round:win')
+    expect(winMsg.type).toBe('round:win')
+    expect(winMsg.winnerName).toBe('Alice')
+
+    vi.restoreAllMocks()
+    host.close()
+    alice2.close()
+  })
+})
+
 // ── Casual Mode (Story 8-4) ────────────────────────────────────────────────
 
 describe('player:casual-mode-changed', () => {

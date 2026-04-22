@@ -33,6 +33,13 @@ export interface SongHistoryEntry {
   songIndex: number
 }
 
+export interface WinData {
+  winnerName: string
+  winningTileIds: string[]
+  songHistory: SongHistoryEntry[]
+  winnerCard: Tile[]
+}
+
 export interface RoundState {
   roundNumber: number
   config: RoundConfig
@@ -47,6 +54,7 @@ export interface RoundState {
   songHistory: SongHistoryEntry[] // append-only; used by 5-5 win validation + 5-6 drawer
   paused: boolean                 // true after /pause; cleared on /play
   ended?: boolean                 // true after a valid win claim
+  winData?: WinData               // set alongside ended; used to replay round:win on reconnect
   timers: {
     autoAdvance?: ReturnType<typeof setTimeout>
     reveal?: ReturnType<typeof setTimeout>
@@ -118,6 +126,7 @@ export function persistRoomState(code: string): void {
       songHistory: round.songHistory,
       paused: round.paused,
       ended: round.ended,
+      winData: round.winData,
     } : undefined,
   }
   upsertActiveRoom(code, JSON.stringify(snapshot))
@@ -334,9 +343,10 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       casualModeNames: Array.from(roomState.playerCasualModes.entries()).filter(([, v]) => v).map(([k]) => k),
     }))
 
-    // Send round:start if there is an active round (needed for HostRoomPage initial load)
+    // Send round:start if there is an active or just-ended round (needed for HostRoomPage
+    // initial load and for Game Over screen replay on reconnect — Story 13-1).
     const activeRound = roomState.currentRound
-    if (activeRound?.active) {
+    if (activeRound?.active || activeRound?.ended) {
       const hostCard = activeRound.cards.get(sessionUserId) ?? []
       ws.send(JSON.stringify({
         ...activeRound.roundStartPayload,
@@ -347,11 +357,18 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         currentSongRevealed: activeRound.currentSongRevealed,
       }))
 
+      // Story 13-1: replay round:win when reconnecting into an ended round so the
+      // host lands on the Game Over screen rather than an empty active-round shell.
+      if (activeRound.ended && activeRound.winData) {
+        ws.send(JSON.stringify({ type: 'round:win', ...activeRound.winData }))
+      }
+
       // Story 12-3: on host reconnect, fold any songs played during the disconnect
       // window into autoMarkedTileIndices (suppressEmit — we don't want the sweep
       // to fire its own catchUp event), then unicast the full set to the returning
       // socket in a single square:auto-marked event. One event = one catch-up toast.
       // playerCasualModes/autoMarkedTileIndices are keyed by host_name.
+      // runCasualModeSweep/replayAutoMarksToSocket guard !round.active — no-op for ended rounds.
       const hostName = room.host_name
       if (hostName && roomState.playerCasualModes.get(hostName) === true) {
         runCasualModeSweep(code, roomState, { playerName: hostName, suppressEmit: true })
@@ -433,9 +450,13 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       casualModeNames: Array.from(roomState.playerCasualModes.entries()).filter(([, v]) => v).map(([k]) => k),
     }))
 
-    // If a round is in progress, resend round:start — reuse existing card if reconnecting
+    // If a round is active or just ended, resend round:start — reuse existing card if reconnecting.
+    // Story 13-1: also replay for ended rounds so the Game Over screen is restored — but
+    // only for returning guests (existingCard). A brand-new name joining an ended round
+    // should not mint a new card against a dead round nor receive a round:win replay with
+    // another player's winningTileIds.
     const round = roomState.currentRound
-    if (round?.active) {
+    if (round?.active || (round?.ended && round.cards.has(name))) {
       const existingCard = round.cards.get(name)
       const card = existingCard ?? generateCard(round.playlist)
       if (!existingCard) round.cards.set(name, card)
@@ -447,12 +468,18 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         currentSongRevealed: round.currentSongRevealed,
       }))
 
+      // Story 13-1: replay round:win so the guest lands on the Game Over screen.
+      if (round.ended && round.winData) {
+        ws.send(JSON.stringify({ type: 'round:win', ...round.winData }))
+      }
+
       // Casual Mode (Story 8-5) — catch-up sweep on reconnect. AC #5. Must be AFTER
       // ws.send(round:start) so the client has the card before the auto-mark event.
       // Story 12-3: fold any new songs played during the disconnect window into
       // autoMarkedTileIndices (suppressEmit), then unicast the full set to the
       // returning socket in a single square:auto-marked event. One event = one
       // catch-up toast.
+      // runCasualModeSweep/replayAutoMarksToSocket guard !round.active — no-op for ended rounds.
       if (roomState.playerCasualModes.get(name) === true) {
         runCasualModeSweep(code, roomState, { playerName: name, suppressEmit: true })
         replayAutoMarksToSocket(roomState, ws, name)

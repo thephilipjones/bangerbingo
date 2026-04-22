@@ -87,8 +87,12 @@
   })
 
   function handleWsData(data: Record<string, unknown>) {
+    // Capture before processWsMessage sets winData — guards audio replay in Story 13-6.
+    const isWinReplay = data.type === 'round:win' && game.winData !== null
     game.processWsMessage(data)
-    if (data.type === 'session:connect') {
+    if (data.type === 'round:win' && !isWinReplay) {
+      // Story 13-6: play win jingle here
+    } else if (data.type === 'session:connect') {
       // Fires on reconnect via wsClient — refresh server-truth state so the
       // subsequent buffered round:start (if any) doesn't stomp casualModeOn,
       // and the player list / wins stay accurate.

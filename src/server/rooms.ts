@@ -1074,6 +1074,15 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
   clearRoundTimers(round)
   round.active = false
 
+  // Story 13-1: persist win details so reconnecting clients can receive a round:win replay.
+  // Snapshot songHistory and winnerCard (not live refs) so post-win mutations can't leak into the replay payload.
+  round.winData = {
+    winnerName: playerName,
+    winningTileIds,
+    songHistory: round.songHistory.slice(),
+    winnerCard: card.map(t => ({ ...t })),
+  }
+
   roomState.sessionStats.winsByName[playerName] = (roomState.sessionStats.winsByName[playerName] ?? 0) + 1
   roomState.sessionStats.lastRoundWinner = playerName
 
