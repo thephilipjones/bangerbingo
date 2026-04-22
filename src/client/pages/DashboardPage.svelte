@@ -22,7 +22,10 @@
   // Status pill states:
   //   connected → ink outline + ink text (neutral, stable)
   //   disconnected → signal outline + signal text (needs user action)
-  let { onEnterLobby }: { onEnterLobby: (code: string) => void } = $props()
+  let { onEnterLobby, onJoinAsGuest }: {
+    onEnterLobby: (code: string) => void
+    onJoinAsGuest: () => void
+  } = $props()
 
   let rooms = $state<RoomSummary[]>([])
   let me = $state<MeResponse | null>(null)
@@ -139,7 +142,7 @@
     if (!ok) return
     try {
       await logout()
-      window.location.href = '/'
+      window.location.replace('/')
     } catch {
       error = 'Failed to reset host session'
     }
@@ -188,6 +191,8 @@
   <Button variant="primary" size="lg" onclick={handleCreateRoom} disabled={creating}>
     {creating ? 'Creating…' : 'Start New Session'}
   </Button>
+
+  <Button variant="ghost" size="lg" onclick={onJoinAsGuest}>Join a Session</Button>
 
   {#if loading}
     <p class="muted u-small">Loading sessions…</p>

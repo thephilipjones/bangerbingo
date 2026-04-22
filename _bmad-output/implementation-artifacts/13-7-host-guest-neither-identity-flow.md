@@ -1,6 +1,6 @@
 # Story 13-7: Host / Guest / Neither Identity Flow
 
-## Status: Ready for Development
+## Status: Done
 
 ## Context
 
@@ -430,3 +430,40 @@ Upon completion, remove from `deferred-work.md`:
 - The `onJoinAsGuest` prop on LobbyPage is optional (`?`). If App.svelte doesn't wire it, a 4003 rejection silently leaves the user on the dead-state banner — same behaviour as today. Wire it.
 - Do not change the `/{code}` + auth → lobby routing. Hosts navigate to their own room URLs frequently (e.g., from bookmarks, shared links). The 4003 fallback in LobbyPage handles the "wrong host" case without complicating the routing logic.
 - `window.location.replace('/')` vs `window.location.href = '/'`: both navigate, but `replace` does not add an entry to the session history stack. This prevents mobile Safari's back-forward cache from serving the stale authenticated dashboard if the user taps Back after a Reset Host.
+
+---
+
+## Dev Agent Record
+
+### Completion Notes (2026-04-21)
+
+- [x] Change A — `determineInitialPage` routes `/host` → dashboard/login, `/` → always join.
+- [x] Change B — OAuth callback redirects to `/host`.
+- [x] Change C — App.svelte `handleAuthenticated` / `handleSessionEnded` / `handleBackToDashboard` push `/host`.
+- [x] Change D — Added `handleJoinAsGuest` + "Join a Session" button on Dashboard; wired through LobbyPage prop.
+- [x] Change E — `POST /auth/logout` clears Spotify tokens via `clearHostTokens` (wrapped in try/catch); Dashboard uses `location.replace('/')`.
+- [x] Change F — `onDead(closeCode)` added to `createWsClient`; fires once in both terminal paths (1000/4xxx close and max failures).
+- [x] Change G — LobbyPage redirects host to guest Join with pre-filled code when the WS dies with 4003.
+
+### File List
+
+- Modified: `src/client/lib/ws.ts`
+- Modified: `src/client/lib/wsClient.ts`
+- Modified: `src/client/App.svelte`
+- Modified: `src/client/pages/DashboardPage.svelte`
+- Modified: `src/client/pages/LobbyPage.svelte`
+- Modified: `src/server/auth.ts`
+- Modified: `src/client/__tests__/dashboard.test.ts`
+- Modified: `src/client/__tests__/wsClient.test.ts`
+- Modified: `src/server/__tests__/auth.test.ts`
+- Modified: `_bmad-output/implementation-artifacts/deferred-work.md`
+- Modified: `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+### Change Log
+
+- 2026-04-21 — Implemented Host/Guest/Neither identity flow across client routing, OAuth callback, logout, and LobbyPage 4003 fallback. All 517 tests pass.
+
+### Review Findings
+
+- [x] [Review][Defer] `clearHostTokens` errors silently swallowed in logout [src/server/auth.ts] — deferred, pre-existing
+- [x] [Review][Defer] `verifySession` length-check short-circuits before `timingSafeEqual` [src/server/auth.ts] — deferred, pre-existing

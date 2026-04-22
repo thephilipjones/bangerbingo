@@ -20,6 +20,8 @@ export interface WsClientOptions {
   url: string
   onMessage: (data: unknown) => void
   onStateChange?: (state: WsState) => void
+  // Fired once when the client transitions to 'dead' (1000, 4xxx, or max failures).
+  onDead?: (closeCode: number) => void
   // Adopt an already-created socket (used by guest flow where JoinPage opens
   // the initial socket for validation, then hands it off to RoomPage).
   existingSocket?: WebSocket
@@ -45,6 +47,7 @@ export function createWsClient(opts: WsClientOptions): WsClient {
     url,
     onMessage,
     onStateChange,
+    onDead,
     existingSocket,
     now = () => Date.now(),
     WebSocketCtor = (typeof WebSocket !== 'undefined' ? WebSocket : undefined) as typeof WebSocket,
@@ -103,6 +106,7 @@ export function createWsClient(opts: WsClientOptions): WsClient {
       // the UI surfaces the refresh banner instead of burning ~31s of retries.
       if (code === 1000 || (code >= 4000 && code < 5000)) {
         setState('dead')
+        try { onDead?.(code) } catch { /* ignore */ }
         stopWatchdog()
         return
       }
@@ -114,6 +118,7 @@ export function createWsClient(opts: WsClientOptions): WsClient {
       }
       if (failures >= MAX_CONSECUTIVE_FAILURES) {
         setState('dead')
+        try { onDead?.(code) } catch { /* ignore */ }
         stopWatchdog()
         return
       }

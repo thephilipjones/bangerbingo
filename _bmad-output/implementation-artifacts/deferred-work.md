@@ -1,9 +1,16 @@
 # Deferred Work
 
+## Deferred from: code review of 13-7-host-guest-neither-identity-flow (2026-04-22)
+
+- **`clearHostTokens` errors silently swallowed in logout** — `try { clearHostTokens(userId) } catch { /* no-op */ }` in `POST /auth/logout` absorbs all DB errors including the case where a valid session cookie references a user that was deleted from the DB. Tokens aren't cleared (host doesn't exist), but there is no log or metric for this anomaly. Low severity for friends-use; worth noting if the host DB is ever pruned. (src/server/auth.ts — logout handler)
+- **`verifySession` length-check short-circuits `timingSafeEqual`** — pre-existing: the early-return on `sig.length !== expected.length` before the timing-safe comparison removes constant-time guarantees for wrong-length inputs. The new `POST /auth/logout` handler relies on `verifySession`, incrementally widening exposure. (src/server/auth.ts:30-33)
+
 ## Resolved inline (2026-04-21)
 
 - ~~**"Use desktop Chrome or Firefox for audio" disclaimer removed from LoginPage**~~ — deleted from `src/client/pages/LoginPage.svelte`. Epic 10 + 12 make this obsolete.
 - ~~**4 failing tests in rooms.test.ts (POST /api/rooms/:code/player/device)**~~ — test expectations updated to match Story 12-4 Track B's reissueExpectedTrack implementation. All 507 tests pass.
+- ~~**Authenticated host navigating to a room URL now handles foreign hosts**~~ — Story 13-7 lands Host 1 on guest Join with prefilled code when they visit Host 2's `/{code}`. Own-room paths still route to Lobby.
+- ~~**`determineInitialPage` test coverage for `/host` + `/` + auth**~~ — Story 13-7 adds explicit tests for `/host`-authed, `/host`-unauth, and `/`-authed.
 
 ---
 
@@ -180,7 +187,6 @@
 
 - Rapid repeated clicks on Host Login fire handler multiple times — minor, no orphaning risk once mid-connect guard lands, page transition is idempotent.
 - Host Login button may overlap `<h1>BangerBingo</h1>` on narrow viewports — cosmetic, no verified overlap at current breakpoints, revisit if reported.
-- No test for `determineInitialPage` priority ordering (authenticated + /room/:code path) — pre-existing coverage gap, function's `if (me)` early-return is obvious on inspection.
 
 ## Deferred from: code review of 5-6-song-history-late-join-sync-and-auth-reauth (2026-04-04)
 
@@ -264,7 +270,6 @@
 
 ## Deferred from: code review of 3-4-login-and-lobby-screens (2026-04-03)
 
-- Authenticated host navigating to `/room/CODE` lands on dashboard — pre-existing design decision (same behavior as before this story); intent of deep-linked room URL is silently discarded for authenticated users.
 - Create Room button not disabled while room list is still loading — minor concurrent UX gap; no spec requirement to gate it.
 - `applyPlayerEvent` does not deduplicate player names — inflated player count if server sends duplicate `player:joined`; server already prevents duplicate names at connection time.
 - `player:joined` before `session:connect` ordering race — client overwrites any optimistic state with `session:connect` snapshot; server sends `session:connect` synchronously on connect, making this a near-impossible race in practice.

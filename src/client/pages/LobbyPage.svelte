@@ -15,10 +15,12 @@
     code,
     onRoundStarted,
     onBackToDashboard,
+    onJoinAsGuest,
   }: {
     code: string
     onRoundStarted: () => void
     onBackToDashboard: () => void
+    onJoinAsGuest?: (code: string) => void
   } = $props()
 
   // ── Round Config Overlay ────────────────────────────────────────────────────
@@ -123,6 +125,9 @@
       url,
       onMessage: handleWsMessage,
       onStateChange: (s) => { wsState = s },
+      onDead: (closeCode) => {
+        if (closeCode === 4003) onJoinAsGuest?.(code)
+      },
     })
 
     visibilityListener = () => {

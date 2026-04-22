@@ -58,13 +58,14 @@ function latest(): FakeSocket {
   return FakeSocket.instances[FakeSocket.instances.length - 1]
 }
 
-function makeHarness() {
+function makeHarness(extra: { onDead?: (code: number) => void } = {}) {
   const messages: unknown[] = []
   const states: WsState[] = []
   const client = createWsClient({
     url: 'ws://test.local/ws',
     onMessage: (m) => messages.push(m),
     onStateChange: (s) => states.push(s),
+    onDead: extra.onDead,
     WebSocketCtor: FakeSocket as unknown as typeof WebSocket,
   })
   return { client, messages, states }
@@ -284,6 +285,39 @@ describe('createWsClient — fatal application close codes', () => {
       expect(FakeSocket.instances.length).toBe(1)
     },
   )
+})
+
+describe('createWsClient — onDead callback', () => {
+  it('fires onDead with close code when entering dead via 4xxx code', () => {
+    const deadCodes: number[] = []
+    const { client } = makeHarness({ onDead: (c) => deadCodes.push(c) })
+    latest().simulateDrop(4003)
+    expect(client.getState()).toBe('dead')
+    expect(deadCodes).toEqual([4003])
+  })
+
+  it('fires onDead once with close code when entering dead via max failures', () => {
+    const deadCodes: number[] = []
+    const { client } = makeHarness({ onDead: (c) => deadCodes.push(c) })
+    // 5 consecutive failures → dead (same pacing as "dead after max failures" suite)
+    latest().simulateDrop(1006)
+    vi.advanceTimersByTime(1000)
+    latest().simulateDrop(1006)
+    vi.advanceTimersByTime(2000)
+    latest().simulateDrop(1006)
+    vi.advanceTimersByTime(4000)
+    latest().simulateDrop(1006)
+    vi.advanceTimersByTime(8000)
+    latest().simulateDrop(1006)
+    expect(client.getState()).toBe('dead')
+    expect(deadCodes).toEqual([1006])
+  })
+
+  it('does not throw if onDead is not provided', () => {
+    const { client } = makeHarness()
+    expect(() => latest().simulateDrop(4003)).not.toThrow()
+    expect(client.getState()).toBe('dead')
+  })
 })
 
 describe('createWsClient — ping watchdog', () => {

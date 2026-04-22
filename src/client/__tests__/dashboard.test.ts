@@ -18,9 +18,17 @@ describe('determineInitialPage', () => {
     expect(result.page).toBe('join')
   })
 
-  it('routes to dashboard when getMe() returns a user (skips login screen)', () => {
+  it('routes to join at / when authenticated (root always shows join)', () => {
     const result = determineInitialPage(user, '/')
-    expect(result.page).toBe('dashboard')
+    expect(result.page).toBe('join')
+  })
+
+  it('routes to dashboard at /host when authenticated', () => {
+    expect(determineInitialPage(user, '/host').page).toBe('dashboard')
+  })
+
+  it('routes to login at /host when unauthenticated', () => {
+    expect(determineInitialPage(null, '/host').page).toBe('login')
   })
 
   it('routes to lobby with roomCode when authenticated and on a room URL (reload/wakeup persistence)', () => {

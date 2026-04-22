@@ -31,11 +31,18 @@
   })
 
   function handleAuthenticated() {
+    history.pushState(null, '', '/host')
     page = 'dashboard'
   }
 
   function handleHostLogin() {
     page = 'login'
+  }
+
+  function handleJoinAsGuest(code?: string) {
+    prefillCode = code ?? ''
+    history.pushState(null, '', code ? `/${code}` : '/')
+    page = 'join'
   }
 
   function handleJoined(
@@ -78,12 +85,12 @@
   }
 
   function handleSessionEnded() {
-    history.pushState(null, '', '/')
+    history.pushState(null, '', '/host')
     page = 'dashboard'
   }
 
   function handleBackToDashboard() {
-    history.pushState(null, '', '/')
+    history.pushState(null, '', '/host')
     page = 'dashboard'
   }
 
@@ -104,9 +111,9 @@
 {:else if page === 'join'}
   <JoinPage {prefillCode} onJoined={handleJoined} onHostLogin={handleHostLogin} />
 {:else if page === 'dashboard'}
-  <DashboardPage onEnterLobby={handleEnterLobby} />
+  <DashboardPage onEnterLobby={handleEnterLobby} onJoinAsGuest={() => handleJoinAsGuest()} />
 {:else if page === 'lobby'}
-  <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} onBackToDashboard={handleBackToDashboard} />
+  <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} onBackToDashboard={handleBackToDashboard} onJoinAsGuest={handleJoinAsGuest} />
 {:else if page === 'room'}
   <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} initialWinsByName={guestWinsByName} initialLastRoundWinner={guestLastRoundWinner} initialCasualModeNames={guestCasualModeNames} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} />
 {:else if page === 'hostroom'}

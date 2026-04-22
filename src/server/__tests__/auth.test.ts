@@ -82,7 +82,7 @@ describe('PKCE OAuth routes', () => {
       expect(res.headers.get('location')).toBe('/login?error=missing_verifier')
     })
 
-    it('on successful exchange: upserts host, sets session cookie, redirects to /', async () => {
+    it('on successful exchange: upserts host, sets session cookie, redirects to /host', async () => {
       const app = new Hono()
       app.route('/auth', authRouter)
 
@@ -112,7 +112,7 @@ describe('PKCE OAuth routes', () => {
       })
 
       expect(res.status).toBe(302)
-      expect(res.headers.get('location')).toBe('/')
+      expect(res.headers.get('location')).toBe('/host')
 
       const setCookieHeader = res.headers.get('set-cookie') ?? ''
       expect(setCookieHeader).toContain(`session=${signUserId('spotify_user_1')}`)
@@ -197,7 +197,7 @@ describe('Popup reauth (Story 5-6)', () => {
     expect(restoredSpy).toHaveBeenCalledWith('spotify_popup_user')
   })
 
-  it('GET /auth/callback in normal mode still redirects to /', async () => {
+  it('GET /auth/callback in normal mode still redirects to /host', async () => {
     const app = new Hono()
     app.route('/auth', authRouter)
 
@@ -226,7 +226,62 @@ describe('Popup reauth (Story 5-6)', () => {
     })
 
     expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe('/')
+    expect(res.headers.get('location')).toBe('/host')
+  })
+})
+
+describe('POST /auth/logout', () => {
+  beforeEach(() => {
+    initDb(':memory:')
+  })
+
+  it('clears session cookie and returns 204', async () => {
+    const app = new Hono()
+    app.route('/auth', authRouter)
+    upsertHost({
+      user_id: 'u1',
+      display_name: 'U1',
+      email: '',
+      access_token: 'tok',
+      refresh_token: 'ref',
+      token_expires_at: Date.now() + 60_000,
+    })
+    const res = await app.request('/auth/logout', {
+      method: 'POST',
+      headers: { Cookie: `session=${signUserId('u1')}` },
+    })
+    expect(res.status).toBe(204)
+    const setCookie = res.headers.get('set-cookie') ?? ''
+    expect(setCookie).toContain('session=')
+    expect(setCookie).toMatch(/Max-Age=0|expires=.*1970/i)
+  })
+
+  it('clears Spotify tokens for authenticated host on logout', async () => {
+    const { getHostById, upsertHost: seedHost } = await import('../db.ts')
+    const app = new Hono()
+    app.route('/auth', authRouter)
+    seedHost({
+      user_id: 'u1',
+      access_token: 'tok',
+      refresh_token: 'ref',
+      token_expires_at: Date.now() + 60_000,
+      display_name: 'Philip',
+      email: '',
+    })
+    await app.request('/auth/logout', {
+      method: 'POST',
+      headers: { Cookie: `session=${signUserId('u1')}` },
+    })
+    const host = getHostById('u1')
+    expect(host?.access_token).toBe('')
+    expect(host?.refresh_token).toBe('')
+  })
+
+  it('returns 204 even with no session cookie (graceful)', async () => {
+    const app = new Hono()
+    app.route('/auth', authRouter)
+    const res = await app.request('/auth/logout', { method: 'POST' })
+    expect(res.status).toBe(204)
   })
 })
 

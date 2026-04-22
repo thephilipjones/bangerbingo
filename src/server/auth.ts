@@ -3,7 +3,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { createMiddleware } from 'hono/factory'
 import crypto from 'node:crypto'
 import { config } from './config.ts'
-import { upsertHost, getHostById, type Host } from './db.ts'
+import { upsertHost, getHostById, clearHostTokens, type Host } from './db.ts'
 import { authEvents, clearDegradedState, refreshWithRetry, isHostDegraded } from './refresh.ts'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -195,11 +195,16 @@ authRouter.get('/callback', async (ctx) => {
     return ctx.html('<html><body><script>window.close()</script></body></html>')
   }
 
-  return ctx.redirect('/')
+  return ctx.redirect('/host')
 })
 
-// POST /auth/logout — clears session cookie (no Spotify token revocation)
+// POST /auth/logout — clears session cookie + Spotify tokens server-side
 authRouter.post('/logout', (ctx) => {
+  const cookie = getCookie(ctx, 'session')
+  const userId = cookie ? verifySession(cookie) : null
+  if (userId) {
+    try { clearHostTokens(userId) } catch { /* no-op: cookie cleared regardless */ }
+  }
   deleteCookie(ctx, 'session', { path: '/' })
   return ctx.body(null, 204)
 })

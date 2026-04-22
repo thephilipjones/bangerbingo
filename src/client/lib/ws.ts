@@ -7,13 +7,15 @@ export function determineInitialPage(
   me: MeResponse | null,
   pathname: string
 ): { page: Page; prefillCode?: string; roomCode?: string } {
+  if (pathname === '/host') {
+    return me ? { page: 'dashboard' } : { page: 'login' }
+  }
   const roomMatch = pathname.match(/^\/([A-HJ-NP-Za-hj-np-z]{4})$/)
   if (roomMatch) {
     const code = sanitizeCode(roomMatch[1])
     if (me) return { page: 'lobby', roomCode: code }
     return { page: 'join', prefillCode: code }
   }
-  if (me) return { page: 'dashboard' }
   return { page: 'join' }
 }
 
