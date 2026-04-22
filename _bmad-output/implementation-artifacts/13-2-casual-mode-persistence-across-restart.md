@@ -1,6 +1,6 @@
 # Story 13-2: Casual Mode Persistence Across Server Restart
 
-## Status: Ready for Development
+## Status: Done
 
 ## Context
 
@@ -64,3 +64,31 @@ if (parsed.playerCasualModes && typeof parsed.playerCasualModes === 'object') {
 
 Upon completion, remove from `deferred-work.md`:
 - "`playerCasualModes` not persisted across server restart" (under "Deferred from: code review of 8-5")
+
+## Dev Agent Record
+
+### Completion Notes
+
+- `persistRoomState` ([src/server/ws.ts:107](src/server/ws.ts#L107)) now serializes `allowCasualMode` (from `currentRound.config`) and `playerCasualModes` (as `Record<string, true>` — only opted-in names) at the top level of the snapshot JSON. `allowCasualMode` is also implicitly inside the persisted `currentRound.config`, but AC-2 specifies reading from the top-level field.
+- `rehydrateRooms` ([src/server/ws.ts:135](src/server/ws.ts#L135)) restores `playerCasualModes` as `Map<string, boolean>` with all entries set to `true`. If `snap.allowCasualMode` is a boolean and a `currentRound` exists, overrides `currentRound.config.allowCasualMode`. Missing fields fall back to an empty map / no-op (AC-5).
+- Updated the stale Story 8-5 comment on `RoundState.autoMarkedTileIndices` that claimed `playerCasualModes` was non-persistent.
+- Removed the deferred-work entry for this gap and flipped sprint status to `review`.
+
+### File List
+
+- [src/server/ws.ts](src/server/ws.ts) — `persistRoomState` + `rehydrateRooms` (modified)
+- [src/server/__tests__/ws.test.ts](src/server/__tests__/ws.test.ts) — two new tests under `describe('rehydrateRooms')`: round-trip and legacy-snapshot compatibility (modified)
+- [_bmad-output/implementation-artifacts/deferred-work.md](_bmad-output/implementation-artifacts/deferred-work.md) — removed resolved entry (modified)
+- [_bmad-output/implementation-artifacts/sprint-status.yaml](_bmad-output/implementation-artifacts/sprint-status.yaml) — status bumped to `review` (modified)
+
+### Change Log
+
+- 2026-04-22: Persist + rehydrate Casual Mode opt-ins across server restart. 522 tests green; type-check clean.
+
+## Review Findings
+
+Code review completed 2026-04-22. 0 decision-needed, 0 patch, 3 deferred, 8 dismissed.
+
+- [x] [Review][Defer] Array-typed snapshot passes `playerCasualModes` guard silently [src/server/ws.ts:161] — deferred, pre-existing; `null` is handled by the truthy check; an array (corrupted snapshot) would produce numeric string keys but is an unreachable scenario in practice
+- [x] [Review][Defer] Redundant top-level `allowCasualMode` alongside `currentRound.config.allowCasualMode` [src/server/ws.ts:119,197] — deferred, by-spec design; both fields written atomically in same persist call, comment documents the intent explicitly
+- [x] [Review][Defer] `priorCasualModes` (host-revoke memory) not persisted across restart [src/server/ws.ts:persistRoomState] — deferred, pre-existing limitation out of scope for 13-2; affects only the edge case: host revokes casual mode → server restarts → host re-enables

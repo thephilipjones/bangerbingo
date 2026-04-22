@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review of 13-2-casual-mode-persistence-across-restart (2026-04-22)
+
+- **Array-typed snapshot passes `playerCasualModes` guard silently** — `typeof snap.playerCasualModes === 'object'` also matches arrays; an empty array produces a correct empty Map, but a non-empty array (corrupted snapshot) would yield numeric string keys as player names with no warning. An `!Array.isArray` guard would surface the anomaly. (src/server/ws.ts:161)
+- **Redundant top-level `allowCasualMode` alongside `currentRound.config.allowCasualMode`** — both fields are written atomically in `persistRoomState` and the rehydrate override is gated on `roomState.currentRound`; no divergence is possible today, but any future path that writes the top-level field independently from `config` would silently win. By-spec design, comment documents the intent. (src/server/ws.ts:119, 197-199)
+- **`priorCasualModes` (host-revoke memory) not persisted across restart** — when the host revokes `allowCasualMode`, opted-in names are moved to `priorCasualModes` and `playerCasualModes` is cleared. A server restart during the revoked state loses `priorCasualModes`, so re-enabling casual mode won't auto-restore previous opt-ins. Narrow edge case; not in scope for 13-2. (src/server/ws.ts:persistRoomState, src/server/rooms.ts:1190-1204)
+
 ## Deferred from: code review of 13-5-light-security-hardening (2026-04-22)
 
 - **Pre-existing flake: `square:auto-marked is NOT sent to other players` times out under full-suite parallelism** — Confirmed flaky on main BEFORE Story 13-5 changes (~2/4 runs of `npm test -- --run` fail with `next(square:auto-marked) timed out`; passes 100% in isolation). Not caused by 13-5; surfaced during the review test runs. Likely a vitest cross-file timing issue. Worth chasing in a future test-stability story. (src/server/__tests__/ws.test.ts:1383-1442)
@@ -120,7 +126,6 @@
 ## Deferred from: code review of 8-5-casual-mode-auto-mark-engine (2026-04-15)
 
 - **Auto-claim latches permanently on failed claim** — `autoClaimFired` only resets on `round:start`, so a claim fetch failure locks out auto-claim for the rest of the round. Deferred: Epic 9 is about to minimize/remove the claim concept, so hardening this path would be wasted work. (src/client/pages/RoomPage.svelte)
-- **`playerCasualModes` not persisted across server restart** — pre-existing from Story 8-4. After a server restart, all casual-mode opt-ins silently reset for every player; the catch-up sweep cannot re-emit because its target set is empty. Real UX regression but out of this story's scope; requires extending the SQLite snapshot. (src/server/ws.ts)
 - **Enable Casual Mode during paused pre-reveal marks tile without clearing reveal state** — the tile flips to marked but may still render with `masked`/`revealing` flags because `applyAutoMarks` doesn't touch mask state. Interacts with Story 5-6 reveal flow. (src/client/lib/bingo.ts, src/client/lib/gameState.svelte.ts)
 - **Catch-up toast count reflects server-sent indices, not tiles actually applied** — cosmetic: post-reconnect the toast can say "Caught up on N songs" even when all N were already marked on the device. Low impact. (src/client/lib/gameState.svelte.ts)
 

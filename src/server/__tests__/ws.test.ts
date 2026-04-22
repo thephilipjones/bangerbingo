@@ -860,6 +860,74 @@ describe('rehydrateRooms', () => {
     expect(room!.currentRound!.songHistory).toHaveLength(1)
   })
 
+  // Story 13-2: Casual Mode state survives server restart.
+  it('persists allowCasualMode + playerCasualModes and restores them via DB round-trip', async () => {
+    const { persistRoomState } = await import('../ws.ts')
+
+    seedHost('host_1')
+    createRoom('CSPR', 'host_1')
+
+    // Seed in-memory state with an active round that has allowCasualMode=true and
+    // two opted-in players. persistRoomState serializes to active_rooms; clearing
+    // roomSockets + rehydrateRooms reads back from SQLite.
+    roomSockets.set('CSPR', {
+      host: null,
+      hostUserId: 'host_1',
+      hostHasEverConnected: true,
+      guests: new Map(),
+      sessionStats: { winsByName: {}, lastRoundWinner: null },
+      playerCasualModes: new Map<string, boolean>([['Alice', true], ['Bob', true], ['Carol', false]]),
+      currentRound: {
+        roundNumber: 1,
+        config: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1, audioPreset: 'minimal', allowCasualMode: true },
+        playlist: [{ id: 't0', title: 'S0', artist: 'A0', albumArtUrl: '' }],
+        cards: new Map(),
+        roundStartPayload: { type: 'round:start', roundNumber: 1 },
+        sessionPlayedIds: [],
+        active: true,
+        currentSongIndex: -1,
+        currentSongRevealed: false,
+        songHistory: [],
+        paused: false,
+        timers: {},
+        autoMarkedTileIndices: new Map(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    })
+
+    persistRoomState('CSPR')
+    roomSockets.clear()
+    rehydrateRooms()
+
+    const room = roomSockets.get('CSPR')
+    expect(room).toBeDefined()
+    expect(room!.currentRound!.config.allowCasualMode).toBe(true)
+    // Only names with casual=true are restored (Carol was false, so dropped).
+    expect(room!.playerCasualModes.get('Alice')).toBe(true)
+    expect(room!.playerCasualModes.get('Bob')).toBe(true)
+    expect(room!.playerCasualModes.has('Carol')).toBe(false)
+  })
+
+  it('rehydrates cleanly when snapshot has no casual-mode fields (legacy format)', () => {
+    // AC-5: old snapshot without allowCasualMode / playerCasualModes should not throw.
+    const snapshot = {
+      hostUserId: 'host_1',
+      hostHasEverConnected: true,
+      pendingRound: undefined,
+      activeDeviceId: undefined,
+      currentRound: undefined,
+    }
+
+    seedHost('host_1')
+    createRoom('OLDF', 'host_1')
+    upsertActiveRoom('OLDF', JSON.stringify(snapshot))
+    rehydrateRooms()
+
+    const room = roomSockets.get('OLDF')
+    expect(room).toBeDefined()
+    expect(room!.playerCasualModes.size).toBe(0)
+  })
+
   it('rehydrates room without currentRound', () => {
     const snapshot = {
       hostUserId: 'host_1',

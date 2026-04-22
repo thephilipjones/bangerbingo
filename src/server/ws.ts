@@ -64,9 +64,9 @@ export interface RoundState {
   // server-expected elapsed. Not persisted.
   clipStartedAt?: number
   // Casual Mode (Story 8-5): per-player set of already-swept tile indices.
-  // Not persisted — reset to empty Map() on rehydrate. Note: `playerCasualModes`
-  // is also not persisted, so after a server restart no sweep targets exist and
-  // players must re-toggle Casual Mode to resume auto-marking.
+  // Not persisted — reset to empty Map() on rehydrate. `playerCasualModes` IS
+  // persisted across restart (Story 13-2), so the catch-up sweep picks up
+  // the already-played songs on the next song:start.
   autoMarkedTileIndices: Map<string, Set<number>>
 }
 
@@ -113,6 +113,13 @@ export function persistRoomState(code: string): void {
     hostHasEverConnected: room.hostHasEverConnected,
     pendingRound: room.pendingRound,
     activeDeviceId: room.activeDeviceId,
+    // Story 13-2: persist Casual Mode so opt-ins survive server restart.
+    // allowCasualMode is also inside currentRound.config; top-level copy
+    // keeps AC-2's rehydrate contract explicit.
+    allowCasualMode: round?.config.allowCasualMode ?? false,
+    playerCasualModes: Object.fromEntries(
+      Array.from(room.playerCasualModes.entries()).filter(([, v]) => v).map(([k]) => [k, true]),
+    ),
     currentRound: round ? {
       roundNumber: round.roundNumber,
       config: round.config,
@@ -151,6 +158,10 @@ export function rehydrateRooms(): void {
       continue
     }
 
+    const restoredCasualModes = (snap.playerCasualModes && typeof snap.playerCasualModes === 'object')
+      ? new Map<string, boolean>(Object.keys(snap.playerCasualModes).map((k) => [k, true]))
+      : new Map<string, boolean>()
+
     const roomState: RoomState = {
       host: null,
       hostUserId: snap.hostUserId,
@@ -159,7 +170,7 @@ export function rehydrateRooms(): void {
       pendingRound: snap.pendingRound,
       activeDeviceId: snap.activeDeviceId ?? snap.sdkDeviceId,
       sessionStats: emptySessionStats(),
-      playerCasualModes: new Map(),
+      playerCasualModes: restoredCasualModes,
       currentRound: snap.currentRound ? (() => {
         // Drop pre-9-3 winnerName from persisted snapshots — field removed from RoundState.
         const { winnerName: _winnerName, ...snapRound } = snap.currentRound
@@ -180,6 +191,13 @@ export function rehydrateRooms(): void {
         }
       })() : undefined,
     }
+
+    // Story 13-2 AC-2: apply top-level allowCasualMode to currentRound.config
+    // if present in the snapshot (no-op when there is no active round).
+    if (typeof snap.allowCasualMode === 'boolean' && roomState.currentRound) {
+      roomState.currentRound.config.allowCasualMode = snap.allowCasualMode
+    }
+
     roomSockets.set(row.room_code, roomState)
   }
 }
