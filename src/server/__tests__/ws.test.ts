@@ -365,7 +365,7 @@ describe('Host player list accuracy', () => {
 // ── Host disconnect / reconnect (Story 3-5) ───────────────────────────────
 
 describe('Host disconnect → host:disconnected broadcast', () => {
-  it('guests receive host:disconnected within 200ms when host WS closes', async () => {
+  it('guests receive host:disconnected and server clears host slot when host WS closes', async () => {
     seedHost('host_1')
     createRoom('AAAA', 'host_1')
 
@@ -376,14 +376,11 @@ describe('Host disconnect → host:disconnected broadcast', () => {
     await alice.next('session:connect')
     await host.next('player:joined')
 
-    const start = Date.now()
     host.close()
 
     const msg = await alice.next('host:disconnected')
-    const elapsed = Date.now() - start
-
     expect(msg).toEqual({ type: 'host:disconnected' })
-    expect(elapsed).toBeLessThan(200)
+    expect(roomSockets.get('AAAA')?.host).toBeNull()
 
     alice.close()
   })

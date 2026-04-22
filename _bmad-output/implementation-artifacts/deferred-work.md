@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: code review of 13-4-test-quality-pass (2026-04-22)
+
+- **`roomSockets.get('AAAA')?.host` optional chaining masks room-deleted vs host-nulled** — in `ws.test.ts` host-disconnect test, `?.host` returns `undefined` if the room entry were deleted; `.toBeNull()` would fail with confusing message. Current server does `r.host = null` (not delete), so safe today. (src/server/__tests__/ws.test.ts:384)
+- **LCG seed uniqueness not validated for alternate seeds** — comment says "LCG produces enough variation" but doesn't lock in the seed value; if seed `0x9e3779b1` is changed without re-verifying, the distinctness guarantee is unverified. (src/server/__tests__/cards.test.ts:120)
+- **`generateCard` uses `pool.slice(0, 25)` regardless of pool size** — uniqueness comes from shuffle ordering of the first 25 tracks only; the old "large pool" rationale was misleading; pre-existing production behavior. (src/server/game/cards.ts — `generateCard`)
+
 ## Deferred from: code review of 13-3-server-client-micro-fixes (2026-04-22)
 
 - **New `/host/resume` advance branch lacks `roundStillMatches` guard** — the drift-correct branch at `src/server/rooms.ts:902-905` re-checks `currentRound.active && roundNumber && currentSongIndex` before mutating playback; the new `spotifyElapsedMs >= clipMs` early-return at lines 931-934 does not. Between Spotify position fetch and the `advanceToNext` call, a winner claim can set `round.ended = true` (or a new round can start via Let-It-Ride), and `advanceToNext` only guards on `round?.active`, so it may broadcast `song:start` / `songs:exhausted` over a game-over screen. Narrow race, but worth tightening. (src/server/rooms.ts:931-934)
@@ -228,7 +234,6 @@
 ## Deferred from: code review of 1-2-token-refresh-and-degraded (2026-04-03)
 
 - Concurrent scheduler ticks can refresh the same host simultaneously — no per-host in-progress guard; two overlapping ticks can write conflicting tokens. Fix: add an in-progress Set checked before calling `refreshWithRetry`.
-- `startRefreshScheduler()` runs unconditionally in test environment — unlike `serve()`, not guarded by `nodeEnv !== 'test'`; leaks a live interval across test files.
 - Empty `refresh_token` in DB causes 4 unnecessary Spotify retries — application layer has no guard; schema NOT NULL covers normal flow.
 - `/api/auth/status` `tokenExpiresAt` is stale — snapshot from `requireAuth` middleware; `degraded` is live but `tokenExpiresAt` lags one cycle when scheduler refreshes concurrently.
 - Startup fan-out — after long downtime all expired hosts trigger simultaneously on first tick; low risk for ≤5 users.
@@ -274,7 +279,6 @@
 
 ## Deferred from: code review of 3-5-host-disconnect-and-reconnect (2026-04-03)
 
-- Flaky 200ms wall-clock timing assertion in host disconnect test (`ws.test.ts`) — `Date.now()` delta will fail non-deterministically under load or constrained CI; replace with a structural assertion or mock timers.
 - Silent error swallowing in `RoomPage.onMount` `onError` handler — if server closes the guest WS (4004, 4009, etc.), the guest sees no UI feedback; revisit when double-WebSocket lifecycle is corrected.
 - `closeCodeToMessage` in `ws.ts` has no entries for close codes 4000 ("missing name") and 4001 ("unauthorized") — pre-existing gap; guest receives generic "Connection failed" message for these codes.
 
@@ -298,7 +302,6 @@
 - Concurrent `POST /round` requests can race on `roomState.currentRound` — two simultaneous calls both compute `roundNumber = 1`, both broadcast, last write wins for in-memory state. No real risk for single-host personal app; add in-flight guard if multi-concurrent start is ever possible. (src/server/rooms.ts)
 - Token expiry NaN guard — if `token_expires_at` is 0/null/undefined, subtraction yields NaN and refresh is skipped silently. Pre-existing pattern from music/router.ts; audit all inline refresh blocks when hardening auth. (src/server/rooms.ts)
 - `played_songs` has no FK reference to `rooms(code)` — orphaned rows accumulate on room deletion; room code reuse (331,776 combinations) could produce false down-ranking. Add FK or periodic cleanup when adding room lifecycle management. (src/server/db.ts)
-- `generateCards` uniqueness test is non-deterministic — `Math.random()` not seeded; rare CI flake theoretically possible. Seed with a fixed value or use a deterministic pool in this test. (src/server/__tests__/cards.test.ts)
 - `roundNumber` pendingRound fallback — falls back to `pendingRound.roundNumber + 1` when `currentRound` is absent; stale `pendingRound` could produce wrong round number in edge cases. Currently harmless since `pendingRound` is set each round. (src/server/rooms.ts)
 - Host reconnecting mid-round receives no `round:start` re-send — host client must independently reconcile state. Out of scope for this story; consider adding equivalent of late-join logic to host reconnect path in Epic 5 or hardening epic. (src/server/ws.ts)
 - Late-join guest gets blank card for round 1; if round 2 starts, a new real card is generated but round 1 blank is never backfilled. Acceptable per current design; revisit when multi-round UX is built in Epic 5. (src/server/ws.ts)

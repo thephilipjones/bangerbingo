@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { buildPool, generateCard, generateCards } from '../game/cards.ts'
 import type { Track } from '../music/spotify.ts'
 
@@ -115,15 +115,25 @@ describe('generateCards', () => {
   })
 
   it('produces unique cards for different players (with large pool)', () => {
-    // With 100 tracks, collision probability is negligible
-    const pool = makeTracks(100)
-    const playerIds = Array.from({ length: 5 }, (_, i) => `player_${i}`)
-    const cards = generateCards(pool, playerIds)
-    const keys = [...cards.values()].map(card =>
-      card.filter(t => !t.free).map(t => t.trackId).join(',')
-    )
-    const uniqueKeys = new Set(keys)
-    expect(uniqueKeys.size).toBe(playerIds.length)
+    // Deterministic Math.random so this test can't flake. LCG produces
+    // enough variation across five card generations for distinct shuffles.
+    let seed = 0x9e3779b1
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => {
+      seed = (seed * 1664525 + 1013904223) >>> 0
+      return seed / 0x100000000
+    })
+    try {
+      const pool = makeTracks(100)
+      const playerIds = Array.from({ length: 5 }, (_, i) => `player_${i}`)
+      const cards = generateCards(pool, playerIds)
+      const keys = [...cards.values()].map(card =>
+        card.filter(t => !t.free).map(t => t.trackId).join(',')
+      )
+      const uniqueKeys = new Set(keys)
+      expect(uniqueKeys.size).toBe(playerIds.length)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('returns empty map for empty playerIds', () => {
