@@ -1409,9 +1409,10 @@ describe('square:auto-marked', () => {
     })
     expect(roundRes.status).toBe(200)
 
+    const aliceRoundStart = await alice.next('round:start')
     await host.next('round:start')
-    await alice.next('round:start')
     await bob.next('round:start')
+    const aliceCard = aliceRoundStart.card as Array<{ trackId: string; free?: boolean }>
 
     // Attach raw listeners BEFORE the sweep to detect any leaked auto-marks.
     const bobAll: Msg[] = []
@@ -1425,14 +1426,22 @@ describe('square:auto-marked', () => {
     await alice.next('player:casual-mode-changed')
     await bob.next('player:casual-mode-changed')
 
-    // Advance songs
+    // Advance songs — capture actual trackIds since the playlist is shuffled server-side.
+    // Play 3 songs so 2 complete ones (s1, s2) are in songHistory when sweep runs;
+    // the sweep excludes the CURRENT song, so we need a current (s3) + history (s1, s2).
     await honoApp.request('/api/rooms/CAS4/round/play', { method: 'POST', headers: { Cookie: sessionCookie() } })
-    await host.next('song:start'); await alice.next('song:start'); await bob.next('song:start')
+    const s1 = await host.next('song:start'); await alice.next('song:start'); await bob.next('song:start')
+    await honoApp.request('/api/rooms/CAS4/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
+    const s2 = await host.next('song:start'); await alice.next('song:start'); await bob.next('song:start')
     await honoApp.request('/api/rooms/CAS4/round/next', { method: 'POST', headers: { Cookie: sessionCookie() } })
     await host.next('song:start'); await alice.next('song:start'); await bob.next('song:start')
 
-    // Alice should receive the auto-mark (proves sweep ran server-side).
-    await alice.next('square:auto-marked')
+    // Only wait for Alice's auto-mark if her card contains one of the two completed songs.
+    const playedIds = new Set<string>([s1.trackId as string, s2.trackId as string])
+    const aliceHasMatch = aliceCard.some((t, i) => i !== 12 && playedIds.has(t.trackId))
+    if (aliceHasMatch) {
+      await alice.next('square:auto-marked')
+    }
     // Small delay in case bob/host would have gotten one in the same tick.
     await delay(30)
 
