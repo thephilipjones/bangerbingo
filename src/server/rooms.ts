@@ -112,7 +112,7 @@ export function runCasualModeSweep(
 ): void {
   void roomCode
   const round = roomState.currentRound
-  if (!round || !round.active) return
+  if (!round || !round.active || round.ended) return
 
   // `includeCurrent` is used on playlist exhaustion so the final song's tile
   // (which is still round.currentSongIndex) also gets auto-marked.
@@ -441,7 +441,6 @@ function isValidAudioPreset(v: unknown): v is AudioPreset {
 async function startRound(
   code: string,
   roomState: RoomState,
-  _room: Room,
   host: Host,
   config: RoundConfig,
 ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
@@ -547,7 +546,7 @@ async function startContinuousRound(
     roundNumber: nextRoundNumber,
   }
 
-  return await startRound(code, roomState, room, freshHost, config)
+  return await startRound(code, roomState, freshHost, config)
 }
 
 roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
@@ -603,7 +602,7 @@ roomsRouter.post('/rooms/:code/round', requireAuth, async (ctx) => {
   const freshHost = await withFreshToken(host)
   if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
 
-  const result = await startRound(code, roomState, room, freshHost, roundConfig)
+  const result = await startRound(code, roomState, freshHost, roundConfig)
   if (!result.ok) return ctx.json({ message: result.message }, result.status as 422 | 502)
 
   return ctx.json(roundConfig)
@@ -928,9 +927,15 @@ roomsRouter.post('/rooms/:code/host/resume', requireAuth, async (ctx) => {
   const clipMs = clipDurationMs(round.config.clipDuration)
   if (clipMs !== null && round.clipStartedAt !== undefined && !round.paused) {
     const spotifyElapsedMs = Math.max(0, spotifyPositionMs - SEEK_POSITION_MS)
+
+    if (spotifyElapsedMs >= clipMs) {
+      void advanceToNext(code, roomState)
+      return ctx.json({ state: 'advanced' })
+    }
+
     const expectedElapsedMs = Date.now() - round.clipStartedAt
     const driftMs = Math.abs(spotifyElapsedMs - expectedElapsedMs)
-    if (driftMs > POSITION_DRIFT_TOLERANCE_MS && spotifyElapsedMs < clipMs) {
+    if (driftMs > POSITION_DRIFT_TOLERANCE_MS) {
       const newRemaining = Math.max(0, clipMs - spotifyElapsedMs)
       const capturedRoundNumber = round.roundNumber
       clearTimeout(round.timers.autoAdvance)

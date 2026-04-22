@@ -172,7 +172,18 @@
     try {
       const res = await postStartNextRound(code)
       if (!res.ok) {
-        nextRoundError = "Couldn't start next round — try again."
+        if (res.status === 401) {
+          nextRoundError = null
+          clearTimeout(nextRoundErrorTimer)
+          authDegraded = true
+          return
+        }
+        const msg = res.status === 403
+          ? 'Only the host can start the next round'
+          : res.status === 409
+            ? "Previous round hasn't ended yet"
+            : "Couldn't start next round — try again."
+        nextRoundError = msg
         clearTimeout(nextRoundErrorTimer)
         nextRoundErrorTimer = setTimeout(() => { nextRoundError = null }, 3000)
       }
@@ -403,7 +414,7 @@
       const payload = await res.json().catch(() => null) as
         | { state: 'ok' | 'drift-corrected'; device?: { id: string; name: string; type: string } }
         | { state: 'spotify-paused'; device?: { id: string; name: string; type: string } }
-        | { state: 'no-device' | 'drift-unresolvable' }
+        | { state: 'no-device' | 'drift-unresolvable' | 'advanced' }
         | null
       if (!payload) return
       if (payload.state === 'ok' || payload.state === 'drift-corrected') {
@@ -418,6 +429,8 @@
         if (mobileHost) mobileNoDevice = true
       } else if (payload.state === 'drift-unresolvable') {
         if (mobileHost) mobileNoDevice = true
+      } else if (payload.state === 'advanced') {
+        resumePausedChip = false
       } else {
         // Future server states will be seen here — warn so the gap surfaces
         // during development rather than silently no-op'ing.

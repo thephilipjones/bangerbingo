@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 13-3-server-client-micro-fixes (2026-04-22)
+
+- **New `/host/resume` advance branch lacks `roundStillMatches` guard** — the drift-correct branch at `src/server/rooms.ts:902-905` re-checks `currentRound.active && roundNumber && currentSongIndex` before mutating playback; the new `spotifyElapsedMs >= clipMs` early-return at lines 931-934 does not. Between Spotify position fetch and the `advanceToNext` call, a winner claim can set `round.ended = true` (or a new round can start via Let-It-Ride), and `advanceToNext` only guards on `round?.active`, so it may broadcast `song:start` / `songs:exhausted` over a game-over screen. Narrow race, but worth tightening. (src/server/rooms.ts:931-934)
+- **No test coverage added for three behavioral changes in 13-3** — the sweep `round.ended` guard, the `/host/resume` auto-advance branch, and the status-code-specific Let-It-Ride error copy all ship without new unit tests. Existing 517-test suite still passes but doesn't exercise these paths. Pick up in Story 13-4 test-quality-pass.
+
 ## Deferred from: code review of 13-7-host-guest-neither-identity-flow (2026-04-22)
 
 - **`clearHostTokens` errors silently swallowed in logout** — `try { clearHostTokens(userId) } catch { /* no-op */ }` in `POST /auth/logout` absorbs all DB errors including the case where a valid session cookie references a user that was deleted from the DB. Tokens aren't cleared (host doesn't exist), but there is no log or metric for this anomaly. Low severity for friends-use; worth noting if the host DB is ever pruned. (src/server/auth.ts — logout handler)
@@ -41,7 +46,6 @@
 
 - **Server clock skew vs Spotify continuous drift** — absolute-time comparison between `Date.now() - clipStartedAt` and Spotify's reported progress will produce persistent false drift on hosts with NTP skew. A broader fix (relative deltas between consecutive resumes) is worth its own story. (src/server/rooms.ts — /host/resume drift branch)
 - **`postHostResume` double-POSTs `/player/device` on every mobile resume** — `pickMobileDevice` after `postHostResume` will re-set the same device id the server just adopted. Task 4's spec ordering explicitly requires this to avoid a race, so it's inefficiency, not correctness. (src/client/pages/HostRoomPage.svelte — wsClient.onResume handler)
-- **Past-clip-end branch (`spotifyElapsedMs >= clipMs`) not explicitly handled** — current code clamps and re-arms the timer; rare case but could double-advance. (src/server/rooms.ts — /host/resume position-drift branch)
 - **`reissueExpectedTrack` doesn't verify 202/200 resulted in actual playback** — returning `drift-corrected` without a follow-up `/me/player` check is optimistic; silent device failures would mis-report to the client. (src/server/rooms.ts)
 - **Malformed Spotify response body (valid JSON, wrong shape) not schema-validated** — optional-chain coverage is defensive for known shapes; a zod-style schema would catch API regressions explicitly. (src/server/rooms.ts — /host/resume parse)
 - **Missing server tests: 401 from /me/player, malformed JSON body, progress_ms missing/null** — coverage nits; not required by AC #12 but would harden future changes. (src/server/__tests__/rooms.test.ts)
@@ -83,7 +87,6 @@
 
 - **`session:connect` wire-protocol change without version bump** — `continuousMode` + `countdownRemainingMs` were removed from the payload; pre-deploy browser tabs will see `undefined` on those fields. Deploy practice (coordinated reload) covers this, and the project has no version field to hinge compatibility on. (src/server/rooms.ts)
 - **No integration test for the Change It Up → `RoundConfigOverlay` mount flow** — unit tests assert the callback fires, but nothing exercises the overlay-mount-on-Game-Over path end-to-end. Manual verification checklist in Dev Notes covers the happy path. (src/client/__tests__/)
-- **Let It Ride 401 has no re-auth prompt path** — if the host session cookie expires, `handleLetItRide` shows the generic transient error with no path back to auth. Pre-existing gap across every host endpoint in the project. (src/client/pages/HostRoomPage.svelte)
 - **Buffered `round:end` during Game Over can yank host to lobby before CTA tap** — the `round:end` handler unconditionally calls `onRoundEnded()`. Pre-existing reconnect edge case; 9-3 exposes it more now that `round:dismissed` no longer also clears `winData`. (src/client/pages/HostRoomPage.svelte)
 - **No `round:end` handler clears `winData` in gameState** — client-only state gets cleared on remount so no concrete symptom observed. Worth a defensive clear if weird Game-Over-sticks-around reports surface. (src/client/lib/gameState.svelte.ts)
 - **No test for authenticated-caller-plus-missing-room returning 404 (not 403)** — guard ordering on `/round/next-round` is correct (404 before 403) but untested. Future reordering could leak room-existence info silently. (src/server/__tests__/rooms.test.ts)
@@ -98,14 +101,12 @@
 ## Deferred from: code review of 9-1-game-over-page-state-and-auto-bingo (2026-04-19)
 
 - **No CSRF / origin check / rate-limit on `POST /round/next-round`** — endpoint is intentionally unauthenticated (guest-callable) and gated only by `playerName === round.winnerName`. Consistent with the project's friends-only model and documented in the story's Dev Notes. Would need revisiting if the model ever widens beyond friends. (src/server/rooms.ts)
-- **`handleStartNextRound` error copy is generic for permanent failures** — 403/409 responses (wrong name, no pending round) display "Couldn't start next round — try again." where retry will never succeed. UX polish; correctness unaffected. (src/client/pages/RoomPage.svelte, src/client/pages/HostRoomPage.svelte)
 - **No server-side debounce when host + winning guest tap Start Next Round near-simultaneously** — both authorized callers pass their auth branch and both run `startContinuousRound`, which could double-broadcast `round:start`. Worth observing in real play before adding a guard. (src/server/rooms.ts)
 
 ## Deferred from: code review of 8-5-casual-mode-auto-mark-engine (2026-04-15)
 
 - **Auto-claim latches permanently on failed claim** — `autoClaimFired` only resets on `round:start`, so a claim fetch failure locks out auto-claim for the rest of the round. Deferred: Epic 9 is about to minimize/remove the claim concept, so hardening this path would be wasted work. (src/client/pages/RoomPage.svelte)
 - **`playerCasualModes` not persisted across server restart** — pre-existing from Story 8-4. After a server restart, all casual-mode opt-ins silently reset for every player; the catch-up sweep cannot re-emit because its target set is empty. Real UX regression but out of this story's scope; requires extending the SQLite snapshot. (src/server/ws.ts)
-- **Sweep may fire during in-flight claim race** — tiny window where `round.ended = true` but `round.active = true`. A trivial `!round.ended` guard in `runCasualModeSweep` would close it, but no failing test demonstrates the race today. (src/server/rooms.ts)
 - **Enable Casual Mode during paused pre-reveal marks tile without clearing reveal state** — the tile flips to marked but may still render with `masked`/`revealing` flags because `applyAutoMarks` doesn't touch mask state. Interacts with Story 5-6 reveal flow. (src/client/lib/bingo.ts, src/client/lib/gameState.svelte.ts)
 - **Catch-up toast count reflects server-sent indices, not tiles actually applied** — cosmetic: post-reconnect the toast can say "Caught up on N songs" even when all N were already marked on the device. Low impact. (src/client/lib/gameState.svelte.ts)
 
@@ -117,9 +118,7 @@
 ## Deferred from: code review of 8-3-continuous-mode (2026-04-14)
 
 - **`handleDismissWin` silent failure when continuous on** — spec explicitly says "non-fatal; countdown just won't start"; host must re-dismiss if POST fails while continuous mode is enabled; no error shown by design. (src/client/pages/HostRoomPage.svelte)
-- **`_room` dead parameter in `startRound`** — prefixed `_` to silence unused-variable lint; either remove or add a comment explaining future intent. (src/server/rooms.ts)
 - **`initialCountdownRemainingMs` seeded outside `gameState` constructor** — works correctly but breaks the factory's initialisation contract; `initialContinuousMode` is encapsulated, `initialCountdownRemainingMs` is not. Refactor candidate. (src/client/pages/RoomPage.svelte)
-- **Duplicate `$effect` countdown ticker** — character-for-character identical in `HostRoomPage.svelte` and `RoomPage.svelte`; extract to a shared utility if countdown logic changes. (src/client/pages/HostRoomPage.svelte, src/client/pages/RoomPage.svelte)
 - **No `durationMs` type guard in `continuous:countdown-start` handler** — `countdownEndsAt = Date.now() + NaN` if server sends malformed payload; low risk since server is trusted, defensive hardening for future. (src/client/lib/gameState.svelte.ts)
 
 ## Deferred from: code review of 8-2-session-statistics (2026-04-14)
@@ -260,7 +259,6 @@
 
 - Session cookie value used as literal user ID — no HMAC signing; pre-existing auth pattern from Story 3-1, acceptable for MVP.
 - `getHostRoom` O(n) linear scan over all rooms on every `auth:degraded` event — not a correctness concern at friends-use scale.
-- `roomSockets` entries never pruned — in-memory room state grows without bound across server lifetime; rooms should be evicted when host disconnects and all guests have left.
 - `auth:degraded` event listener registered at module load and never removed — acceptable for production singleton, latent issue if module is ever re-evaluated.
 - `parseCookies` does not handle RFC 6265 quoted cookie values — session cookie writer does not produce quoted values in practice.
 - `getPlayerList` may theoretically include sockets in `CLOSING` state between disconnect and close-event cleanup — near-instant transition, single-threaded JS, no real exposure.
