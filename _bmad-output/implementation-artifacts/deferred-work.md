@@ -8,7 +8,7 @@
 
 ## Deferred from: code review of 13-5-light-security-hardening (2026-04-22)
 
-- **Pre-existing flake: `square:auto-marked is NOT sent to other players` times out under full-suite parallelism** — Confirmed flaky on main BEFORE Story 13-5 changes (~2/4 runs of `npm test -- --run` fail with `next(square:auto-marked) timed out`; passes 100% in isolation). Not caused by 13-5; surfaced during the review test runs. Likely a vitest cross-file timing issue. Worth chasing in a future test-stability story. (src/server/__tests__/ws.test.ts:1383-1442)
+- ~~**Pre-existing flake: `square:auto-marked is NOT sent to other players` times out under full-suite parallelism**~~ — Fixed in commit 3ab11aa ("fix: deflake square:auto-marked negative test"), between 13-5 and 13-2.
 - **No HTTP-endpoint rate limiting** — `/api/music/search`, `/api/music/tracks/:id`, room lookup, etc. are all unrate-limited. AC-4 explicitly excludes host endpoints from 13-5 scope; would need a separate hardening story if friends-only assumption widens. (src/server/music/router.ts, src/server/rooms.ts)
 - **Session cookie has no expiry, rotation, or server-side revocation** — Signed payload is `userId` only, no `iat`/version field, no revocation list. A leaked cookie is valid for 30 days; logout clears tokens but the signed cookie still verifies if replayed. Pre-existing; out of scope for 13-5. (src/server/auth.ts:19-22, 182-188)
 - **No Origin check on WebSocket upgrade (CSWSH)** — Nothing rejects cross-site WS connects on the upgrade. Pre-existing; not introduced by 13-5. (src/server/ws.ts setupWebSocketServer)

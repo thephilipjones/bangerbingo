@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-22 # 13-6 → done (win jingle audio)
+last_updated: 2026-04-22 # epic-13 retro done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -137,7 +137,7 @@ development_status:
   epic-12-retrospective: done
 
   # Epic 13: Reliability & Tech Debt
-  epic-13: in-progress
+  epic-13: done
   13-1-reconnect-after-win-state-replay: done
   13-2-casual-mode-persistence-across-restart: done
   13-3-server-client-micro-fixes: done
@@ -146,3 +146,4 @@ development_status:
   13-6-win-jingle-audio: done
   13-7-host-guest-neither-identity-flow: done
   13-8-independent-cards-exclude-played-auto-reset: done
+  epic-13-retrospective: done
