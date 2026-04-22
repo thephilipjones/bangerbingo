@@ -867,7 +867,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 80px 16px 64px;
+    padding: 80px 8px 64px;
   }
 
   .sdk-status {

@@ -267,7 +267,7 @@
     min-height: 100dvh;
     background: var(--bg);
     color: var(--fg);
-    padding: 16px;
+    padding: 16px 8px;
     box-sizing: border-box;
   }
 

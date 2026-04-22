@@ -113,7 +113,7 @@
     grid-template-columns: repeat(5, 1fr);
     gap: 4px;
     width: 100%;
-    max-width: 360px;
+    max-width: 640px;
     margin: 0 auto;
   }
 
@@ -196,18 +196,19 @@
   }
 
   .tile-title {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     line-height: 1.2;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
   }
 
   .tile-artist {
-    font-size: 10px;
+    font-size: 11px;
     opacity: 0.7;
     white-space: nowrap;
     overflow: hidden;

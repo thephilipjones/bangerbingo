@@ -58,7 +58,7 @@
       >Open Spotify</a>
     {:else}
       <button class="ctrl-btn play-pause-btn" onclick={onPlayPause} disabled={!sdkReady || disabled} aria-label={isPlaying ? 'Pause' : 'Play'}>
-        <span class="btn-icon">{#if isPlaying}<Pause size={20} weight="fill" aria-hidden="true" />{:else}<Play size={20} weight="fill" aria-hidden="true" />{/if}</span><span class="btn-label">{isPlaying ? 'Pause' : 'Play'}</span>
+        <span class="btn-icon">{#if isPlaying}<Pause size={18} weight="fill" aria-hidden="true" />{:else}<Play size={18} weight="fill" aria-hidden="true" />{/if}</span><span class="btn-label">{isPlaying ? 'Pause' : 'Play'}</span>
       </button>
     {/if}
     <button class="ctrl-btn next-btn" onclick={onNext} disabled={disabled} aria-label="Next">
@@ -75,10 +75,16 @@
           onclick={() => { hostRevealed = true }}
           aria-label="Reveal song title"
         >
-          <span class="track-text blurred">{currentTrack.title} — {currentTrack.artist}</span>
+          <span class="track-text blurred">
+            <span class="track-title">{currentTrack.title}</span>
+            <span class="track-artist">{currentTrack.artist}</span>
+          </span>
         </button>
       {:else}
-        <span class="track-text">{currentTrack.title} — {currentTrack.artist}</span>
+        <span class="track-text">
+          <span class="track-title">{currentTrack.title}</span>
+          <span class="track-artist">{currentTrack.artist}</span>
+        </span>
       {/if}
     {:else}
       <span class="track-text waiting">Waiting for round to start…</span>
@@ -122,13 +128,33 @@
   }
 
   .track-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    min-width: 0;
+    transition: filter 400ms ease-out;
+  }
+
+  .track-title {
     font-size: 14px;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: block;
-    transition: filter 400ms ease-out;
+    max-width: 100%;
+    line-height: 1.15;
+  }
+
+  .track-artist {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    line-height: 1.15;
   }
 
   .track-text.blurred {
@@ -137,8 +163,13 @@
   }
 
   .track-text.waiting {
-    color: var(--fg-muted);
+    display: block;
+    font-size: 14px;
     font-weight: 400;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .track-reveal-btn {
