@@ -11,6 +11,7 @@
   import type { Tile } from '../lib/bingo.ts'
   import { createGameState } from '../lib/gameState.svelte.ts'
   import { createWsClient, type WsClient, type WsState } from '../lib/wsClient.ts'
+  import { playWinAudio } from '../lib/winAudio.ts'
 
   let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialCasualModeNames = [], pendingMessages = [], onLeave }: {
     name: string
@@ -90,7 +91,7 @@
     const isWinReplay = data.type === 'round:win' && game.winData !== null
     game.processWsMessage(data)
     if (data.type === 'round:win' && !isWinReplay) {
-      // Story 13-6: play win jingle here
+      try { playWinAudio(game.audioPreset) } catch (e) { if (!(e instanceof DOMException && e.name === 'NotAllowedError')) throw e }
     } else if (data.type === 'session:connect') {
       // Fires on reconnect via wsClient — refresh server-truth state so the
       // subsequent buffered round:start (if any) doesn't stomp casualModeOn,

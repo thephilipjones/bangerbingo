@@ -390,6 +390,12 @@
 - **Spotify device `type` enumeration gap in the replaced `deviceIcon` branching** — new `{#if}` chain covers `Smartphone`/`Speaker`/`Computer` → device-specific Phosphor icons with `MusicNote` fallback, same bucketing as the removed `deviceIcon()` helper. The Spotify Web API also returns `Tablet`, `TV`, `GameConsole`, `CastVideo`, `CastAudio`, `Automobile`, `STB`, `AVR`, `AudioDongle`, `Unknown`; all currently fall through to `MusicNote`. Not a regression — behavior preserved — but the new per-value structure invites richer mapping (e.g., `DeviceTablet`, `Television`, `GameController`). (src/client/components/DeviceChip.svelte, src/client/components/DevicePicker.svelte)
 
 
+## Deferred from: code review of 13-6-win-jingle-audio (2026-04-22)
+
+- **Mid-round join client always hears 'minimal' preset** — `audioPreset` defaults to `'minimal'` and is only updated on `round:start`. A client that connects mid-round (receiving `session:connect` + `round:win` without a preceding `round:start`) misses the host's configured preset. Pre-existing state-sync gap; not introduced by 13-6. (src/client/lib/gameState.svelte.ts)
+- **Shared vi.fn() instances in test mock inflate call counts** — `makeAudioContextMock` returns a single `connect`, `start`, `stop` vi.fn() shared across all oscillator and gain node mocks. Assertions on call counts would produce inflated totals. Current tests don't assert on `connect` count so no false pass today, but the mock is structurally misleading. (src/client/__tests__/winAudio.test.ts)
+- **isWinReplay guard assumes `round:start` always precedes `round:win`** — If `round:start` is dropped or reordered in the message queue, `game.winData` may still be non-null from a prior round and `isWinReplay` would fire `true`, silently skipping audio on a genuine new win. Theoretical; relies on the broader message ordering guarantee. (src/client/pages/RoomPage.svelte:91, src/client/pages/HostRoomPage.svelte:491)
+
 ## Deferred from: code review of 13-8-independent-cards-exclude-played-auto-reset (2026-04-22)
 
 - **TOCTOU on concurrent `startRound`** — two simultaneous round-starts for the same room can both pass the `pool.length < 25` check before either calls `clearPlayedSongs`, causing a double-reset with no mutex around the read→check→clear→rebuild sequence. Theoretical for a single-host personal app. (src/server/rooms.ts:478-489)

@@ -20,6 +20,7 @@
   import { createWsClient, type WsClient, type WsState } from '../lib/wsClient.ts'
   import { isMobileHost } from '../lib/isMobileHost.ts'
   import { shouldFlushPending, type PendingPlayAction } from '../lib/pendingPlayAction.ts'
+  import { playWinAudio } from '../lib/winAudio.ts'
 
   let { code, onRoundEnded, onSessionEnded }: {
     code: string
@@ -490,7 +491,9 @@
         // Capture before processWsMessage sets winData — guards audio replay in Story 13-6.
         const isWinReplay = data.type === 'round:win' && game.winData !== null
         game.processWsMessage(data)
-        if (data.type === 'round:start') {
+        if (data.type === 'round:win' && !isWinReplay) {
+          try { playWinAudio(game.audioPreset) } catch (e) { if (!(e instanceof DOMException && e.name === 'NotAllowedError')) throw e }
+        } else if (data.type === 'round:start') {
           isPlaying = false
           nextRoundError = null
           clearTimeout(nextRoundErrorTimer)

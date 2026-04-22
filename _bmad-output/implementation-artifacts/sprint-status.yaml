@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-22 # 13-8 → done (independent cards, exclude played, auto-reset)
+last_updated: 2026-04-22 # 13-6 → done (win jingle audio)
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -143,6 +143,6 @@ development_status:
   13-3-server-client-micro-fixes: done
   13-4-test-quality-pass: done
   13-5-light-security-hardening: done
-  13-6-win-jingle-audio: ready-for-dev
+  13-6-win-jingle-audio: done
   13-7-host-guest-neither-identity-flow: done
   13-8-independent-cards-exclude-played-auto-reset: done

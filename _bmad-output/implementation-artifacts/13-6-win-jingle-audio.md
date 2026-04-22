@@ -1,6 +1,6 @@
 # Story 13-6: Win Jingle Audio
 
-## Status: Ready for Development
+## Status: Done
 
 ## Context
 
@@ -114,3 +114,36 @@ This story depends on **Story 13-1** (Reconnect-After-Win) for the `isReplay` fl
 ## Deferred Work Updates
 
 No existing deferred item to close. This is a new capability (audio was never implemented, not explicitly deferred with a tracker entry).
+
+---
+
+## Dev Agent Record
+
+### Implementation Notes
+
+Audio is triggered in the WS message handlers in both page components (not in `WinOverlay.svelte` or `GameOverView.svelte`) because the replay guard (`isWinReplay`) is already captured at that layer. `WinOverlay.svelte` is an unused component; the actual win view is rendered by `GameOverView.svelte`.
+
+The `isReplay` prop approach described in the story spec was adapted: instead of threading a prop through the component tree, the replay guard already existed in both pages via `isWinReplay = data.type === 'round:win' && game.winData !== null`. Audio is called directly in the WS handler — cleaner and consistent with existing patterns.
+
+### Files Changed
+
+- `src/client/lib/winAudio.ts` — new file: Web Audio API jingle generator (hype/deadpan/minimal)
+- `src/client/pages/RoomPage.svelte` — import + call `playWinAudio` on `round:win` when not replay
+- `src/client/pages/HostRoomPage.svelte` — import + call `playWinAudio` on `round:win` when not replay
+- `src/client/__tests__/winAudio.test.ts` — 8 unit tests covering all three presets and edge cases
+
+### Change Log
+
+- 2026-04-22: Implemented win jingle audio via Web Audio API (story 13-6)
+
+---
+
+### Review Findings
+
+- [x] [Review][Patch] Use singleton AudioContext — replace per-call `new AudioContext()` with a module-level shared instance; AC-6 no-leak requirement. — `src/client/lib/winAudio.ts`
+- [x] [Review][Decision] Hype 250ms decay accepted as intentional reverb tail — "each note 80ms" refers to note-start spacing; the 250ms exponential fade is the spec's "slight reverb tail". No change needed.
+- [x] [Review][Patch] Silent `catch` swallows all errors, not just autoplay blocks — `catch { /* autoplay blocked — silent */ }` eats every exception including `RangeError` from scheduling bugs and `NotAllowedError` from autoplay policy; only `NotAllowedError` should be silenced. — `src/client/pages/RoomPage.svelte:94`, `src/client/pages/HostRoomPage.svelte:493`
+- [x] [Review][Patch] "Unknown preset" test calls `playWinAudio('minimal')`, not an unknown value — Test at `winAudio.test.ts:80` is titled "unknown preset falls through to minimal" but calls `playWinAudio('minimal')` — a valid preset. The `else` fallback path is never actually exercised. — `src/client/__tests__/winAudio.test.ts:80`
+- [x] [Review][Defer] Mid-round join client always hears 'minimal' (missed round:start) [`src/client/lib/gameState.svelte.ts`] — deferred, pre-existing
+- [x] [Review][Defer] Shared vi.fn() instances in test mock inflate connect/start/stop call counts [`src/client/__tests__/winAudio.test.ts`] — deferred, pre-existing test mock design
+- [x] [Review][Defer] isWinReplay guard assumes round:start always precedes round:win — message drop/reorder could silently skip audio on a genuine win [`src/client/pages/RoomPage.svelte:91`] — deferred, pre-existing message ordering assumption
