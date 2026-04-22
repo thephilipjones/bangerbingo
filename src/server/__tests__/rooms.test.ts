@@ -2846,6 +2846,20 @@ describe('Casual Mode — Auto-Mark Engine', () => {
     expect(autoMarks[0].catchUp).toBe(true)
     expect(autoMarks[0].tileIndices).toEqual([0])
   })
+
+  it('sweep is a no-op when round.ended is true (guard against claim race)', async () => {
+    seedHost()
+    await seedRoom()
+    const { roomState, round, aliceWs } = seedCasualRound()
+    roomState.host = makeMockWs() as unknown as WebSocket
+    round.currentSongIndex = 1
+    round.ended = true
+
+    runCasualModeSweep('ABCD', roomState)
+
+    const autoMarks = aliceWs.getSent().filter(m => m.type === 'square:auto-marked')
+    expect(autoMarks).toHaveLength(0)
+  })
 })
 
 // ── Story 12-3: replayAutoMarksToSocket ───────────────────────────────────
@@ -3586,5 +3600,67 @@ describe('POST /api/rooms/:code/host/resume', () => {
       headers: { Cookie: sessionCookie('host_2') },
     })
     expect(res.status).toBe(403)
+  })
+
+  it('returns advanced and advances when Spotify position is past clip end', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound('ABCD', 30)
+    round.currentSongIndex = 0
+    round.clipStartedAt = Date.now() - 31_000
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: `spotify:track:${round.playlist[0].id}` },
+        progress_ms: 90_500, // 90_500 - 60_000 (SEEK_POSITION_MS) = 30_500ms > 30s clip
+        is_playing: true,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('advanced')
+    // Song index should have advanced
+    expect(roomState.currentRound?.currentSongIndex).toBe(1)
+  })
+
+  it('returns ok (not advanced) when round is already inactive at request time', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound('ABCD', 30)
+    round.currentSongIndex = 0
+    round.clipStartedAt = Date.now() - 31_000
+    round.active = false
+    round.ended = true
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: `spotify:track:${round.playlist[0].id}` },
+        progress_ms: 90_500,
+        is_playing: true,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    // Route bails at !roundActive before reaching the clip check
+    expect(json.state).toBe('ok')
+    expect(round.currentSongIndex).toBe(0)
   })
 })

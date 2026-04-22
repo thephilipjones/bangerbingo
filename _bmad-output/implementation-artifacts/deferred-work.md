@@ -22,13 +22,13 @@
 
 ## Deferred from: code review of 13-3-server-client-micro-fixes (2026-04-22)
 
-- **New `/host/resume` advance branch lacks `roundStillMatches` guard** — the drift-correct branch at `src/server/rooms.ts:902-905` re-checks `currentRound.active && roundNumber && currentSongIndex` before mutating playback; the new `spotifyElapsedMs >= clipMs` early-return at lines 931-934 does not. Between Spotify position fetch and the `advanceToNext` call, a winner claim can set `round.ended = true` (or a new round can start via Let-It-Ride), and `advanceToNext` only guards on `round?.active`, so it may broadcast `song:start` / `songs:exhausted` over a game-over screen. Narrow race, but worth tightening. (src/server/rooms.ts:931-934)
-- **No test coverage added for three behavioral changes in 13-3** — the sweep `round.ended` guard, the `/host/resume` auto-advance branch, and the status-code-specific Let-It-Ride error copy all ship without new unit tests. Existing 517-test suite still passes but doesn't exercise these paths. Pick up in Story 13-4 test-quality-pass.
+- ~~**New `/host/resume` advance branch lacks `roundStillMatches` guard**~~ — Guard added (`roomState.currentRound?.active && roundNumber` check before `advanceToNext`) plus test for `advanced` state path. (src/server/rooms.ts, src/server/__tests__/rooms.test.ts)
+- ~~**No test coverage for `/host/resume` auto-advance branch and sweep `round.ended` guard**~~ — Tests added: `returns advanced when Spotify position past clip end`, `returns ok when round inactive at request time`, `sweep is a no-op when round.ended is true`. Let-It-Ride 403/409 error copy (client-side) remains untested — no Svelte component test harness yet.
 
 ## Deferred from: code review of 13-7-host-guest-neither-identity-flow (2026-04-22)
 
 - **`clearHostTokens` errors silently swallowed in logout** — `try { clearHostTokens(userId) } catch { /* no-op */ }` in `POST /auth/logout` absorbs all DB errors including the case where a valid session cookie references a user that was deleted from the DB. Tokens aren't cleared (host doesn't exist), but there is no log or metric for this anomaly. Low severity for friends-use; worth noting if the host DB is ever pruned. (src/server/auth.ts — logout handler)
-- **`verifySession` length-check short-circuits `timingSafeEqual`** — pre-existing: the early-return on `sig.length !== expected.length` before the timing-safe comparison removes constant-time guarantees for wrong-length inputs. The new `POST /auth/logout` handler relies on `verifySession`, incrementally widening exposure. (src/server/auth.ts:30-33)
+- ~~**`verifySession` length-check short-circuits `timingSafeEqual`**~~ — Fixed: both sig and expected are now hashed to fixed 32-byte buffers via `crypto.createHash('sha256')` before `timingSafeEqual`, removing the format/length early-return. (src/server/auth.ts)
 
 ## Resolved inline (2026-04-21)
 

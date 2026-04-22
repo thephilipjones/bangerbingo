@@ -31,10 +31,10 @@ export function verifySession(cookie: string): string | null {
   const userId = cookie.slice(0, lastDot)
   const sig = cookie.slice(lastDot + 1)
   const expected = crypto.createHmac('sha256', config.sessionSecret).update(userId).digest('hex')
-  if (sig.length !== expected.length || !/^[0-9a-f]+$/.test(sig)) return null
-  const sigBuf = Buffer.from(sig, 'hex')
-  const expBuf = Buffer.from(expected, 'hex')
-  if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null
+  // Hash both to fixed 32-byte buffers so timingSafeEqual is constant-time regardless of sig length or encoding.
+  const sigHash = crypto.createHash('sha256').update(sig).digest()
+  const expHash = crypto.createHash('sha256').update(expected).digest()
+  if (!crypto.timingSafeEqual(sigHash, expHash)) return null
   return userId
 }
 

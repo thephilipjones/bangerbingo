@@ -952,7 +952,9 @@ roomsRouter.post('/rooms/:code/host/resume', requireAuth, async (ctx) => {
     const spotifyElapsedMs = Math.max(0, spotifyPositionMs - SEEK_POSITION_MS)
 
     if (spotifyElapsedMs >= clipMs) {
-      void advanceToNext(code, roomState)
+      if (roomState.currentRound?.active && roomState.currentRound.roundNumber === round.roundNumber) {
+        void advanceToNext(code, roomState)
+      }
       return ctx.json({ state: 'advanced' })
     }
 
