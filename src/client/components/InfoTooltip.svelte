@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte'
+  import { tick } from 'svelte'
   import { Info } from 'phosphor-svelte'
 
   let { label, text }: { label: string; text: string } = $props()
 
-  const idBase = `info-${Math.random().toString(36).slice(2, 9)}`
-  const popoverId = `${idBase}-pop`
+  const popoverId = `info-${Math.random().toString(36).slice(2, 9)}`
 
   let open = $state(false)
   let triggerEl = $state<HTMLButtonElement | null>(null)
@@ -45,7 +44,7 @@
     const trigger = triggerEl.getBoundingClientRect()
     const pop = popoverEl.getBoundingClientRect()
     const margin = 8
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null
+    const vv = window.visualViewport
     const vw = vv?.width ?? document.documentElement.clientWidth
     const vh = vv?.height ?? document.documentElement.clientHeight
     const offsetLeft = vv?.offsetLeft ?? 0
@@ -100,10 +99,6 @@
       window.visualViewport?.removeEventListener('resize', scheduleReposition)
       window.visualViewport?.removeEventListener('scroll', scheduleReposition)
     }
-  })
-
-  onDestroy(() => {
-    if (rafHandle !== null) cancelAnimationFrame(rafHandle)
   })
 </script>
 
