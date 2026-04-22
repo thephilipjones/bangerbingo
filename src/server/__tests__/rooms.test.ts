@@ -613,7 +613,9 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     expect(aliceCard[12].free).toBe(true)
   })
 
-  it('records played_songs in SQLite after round:start', async () => {
+  // Story 13-8: played_songs is no longer pre-recorded at round-start. It is
+  // written per song as it actually plays (startSong → recordPlayedSongs).
+  it('does not pre-record played_songs on round:start (dealt != played)', async () => {
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
 
@@ -628,8 +630,7 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     })
 
     const { getPlayedSongs } = await import('../db.ts')
-    const played = getPlayedSongs('ABCD')
-    expect(played.length).toBeGreaterThanOrEqual(25)
+    expect(getPlayedSongs('ABCD')).toEqual([])
   })
 
   it('does not broadcast to closed WebSocket connections', async () => {
@@ -696,6 +697,100 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     expect(roomState.currentRound?.paused).toBe(false)
     expect(roomState.currentRound?.timers).toEqual({})
   })
+
+  // Story 13-8 — previously-played excluded from pool + playlist
+  it('round-start excludes previously-played tracks from card pool and round playlist', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(40))
+
+    seedHost()
+    await seedRoom()
+
+    const { recordPlayedSongs } = await import('../db.ts')
+    const excludedIds = ['track_0', 'track_1', 'track_2', 'track_3', 'track_4']
+    recordPlayedSongs('ABCD', excludedIds)
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+
+    const roomState = roomSockets.get('ABCD')!
+    const playlistIds = new Set(roomState.currentRound!.playlist.map(t => t.id))
+    for (const id of excludedIds) expect(playlistIds.has(id)).toBe(false)
+
+    for (const card of roomState.currentRound!.cards.values()) {
+      for (const tile of card) {
+        if (tile.free) continue
+        expect(excludedIds.includes(tile.trackId)).toBe(false)
+      }
+    }
+  })
+
+  // Story 13-8 — auto-reset when fresh pool < 25
+  it('round-start auto-resets played_songs when fresh pool < 25 and emits host:info', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    // Seed played_songs so only 4 fresh tracks remain (< 25 → triggers reset).
+    const { recordPlayedSongs, getPlayedSongs } = await import('../db.ts')
+    const preplayed = Array.from({ length: 26 }, (_, i) => `track_${i}`)
+    recordPlayedSongs('ABCD', preplayed)
+    expect(getPlayedSongs('ABCD').length).toBe(26)
+
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+
+    // played_songs was cleared before the round was built.
+    expect(getPlayedSongs('ABCD')).toEqual([])
+
+    // Round started with a full 30-track pool (no exclusions).
+    const roomState = roomSockets.get('ABCD')!
+    expect(roomState.currentRound!.playlist.length).toBe(30)
+
+    // host:info toast delivered on the host socket.
+    const msgs = hostWs.getSent()
+    const info = msgs.find(m => m.type === 'host:info')
+    expect(info).toBeDefined()
+    expect(typeof info!.message).toBe('string')
+    expect(info!.autoDismissMs).toBe(6000)
+  })
+
+  // Story 13-8 — <25 unique tracks at all still errors
+  // getPlaylistTracks dedupes and throws InsufficientTracksError before startRound
+  // can reach the pool-building logic, so a playlist with <25 unique tracks always
+  // returns 422 without modifying any DB state.
+  it('round-start returns 422 when playlist has fewer than 25 unique tracks total', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockRejectedValue(
+      new (await import('../music/spotify.ts')).InsufficientTracksError(20),
+    )
+
+    seedHost()
+    await seedRoom()
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(422)
+  })
 })
 
 // ── Song scheduling helpers ────────────────────────────────────────────────
@@ -717,7 +812,6 @@ function seedActiveRound(code = 'ABCD', clipDuration: ClipDuration = 30, titleRe
     playlist: makeTracksLocal(10),
     cards: new Map(),
     roundStartPayload: {},
-    sessionPlayedIds: [],
     active: true,
     currentSongIndex: -1,
     songHistory: [],

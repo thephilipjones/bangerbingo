@@ -148,6 +148,10 @@ export function recordPlayedSongs(roomId: string, trackIds: string[]): void {
   }
 }
 
+export function clearPlayedSongs(roomId: string): void {
+  db.prepare('DELETE FROM played_songs WHERE room_id = ?').run(roomId)
+}
+
 export function upsertActiveRoom(code: string, stateJson: string): void {
   db.prepare(`
     INSERT INTO active_rooms (room_code, state_json, updated_at)

@@ -46,7 +46,6 @@ export interface RoundState {
   playlist: Track[]
   cards: Map<string, Tile[]>   // playerKey → card (host: userId, guests: name)
   roundStartPayload: object     // cached for late joiners
-  sessionPlayedIds: string[]    // tracks played this session (grows across rounds)
   active: boolean
   // ── NEW in Story 5-1 ──────────────────────────────────────────
   currentSongIndex: number        // -1 = round not yet started
@@ -126,7 +125,6 @@ export function persistRoomState(code: string): void {
       playlist: round.playlist,
       cards: Object.fromEntries(round.cards),
       roundStartPayload: round.roundStartPayload,
-      sessionPlayedIds: round.sessionPlayedIds,
       active: round.active,
       currentSongIndex: round.currentSongIndex,
       currentSongRevealed: round.currentSongRevealed,

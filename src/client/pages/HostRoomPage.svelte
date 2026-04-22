@@ -52,6 +52,8 @@
   let deviceSwitchResult = $state<'saved' | 'error' | null>(null)
   let confirmPillTimer: ReturnType<typeof setTimeout> | undefined
   let deviceSwitchResultTimer: ReturnType<typeof setTimeout> | undefined
+  let hostMessage = $state<string | null>(null)
+  let hostMessageTimer: ReturnType<typeof setTimeout> | null = null
   let chipRef = $state<HTMLElement | undefined>(undefined)
   let sessionEnded = false
   let wsClient: WsClient | null = null
@@ -557,6 +559,11 @@
           // Gate with sdkReconnecting so a click during the reinit window is
           // captured as pendingPlayAction rather than hitting a stale SDK.
           beginSdkReconnect()
+        } else if (data.type === 'host:info' && typeof data.message === 'string') {
+          if (hostMessageTimer) clearTimeout(hostMessageTimer)
+          hostMessage = data.message
+          const dismissMs = typeof data.autoDismissMs === 'number' ? data.autoDismissMs : 6000
+          hostMessageTimer = setTimeout(() => { hostMessage = null; hostMessageTimer = null }, dismissMs)
         } else if (data.type === 'host:sdk-stale') {
           // Story 12-2 AC #9: ignore on mobile (no SDK to reinit). On desktop,
           // gate controls while the SDK re-initializes.
@@ -600,6 +607,7 @@
     clearTimeout(confirmPillTimer)
     clearTimeout(deviceSwitchResultTimer)
     clearTimeout(sdkReconnectTimer)
+    if (hostMessageTimer) { clearTimeout(hostMessageTimer); hostMessageTimer = null }
     initialDevicesController?.abort()
     mobileDeviceController?.abort()
     if (visibilityListener) {
@@ -630,6 +638,10 @@
 
 {#if playbackError}
   <div class="error-banner" role="alert">Playback control failed — check Spotify is active.</div>
+{/if}
+
+{#if hostMessage}
+  <div class="info-toast" role="status" aria-live="polite">{hostMessage}</div>
 {/if}
 
 {#if sdkFailed}
@@ -805,6 +817,26 @@
     font-size: 12px;
     z-index: 210;
     letter-spacing: 0.04em;
+  }
+
+  .info-toast {
+    position: fixed;
+    top: var(--space-3);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    color: var(--fg);
+    padding: var(--space-2) var(--space-4);
+    font-size: 13px;
+    z-index: 190;
+    max-width: calc(100vw - 32px);
+    text-align: center;
+    animation: info-toast-fade 0.2s ease-out;
+  }
+  @keyframes info-toast-fade {
+    from { opacity: 0; transform: translate(-50%, -4px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
   }
 
   .status-chip {

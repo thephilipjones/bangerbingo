@@ -1,6 +1,6 @@
 # Story 13-8: Per-Player Independent Cards, Strict Played-Song Exclusion, Auto-Reset
 
-## Status: ready-for-dev
+## Status: done
 
 ## Context
 
@@ -321,21 +321,37 @@ If none exist, no deferred-work.md change is needed.
 
 ### Completion Notes
 
-- [ ] Change A — Spotify ingest dedupes by `track.id` before threshold check.
-- [ ] Change B — `buildPool` collapsed to `(tracks, excludedIds: Set<string>) → shuffle(filter)`.
-- [ ] Change C — `generateCard` shuffles pool before slicing; per-player independent draws.
-- [ ] Change D — Round creation uses one filtered pool for both `round.playlist` and card generation; auto-reset on exhaustion.
-- [ ] Change E — `sessionPlayedIds` field + plumbing removed; grep confirms zero refs.
-- [ ] Change F — `sendHostInfo` helper + `host:info` WS message + inline host toast with auto-dismiss.
+- [x] Change A — Spotify ingest dedupes by `track.id` before threshold check.
+- [x] Change B — `buildPool` collapsed to `(tracks, excludedIds: Set<string>) → shuffle(filter)`.
+- [x] Change C — `generateCard` shuffles pool before slicing; per-player independent draws.
+- [x] Change D — Round creation uses one filtered pool for both `round.playlist` and card generation; auto-reset on exhaustion.
+- [x] Change E — `sessionPlayedIds` field + plumbing removed; grep confirms zero refs.
+- [x] Change F — `sendHostInfo` helper + `host:info` WS message + inline host toast with auto-dismiss.
+
+Semantic shift: `played_songs` is now recorded at `startSong` (per track actually played) rather than at `round:start` (per 25 dealt tracks). Matches Dev Notes — dealt-but-not-played no longer spoils. `InsufficientTracksError` matched by `err.name` (not `instanceof`) so tests that stub a plain Error continue to pass.
 
 ### File List
 
-*(populate during implementation)*
+- `src/server/music/spotify.ts` — Change A (Set-based dedup in `getPlaylistTracks`)
+- `src/server/game/cards.ts` — Changes B + C (new `buildPool` signature; `generateCard` shuffles pool before slicing)
+- `src/server/db.ts` — new `clearPlayedSongs(roomId)` export
+- `src/server/rooms.ts` — Change D (startRound uses excluded Set + auto-reset; `recordPlayedSongs` moved from round-start to `startSong`); Change F (`sendHostInfo` helper)
+- `src/server/ws.ts` — Change E (`sessionPlayedIds` removed from `RoundState` and `persistRoomState` snapshot)
+- `src/client/pages/HostRoomPage.svelte` — Change F (`host:info` handler, inline toast, cleanup, styles)
+- `src/server/__tests__/cards.test.ts` — rewritten `buildPool` suite; added independent-draw/content-variation tests
+- `src/server/__tests__/rooms.test.ts` — removed `sessionPlayedIds` fixture field; replaced pre-record test with "does not pre-record"; added exclude-previously-played, auto-reset + `host:info`, and 422-insufficient-unique-tracks tests
+- `src/server/__tests__/ws.test.ts` — removed `sessionPlayedIds` fixture fields; added `host:info` delivery test
+- `src/server/music/__tests__/spotify.test.ts` — new file: dedup + `InsufficientTracksError` on low unique count
+- `_bmad-output/implementation-artifacts/deferred-work.md` — removed superseded `sessionPlayedIds` entry
 
 ### Change Log
 
-*(populate during implementation)*
+- 2026-04-22 — Implemented all six changes (A–F). 529 tests pass; `tsc --noEmit` clean. Story marked `review`.
 
 ### Review Findings
 
-*(populate during review)*
+- [x] [Review][Decision] Dead code: second `pool.length < 25` guard after auto-reset is unreachable — `getPlaylistTracks` guarantees ≥25 unique tracks before `startRound` proceeds; after `clearPlayedSongs` the pool equals `tracks.length ≥ 25`, so [rooms.ts:487](src/server/rooms.ts#L487) can never be true. Keep as defense-in-depth (harmless but misleading) or remove + update the AC 8 test comment to accurately describe the actual path tested?
+- [x] [Review][Defer] TOCTOU on concurrent `startRound` — two simultaneous round-starts for the same room can both pass the `pool.length < 25` check before either calls `clearPlayedSongs`, causing a double-reset. Theoretical for a single-host app; no mutex around the read→check→clear→rebuild sequence. [rooms.ts:478-489](src/server/rooms.ts#L478) — deferred, pre-existing concurrency pattern for single-host app
+- [x] [Review][Defer] Duplicate rows in `played_songs` on double-call to `startSong` — `recordPlayedSongs` has no idempotency guard; if `startSong` fires twice for the same track, the row is inserted twice. Functionally harmless (exclusion logic wraps IDs in a `Set`), but DB accumulates junk rows. [rooms.ts:~235](src/server/rooms.ts#L235) — deferred, harmless due to Set dedup in `getPlayedSongs` consumer
+- [x] [Review][Defer] `cardKey` is order-based, not content-based — the uniqueness-retry in `generateCards` uses `card.filter(!free).map(t.trackId).join(',')` without sorting, so two cards with identical songs in different tile orders are treated as distinct. Retry does not enforce content-level uniqueness (AC 5). Statistically irrelevant for pools ≥50 tracks; AC 5 only guarantees differences at ≥50 tracks. [cards.ts:~21](src/server/game/cards.ts#L21) — deferred, pre-existing limitation, AC 5 scope excludes small pools
+- [x] [Review][Defer] No `border-radius` on `.info-toast` CSS — all other fixed-position chips in this file appear rounded; the toast will render with square corners. Cosmetic only. [HostRoomPage.svelte:~825](src/client/pages/HostRoomPage.svelte#L825) — deferred, cosmetic

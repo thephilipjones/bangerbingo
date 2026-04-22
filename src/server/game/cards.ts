@@ -21,20 +21,13 @@ function cardKey(card: Tile[]): string {
   return card.filter(t => !t.free).map(t => t.trackId).join(',')
 }
 
-export function buildPool(
-  tracks: Track[],
-  sessionPlayedIds: string[],
-  historicPlayedIds: string[]
-): Track[] {
-  const allDownranked = new Set([...sessionPlayedIds, ...historicPlayedIds])
-  const fresh = tracks.filter(t => !allDownranked.has(t.id))
-  const downranked = tracks.filter(t => allDownranked.has(t.id))
-  return [...shuffle(fresh), ...shuffle(downranked)]
+export function buildPool(tracks: Track[], excludedIds: Set<string>): Track[] {
+  return shuffle(tracks.filter(t => !excludedIds.has(t.id)))
 }
 
 export function generateCard(pool: Track[]): Tile[] {
-  const sample = pool.slice(0, 25)
-  const tiles: Tile[] = shuffle(sample).map(t => ({
+  const sample = shuffle(pool).slice(0, 25)
+  const tiles: Tile[] = sample.map(t => ({
     trackId: t.id,
     title: t.title,
     artist: t.artist,

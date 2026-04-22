@@ -1,12 +1,12 @@
 import { Hono, type Context } from 'hono'
 import crypto from 'node:crypto'
 import WebSocket from 'ws'
-import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room, type Host } from './db.ts'
+import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, clearPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room, type Host } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type AudioPreset, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
-import { buildPool, generateCards, shuffle } from './game/cards.ts'
+import { buildPool, generateCards } from './game/cards.ts'
 
 // ── Win detection ─────────────────────────────────────────────────────────
 
@@ -25,6 +25,16 @@ function clearRoundTimers(round: RoundState): void {
   clearTimeout(round.timers.reveal)
   round.timers.autoAdvance = undefined
   round.timers.reveal = undefined
+}
+
+// Story 13-8: unicast transient info toast to the host socket only.
+// Mirrors the broken-socket guards used by runCasualModeSweep.
+function sendHostInfo(roomState: RoomState, message: string, autoDismissMs = 6000): void {
+  const host = roomState.host
+  if (!host || host.readyState !== WebSocket.OPEN) return
+  try {
+    host.send(JSON.stringify({ type: 'host:info', message, autoDismissMs }))
+  } catch { /* ignore broken socket */ }
 }
 
 // Shared Spotify Web API caller for device-scoped PUTs (play, pause).
@@ -223,6 +233,10 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
       songIndex,
     }
     round.songHistory.push(entry)
+    // Story 13-8: played_songs is now the single source of exclusion truth —
+    // record on actual play (not round-start) so dealt-but-not-played tracks
+    // stay eligible for future rounds.
+    recordPlayedSongs(roomCode, [track.id])
   }
   // Story 12-4 Track B: on first song of a fresh round, defensively pause the
   // active device before the play call so Spotify's prior context (e.g. a track
@@ -444,9 +458,9 @@ async function startRound(
   host: Host,
   config: RoundConfig,
 ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
-  let playlist
+  let tracks
   try {
-    playlist = shuffle(await getPlaylistTracks(config.playlistId, host.access_token))
+    tracks = await getPlaylistTracks(config.playlistId, host.access_token)
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'InsufficientTracksError') {
       return { ok: false, status: 422, message: err.message }
@@ -457,9 +471,19 @@ async function startRound(
     throw err
   }
 
-  const sessionPlayedIds = roomState.currentRound?.sessionPlayedIds ?? []
-  const historicPlayedIds = getPlayedSongs(code)
-  const pool = buildPool(playlist, sessionPlayedIds, historicPlayedIds)
+  // Story 13-8: exclude previously-played songs (hard filter, not downrank).
+  // If that leaves <25 unique tracks, auto-reset the room's played history
+  // and notify the host inline. A playlist with <25 unique tracks at all
+  // still errors out — reset cannot manufacture tracks.
+  let excluded = new Set(getPlayedSongs(code))
+  let pool = buildPool(tracks, excluded)
+  let didReset = false
+  if (pool.length < 25) {
+    clearPlayedSongs(code)
+    excluded = new Set()
+    pool = buildPool(tracks, excluded)
+    didReset = true
+  }
 
   const hostKey = host.user_id
   const guestKeys = Array.from(roomState.guests.keys())
@@ -473,23 +497,19 @@ async function startRound(
   const roundStartPayload = {
     type: 'round:start',
     roundNumber: config.roundNumber,
-    playlist,
+    playlist: pool,
     clipDuration: config.clipDuration,
     titleRevealDelay: config.titleRevealDelay,
     audioPreset: config.audioPreset,
     allowCasualMode: config.allowCasualMode,
   }
 
-  const dealtTrackIds = pool.slice(0, 25).map(t => t.id)
-  const newSessionPlayed = [...sessionPlayedIds, ...dealtTrackIds]
-
   roomState.currentRound = {
     roundNumber: config.roundNumber,
     config,
-    playlist,
+    playlist: pool,
     cards,
     roundStartPayload,
-    sessionPlayedIds: newSessionPlayed,
     active: true,
     currentSongIndex: -1,
     currentSongRevealed: false,
@@ -512,7 +532,8 @@ async function startRound(
   }
 
   persistRoomState(code)
-  recordPlayedSongs(code, dealtTrackIds)
+
+  if (didReset) sendHostInfo(roomState, 'Played history reset — playlist fully cycled.')
 
   return { ok: true }
 }

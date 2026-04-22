@@ -306,7 +306,6 @@
 
 ## Deferred from: code review of 4-3-card-generation-and-round-start (2026-04-04)
 
-- `sessionPlayedIds` grows with duplicate entries across rounds — functionally harmless (Set in buildPool deduplicates), but array balloons; deduplicate on append if it ever matters at scale. (src/server/rooms.ts)
 - State mutation + WS broadcast precede `recordPlayedSongs` — if SQLite throws after cards are sent, DB misses the round's tracks and next round won't down-rank them. Move persist before broadcast if atomicity is ever required. (src/server/rooms.ts)
 - Concurrent `POST /round` requests can race on `roomState.currentRound` — two simultaneous calls both compute `roundNumber = 1`, both broadcast, last write wins for in-memory state. No real risk for single-host personal app; add in-flight guard if multi-concurrent start is ever possible. (src/server/rooms.ts)
 - Token expiry NaN guard — if `token_expires_at` is 0/null/undefined, subtraction yields NaN and refresh is skipped silently. Pre-existing pattern from music/router.ts; audit all inline refresh blocks when hardening auth. (src/server/rooms.ts)
@@ -389,3 +388,11 @@
 
 - **`aria-label="locked"` on lock-icon wrapper span is redundant announcement** — pre-existing pattern, `<span class="lock" aria-label="locked">` wraps the (formerly) `🔒` glyph; 11-1 preserved the span and only swapped the inner content. A screen reader will announce "locked" alongside the surrounding labelled button, duplicating intent. (src/client/pages/JoinPage.svelte:138)
 - **Spotify device `type` enumeration gap in the replaced `deviceIcon` branching** — new `{#if}` chain covers `Smartphone`/`Speaker`/`Computer` → device-specific Phosphor icons with `MusicNote` fallback, same bucketing as the removed `deviceIcon()` helper. The Spotify Web API also returns `Tablet`, `TV`, `GameConsole`, `CastVideo`, `CastAudio`, `Automobile`, `STB`, `AVR`, `AudioDongle`, `Unknown`; all currently fall through to `MusicNote`. Not a regression — behavior preserved — but the new per-value structure invites richer mapping (e.g., `DeviceTablet`, `Television`, `GameController`). (src/client/components/DeviceChip.svelte, src/client/components/DevicePicker.svelte)
+
+
+## Deferred from: code review of 13-8-independent-cards-exclude-played-auto-reset (2026-04-22)
+
+- **TOCTOU on concurrent `startRound`** — two simultaneous round-starts for the same room can both pass the `pool.length < 25` check before either calls `clearPlayedSongs`, causing a double-reset with no mutex around the read→check→clear→rebuild sequence. Theoretical for a single-host personal app. (src/server/rooms.ts:478-489)
+- **Duplicate rows in `played_songs` on double-call to `startSong`** — `recordPlayedSongs` has no idempotency guard; if `startSong` fires twice for the same track index, the row is inserted twice. Functionally harmless because the exclusion consumer wraps IDs in a `Set`, but DB accumulates junk rows over time. (src/server/rooms.ts:~235)
+- **`cardKey` is order-based, not content-based** — the uniqueness-retry in `generateCards` uses unsorted tile order in the key; two cards with identical songs in different tile positions are treated as distinct. Does not enforce content-level uniqueness. Statistically irrelevant for pools ≥50 tracks; AC 5 only guarantees differences at ≥50 tracks. (src/server/game/cards.ts:~21)
+- **No `border-radius` on `.info-toast` CSS** — renders with square corners while all other status chips appear rounded. Cosmetic only. (src/client/pages/HostRoomPage.svelte:~825)

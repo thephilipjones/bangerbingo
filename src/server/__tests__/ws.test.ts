@@ -653,6 +653,43 @@ describe('Late-join includes songHistory', () => {
   })
 })
 
+// ── host:info (Story 13-8) ────────────────────────────────────────────────
+
+describe('host:info delivery', () => {
+  it('host receives host:info message with message text when round-start auto-resets played history', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    // 30 total tracks; seed 10 as already played so only 20 fresh remain —
+    // below the 25 threshold, which triggers clearPlayedSongs + host:info.
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+    )
+    recordPlayedSongs('AAAA', Array.from({ length: 10 }, (_, i) => `t${i}`))
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+    })
+    expect(roundRes.status).toBe(200)
+
+    const infoMsg = await host.next('host:info')
+    expect(infoMsg.type).toBe('host:info')
+    expect(typeof infoMsg.message).toBe('string')
+    expect((infoMsg.message as string).length).toBeGreaterThan(0)
+
+    vi.restoreAllMocks()
+    host.close()
+  })
+})
+
 // ── auth:restored (Story 5-6) ─────────────────────────────────────────────
 
 describe('auth:restored direct send', () => {
@@ -830,7 +867,6 @@ describe('rehydrateRooms', () => {
         playlist: [{ id: 't0', title: 'S0', artist: 'A0', albumArtUrl: '' }],
         cards: { host_1: [{ trackId: 't0', title: 'S0', artist: 'A0', albumArtUrl: '', free: false }] },
         roundStartPayload: { type: 'round:start', roundNumber: 1 },
-        sessionPlayedIds: ['t0'],
         active: true,
         currentSongIndex: 0,
         currentSongRevealed: false,
@@ -883,7 +919,6 @@ describe('rehydrateRooms', () => {
         playlist: [{ id: 't0', title: 'S0', artist: 'A0', albumArtUrl: '' }],
         cards: new Map(),
         roundStartPayload: { type: 'round:start', roundNumber: 1 },
-        sessionPlayedIds: [],
         active: true,
         currentSongIndex: -1,
         currentSongRevealed: false,
