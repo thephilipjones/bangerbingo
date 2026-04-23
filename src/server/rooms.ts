@@ -472,21 +472,23 @@ async function startRound(
   }
 
   // Story 13-8: exclude previously-played songs (hard filter, not downrank).
-  // If that leaves <25 unique tracks, auto-reset the room's played history
+  // If that leaves <=25 unique tracks, auto-reset the room's played history
   // and notify the host inline. A playlist with <25 unique tracks at all
   // still errors out — reset cannot manufacture tracks.
+  // Then cap the round pool at 50; if fewer than 50 remain, use all of them.
   let excluded = new Set(getPlayedSongs(code))
   // Story 13-10: first-round-of-session signal. Compute BEFORE any auto-reset
   // so a mid-session cycle-reset doesn't accidentally re-arm the round-1 pause.
   const isFirstRound = excluded.size === 0
   let pool = buildPool(tracks, excluded)
   let didReset = false
-  if (pool.length < 25) {
+  if (pool.length <= 25) {
     clearPlayedSongs(code)
     excluded = new Set()
     pool = buildPool(tracks, excluded)
     didReset = true
   }
+  pool = pool.slice(0, 50)
 
   const hostKey = host.user_id
   const guestKeys = Array.from(roomState.guests.keys())
