@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { getMe } from '../lib/api.ts'
   import Logo from '../lib/components/Logo.svelte'
   import Button from '../lib/components/Button.svelte'
@@ -7,8 +7,53 @@
 
   let { onAuthenticated }: { onAuthenticated: () => void } = $props()
 
+  type ErrorInfo = { message: string; showAllowlistRequest?: boolean }
+
+  const errorMessages: Record<string, ErrorInfo> = {
+    spotify_denied: {
+      message:
+        'BangerBingo is in private beta — Philip needs to add your Spotify account to the allowlist before you can log in.',
+      showAllowlistRequest: true,
+    },
+    missing_verifier: {
+      message: 'Login timed out. Click Connect Spotify to start over.',
+    },
+    token_exchange_failed: {
+      message: "Spotify login didn't complete. Try again.",
+    },
+    me_fetch_failed: {
+      message: "Couldn't reach Spotify to confirm your account. Check your connection and try again.",
+    },
+    server_error: {
+      message: 'Something went wrong on our end. Try again in a moment.',
+    },
+  }
+
   const params = new URLSearchParams(window.location.search)
-  const loginError = params.get('error')
+  const errorCode = params.get('error')
+  const errorInfo: ErrorInfo | null = errorCode
+    ? errorMessages[errorCode] ?? { message: 'Login failed. Try again.' }
+    : null
+
+  const accessRequestMessage =
+    'Hi Philip — please add me to the Bangerbingo Spotify allowlist.\n\n' +
+    'Spotify display name (exactly as on my profile): \n' +
+    'Email on my Spotify account: \n\n' +
+    'Thanks!'
+
+  let copied = $state(false)
+  let copyResetTimer: ReturnType<typeof setTimeout> | null = null
+
+  async function copyAccessRequest() {
+    try {
+      await navigator.clipboard.writeText(accessRequestMessage)
+      copied = true
+      if (copyResetTimer) clearTimeout(copyResetTimer)
+      copyResetTimer = setTimeout(() => { copied = false }, 2000)
+    } catch {
+      // clipboard blocked — no-op; user can still manually ping Philip
+    }
+  }
 
   onMount(async () => {
     try {
@@ -17,6 +62,10 @@
     } catch {
       // session check failed — stay on login page
     }
+  })
+
+  onDestroy(() => {
+    if (copyResetTimer) clearTimeout(copyResetTimer)
   })
 </script>
 
@@ -28,8 +77,15 @@
   <Button variant="primary" size="lg" onclick={() => (window.location.href = '/auth/login')}>
     Connect Spotify
   </Button>
-  {#if loginError}
-    <p class="error u-small">Login failed. Try again.</p>
+  {#if errorInfo}
+    <div class="error-block">
+      <p class="error u-small">{errorInfo.message}</p>
+      {#if errorInfo.showAllowlistRequest}
+        <Button variant="ghost" size="sm" onclick={copyAccessRequest}>
+          {copied ? 'Copied — send to Philip' : 'Copy request message'}
+        </Button>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -51,6 +107,15 @@
     position: absolute;
     top: var(--space-4);
     right: var(--space-5);
+  }
+
+  .error-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    max-width: 32rem;
+    text-align: center;
   }
 
   .error {

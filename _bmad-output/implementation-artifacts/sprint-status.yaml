@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-23 # 14-3 reconnect replay completeness → done
+last_updated: 2026-04-23 # 14-7 multi-host onboarding → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -167,4 +167,5 @@ development_status:
   14-4-websocket-origin-check: done
   14-5-overlay-escape-and-focus: ready-for-dev
   14-6-lightweight-performance-instrumentation: ready-for-dev
+  14-7-multi-host-onboarding: done
   epic-14-retrospective: optional
