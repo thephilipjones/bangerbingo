@@ -45,7 +45,7 @@ async function seedRoom(hostUserId = 'host_1', code = 'ABCD') {
   const { getDb } = await import('../db.ts')
   const db = getDb()
   db.prepare('INSERT OR IGNORE INTO rooms (code, host_user_id, created_at) VALUES (?, ?, ?)').run(code, hostUserId, Date.now())
-  roomSockets.set(code, { host: null, hostUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: { winsByName: {}, lastRoundWinner: null }, playerCasualModes: new Map() })
+  roomSockets.set(code, { host: null, hostUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: { winsByName: {}, lastRoundWinner: null }, playerCasualModes: new Map(), pendingClaims: new Set() })
 }
 
 // ── Code generation ────────────────────────────────────────────────────────

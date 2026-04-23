@@ -12,6 +12,8 @@
     showStats = false,
     casualModeNames = new Set(),
     onClose,
+    onRename,
+    isClaiming = false,
   }: {
     players: string[]
     hostName: string | null
@@ -21,6 +23,8 @@
     showStats?: boolean
     casualModeNames?: Set<string>
     onClose: () => void
+    onRename?: (newName: string) => void
+    isClaiming?: boolean
   } = $props()
 
   const playerCount = $derived(computePlayerCount(players))
@@ -39,7 +43,7 @@
     {#if players.length === 0 && hostName === null}
       <p class="empty">No players yet.</p>
     {:else}
-      <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} {casualModeNames} />
+      <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} {casualModeNames} {onRename} {isClaiming} />
     {/if}
   </div>
 </div>

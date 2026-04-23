@@ -39,12 +39,13 @@ export interface WsClient {
   send(data: string | object): void
   nudge(): void
   onResume(cb: () => void): () => void
+  setUrl(nextUrl: string): void
   close(): void
 }
 
 export function createWsClient(opts: WsClientOptions): WsClient {
   const {
-    url,
+    url: initialUrl,
     onMessage,
     onStateChange,
     onDead,
@@ -57,6 +58,7 @@ export function createWsClient(opts: WsClientOptions): WsClient {
     clearIntervalFn = clearInterval,
   } = opts
 
+  let url = initialUrl
   let state: WsState = 'connecting'
   let ws: WebSocket | null = null
   let failures = 0
@@ -246,6 +248,9 @@ export function createWsClient(opts: WsClientOptions): WsClient {
     onResume(cb) {
       resumeListeners.add(cb)
       return () => { resumeListeners.delete(cb) }
+    },
+    setUrl(nextUrl) {
+      url = nextUrl
     },
     close() {
       if (disposed) return

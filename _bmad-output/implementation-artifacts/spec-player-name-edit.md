@@ -2,7 +2,8 @@
 title: 'Self-rename in the Players list'
 type: 'feature'
 created: '2026-04-20'
-status: 'ready-for-dev'
+status: 'done'
+baseline_commit: '558eda0408fb38b618f745083e00d790e2da3b41'
 context: []
 ---
 
@@ -70,18 +71,18 @@ context: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/server/ws.ts` -- Add `pendingClaims: Set<string>` to `RoomState`; add `player:rename` handler on guest branch: validate trim/non-empty/≤30/collision against `host_name` and connected guests; reject if `pendingClaims.has(oldName)`; atomically migrate `guests`, `cards`, `autoMarkedTileIndices`, `playerCasualModes`, `priorCasualModes`, `winsByName`, `lastRoundWinner`; update closure's current-name ref; broadcast `player:renamed {oldName, newName}`; emit `player:rename-rejected {reason}` to sender on failure. Call `persistRoomState(code)` after.
-- [ ] `src/server/ws.ts` -- Add `player:rename` handler on host branch: validate trim/non-empty/≤30; update `rooms.host_name` via `setHostName`; migrate `playerCasualModes`, `priorCasualModes`, `winsByName`, `lastRoundWinner` keys; broadcast `player:renamed {oldName, newName, isHost:true}`. Reject if `pendingClaims.has(oldName)`.
-- [ ] `src/server/rooms.ts` -- In `/round/claim` route (~line 685): `pendingClaims.add(playerName)` on entry; `pendingClaims.delete(playerName)` in `finally`.
-- [ ] `src/server/__tests__/ws.test.ts` -- Unit tests covering all I/O matrix scenarios (happy guest, happy host, collision with host, collision with guest, empty, unchanged-no-op, concurrent rename, atomic failure).
-- [ ] `src/client/components/PlayerList.svelte` -- Reorder: self row first when `selfName` equals a row; implement editable-self-row with hover affordance, click-to-edit input, blur/Enter/Esc handling; emit `onRename(newName)`; respect `disabled={isClaiming}` to block edit.
-- [ ] `src/client/components/PlayersOverlay.svelte` -- Accept and forward `onRename`, `isClaiming` props.
-- [ ] `src/client/components/GuestWaitingRoom.svelte` -- Accept and forward `onRename`, `isClaiming` props.
-- [ ] `src/client/pages/RoomPage.svelte` -- Pass `onRename={(n) => ws.send(...)}` and `isClaiming={game.isClaiming}`; handle `player:renamed` update of local `name` when `oldName === name`; on self-rename persist via `setStoredGuestName`.
-- [ ] `src/client/pages/HostRoomPage.svelte` -- Same wiring for host.
-- [ ] `src/client/lib/gameState.svelte.ts` -- In `processWsMessage`, handle `player:renamed`: rewrite `players` array, `winsByName` key, `lastRoundWinner` if match, `casualModePlayers` Set member.
-- [ ] `src/client/App.svelte` -- On guest renamer's `player:renamed`, update `guestName` state + call `setStoredGuestName`.
-- [ ] `src/client/__tests__/*` -- PlayerList test: self-at-top ordering; editable enters/commits/cancels/validates.
+- [x] `src/server/ws.ts` -- Add `pendingClaims: Set<string>` to `RoomState`; add `player:rename` handler on guest branch: validate trim/non-empty/≤30/collision against `host_name` and connected guests; reject if `pendingClaims.has(oldName)`; atomically migrate `guests`, `cards`, `autoMarkedTileIndices`, `playerCasualModes`, `priorCasualModes`, `winsByName`, `lastRoundWinner`; update closure's current-name ref; broadcast `player:renamed {oldName, newName}`; emit `player:rename-rejected {reason}` to sender on failure. Call `persistRoomState(code)` after.
+- [x] `src/server/ws.ts` -- Add `player:rename` handler on host branch: validate trim/non-empty/≤30; update `rooms.host_name` via `setHostName`; migrate `playerCasualModes`, `priorCasualModes`, `winsByName`, `lastRoundWinner` keys; broadcast `player:renamed {oldName, newName, isHost:true}`. Reject if `pendingClaims.has(oldName)`.
+- [x] `src/server/rooms.ts` -- In `/round/claim` route (~line 685): `pendingClaims.add(playerName)` on entry; `pendingClaims.delete(playerName)` in `finally`.
+- [x] `src/server/__tests__/ws.test.ts` -- Unit tests covering all I/O matrix scenarios (happy guest, happy host, collision with host, collision with guest, empty, unchanged-no-op, concurrent rename, atomic failure).
+- [x] `src/client/components/PlayerList.svelte` -- Reorder: self row first when `selfName` equals a row; implement editable-self-row with hover affordance, click-to-edit input, blur/Enter/Esc handling; emit `onRename(newName)`; respect `disabled={isClaiming}` to block edit.
+- [x] `src/client/components/PlayersOverlay.svelte` -- Accept and forward `onRename`, `isClaiming` props.
+- [x] `src/client/components/GuestWaitingRoom.svelte` -- Accept and forward `onRename`, `isClaiming` props.
+- [x] `src/client/pages/RoomPage.svelte` -- Pass `onRename={(n) => ws.send(...)}` and `isClaiming={game.isClaiming}`; handle `player:renamed` update of local `name` when `oldName === name`; on self-rename persist via `setStoredGuestName`.
+- [x] `src/client/pages/HostRoomPage.svelte` -- Same wiring for host.
+- [x] `src/client/lib/gameState.svelte.ts` -- In `processWsMessage`, handle `player:renamed`: rewrite `players` array, `winsByName` key, `lastRoundWinner` if match, `casualModePlayers` Set member.
+- [x] `src/client/App.svelte` -- On guest renamer's `player:renamed`, update `guestName` state + call `setStoredGuestName`.
+- [x] `src/client/__tests__/*` -- PlayerList test: self-at-top ordering; editable enters/commits/cancels/validates.
 
 **Acceptance Criteria:**
 - Given a guest viewing the PlayersOverlay mid-game, when they click their own row and type a new name and blur, then the server migrates all maps atomically and every client (including their own) sees the new name in `players`, `winsByName`, and any other stats keyed by it.
@@ -110,3 +111,20 @@ context: []
 - Win a round as "Bob", rename to "Bobby", verify "Last round ✓" pill stays on the renamed row; `×1` win count survives.
 - Host renames mid-round; guests see updated host row; casual-mode ☕ indicator (if on) stays lit.
 - Mid-claim guard: click bingo → before response lands, try rename → input doesn't open.
+
+### Review Findings
+
+- [x] [Review][Decision→Patch] `setStoredGuestName` persists newName before server confirms — resolved: roll back localStorage on `player:rename-rejected` (keeps spec-intended drop-safety on the happy path; on rejection, the rollback restores the pre-rename name from `currentName`). [src/client/pages/RoomPage.svelte]
+- [x] [Review][Patch] Host rename does not propagate `hostName` prop to guest clients — RoomPage now mirrors `hostName` into local `currentHostName` state and updates it on `player:renamed {isHost:true}`; children receive the live value. [src/client/pages/RoomPage.svelte]
+- [x] [Review][Patch] Guest rename branch omits `winData.winnerName` migration — added the migration inside the guest branch's `if (activeRound)` block, mirroring the host branch. [src/server/ws.ts]
+- [x] [Review][Patch] `/round/claim` pendingClaims race closed by synchronous sentinel — `CLAIM_PENDING_SENTINEL` is added to `pendingClaims` before the body-parse await; rename handlers reject whenever `pendingClaims.size > 0`. [src/server/rooms.ts, src/server/ws.ts]
+- [x] [Review][Patch] Host rename silently no-ops when `host_name` is null — now sends `player:rename-rejected {reason:'no-host-name'}` and returns. [src/server/ws.ts]
+- [x] [Review][Patch] `ws.test.ts` "rename rejected when host_name is null" asserts nothing — updated to await and assert the `player:rename-rejected` frame. [src/server/__tests__/ws.test.ts]
+- [x] [Review][Patch] `wsClient` captures the WS URL once — added `setUrl(nextUrl)` to `WsClient`; RoomPage rebuilds the URL on self-rename so reconnects use the new name. [src/client/lib/wsClient.ts, src/client/pages/RoomPage.svelte]
+- [x] [Review][Patch] Rename `<input>` missing `aria-label` — added `aria-label="Edit your name"` to both edit inputs. [src/client/components/PlayerList.svelte]
+- [x] [Review][Defer] Outer `catch { /* ignore malformed */ }` now wraps 60+ lines of rename state mutation — swallows any runtime error (DB write throw, null deref) with no logging [src/server/ws.ts:515, :693] — deferred, pre-existing pattern for JSON.parse extended by this change
+- [x] [Review][Defer] `casualModeOn` local state in RoomPage may display stale after a self-rename until a bulk `session:connect` refresh [src/client/pages/RoomPage.svelte:51] — deferred, minor UX desync
+- [x] [Review][Defer] No rate limit on `player:rename` — a guest can spam renames to trigger broadcast storms and disk I/O on each `persistRoomState` [src/server/ws.ts:630-692] — deferred, not in spec; friends-app threat model
+- [x] [Review][Defer] Name validation does not handle zero-width / control / Unicode-normalization variants — `\u200B`, embedded `\n`/`\t` after trim, NFC vs NFD case-variants can produce visually-identical collisions [src/server/ws.ts:633, :641-652] — deferred, out of spec's explicit validation rules
+- [x] [Review][Defer] `isClaiming` flipping `true` mid-edit silently discards typed-but-uncommitted input [src/client/components/PlayerList.svelte:~26-32] — deferred, minor UX gap
+- [x] [Review][Defer] `ws.test.ts` "rename after disconnect" awaits `player:left` with the new name without sequencing close-broadcast timing — passes today by chance, not contract [src/server/__tests__/ws.test.ts:672-693] — deferred, test-quality polish

@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 import WebSocket from 'ws'
 import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, clearPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room, type Host } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
-import { roomSockets, broadcast, destroyRoom, persistRoomState, type RoundConfig, type ClipDuration, type TitleRevealDelay, type AudioPreset, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
+import { roomSockets, broadcast, destroyRoom, persistRoomState, CLAIM_PENDING_SENTINEL, type RoundConfig, type ClipDuration, type TitleRevealDelay, type AudioPreset, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
 import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
 import { buildPool, generateCards } from './game/cards.ts'
@@ -1062,78 +1062,89 @@ roomsRouter.post('/rooms/:code/round/claim', async (ctx) => {
 
   if (!round.active || round.ended) return ctx.json({ message: 'Round already ended' }, 409)
 
-  // Set ended optimistically before any await to close the race window
+  // Set ended optimistically before any await to close the race window.
+  // Also add a pendingClaims sentinel synchronously — rename handlers check
+  // pendingClaims.size so a player:rename arriving during the body-parse await
+  // can't migrate round.cards out from under the claim.
   round.ended = true
+  roomState.pendingClaims.add(CLAIM_PENDING_SENTINEL)
 
   const body = await ctx.req.json().catch(() => null)
   if (!body || typeof body.playerName !== 'string' || !Array.isArray(body.claimedTileIds) ||
       !body.claimedTileIds.every((id: unknown) => typeof id === 'string')) {
     round.ended = false
+    roomState.pendingClaims.delete(CLAIM_PENDING_SENTINEL)
     return ctx.json({ message: 'Invalid request body' }, 400)
   }
 
   const { playerName, claimedTileIds } = body as { playerName: string; claimedTileIds: string[] }
 
-  const cardKey = playerName === room.host_name ? room.host_user_id : playerName
-  const card = round.cards.get(cardKey)
-  if (!card) { round.ended = false; return ctx.json({ message: 'Player card not found' }, 422) }
+  roomState.pendingClaims.add(playerName)
+  try {
+    const cardKey = playerName === room.host_name ? room.host_user_id : playerName
+    const card = round.cards.get(cardKey)
+    if (!card) { round.ended = false; return ctx.json({ message: 'Player card not found' }, 422) }
 
-  const effectiveId = (tile: { free?: boolean; trackId: string }) => tile.free ? 'FREE' : tile.trackId
+    const effectiveId = (tile: { free?: boolean; trackId: string }) => tile.free ? 'FREE' : tile.trackId
 
-  // All claimed IDs must be present on the player's card
-  const allOnCard = claimedTileIds.every(id => card.some(t => effectiveId(t) === id))
-  if (!allOnCard) { round.ended = false; return ctx.json({ message: 'Claimed tile not on player card' }, 422) }
+    // All claimed IDs must be present on the player's card
+    const allOnCard = claimedTileIds.every(id => card.some(t => effectiveId(t) === id))
+    if (!allOnCard) { round.ended = false; return ctx.json({ message: 'Claimed tile not on player card' }, 422) }
 
-  // Non-FREE claimed IDs must all be in song history (i.e. have been played)
-  const nonFree = claimedTileIds.filter(id => id !== 'FREE')
-  const allPlayed = nonFree.every(id => round.songHistory.some(e => e.trackId === id))
-  if (!allPlayed) { round.ended = false; return ctx.json({ message: 'Claimed tile has not been played' }, 422) }
+    // Non-FREE claimed IDs must all be in song history (i.e. have been played)
+    const nonFree = claimedTileIds.filter(id => id !== 'FREE')
+    const allPlayed = nonFree.every(id => round.songHistory.some(e => e.trackId === id))
+    if (!allPlayed) { round.ended = false; return ctx.json({ message: 'Claimed tile has not been played' }, 422) }
 
-  // At least one complete WIN_LINE must exist in claimed set
-  const claimedSet = new Set(claimedTileIds)
-  let winningTileIds: string[] | null = null
-  for (const line of WIN_LINES) {
-    const lineIds = line.map(i => effectiveId(card[i]))
-    if (lineIds.every(id => claimedSet.has(id))) {
-      winningTileIds = lineIds
-      break
+    // At least one complete WIN_LINE must exist in claimed set
+    const claimedSet = new Set(claimedTileIds)
+    let winningTileIds: string[] | null = null
+    for (const line of WIN_LINES) {
+      const lineIds = line.map(i => effectiveId(card[i]))
+      if (lineIds.every(id => claimedSet.has(id))) {
+        winningTileIds = lineIds
+        break
+      }
     }
+    if (!winningTileIds) { round.ended = false; return ctx.json({ message: 'No complete winning line in claimed tiles' }, 422) }
+
+    clearRoundTimers(round)
+    round.active = false
+
+    // Story 13-1: persist win details so reconnecting clients can receive a round:win replay.
+    // Snapshot songHistory and winnerCard (not live refs) so post-win mutations can't leak into the replay payload.
+    round.winData = {
+      winnerName: playerName,
+      winningTileIds,
+      songHistory: round.songHistory.slice(),
+      winnerCard: card.map(t => ({ ...t })),
+    }
+
+    roomState.sessionStats.winsByName[playerName] = (roomState.sessionStats.winsByName[playerName] ?? 0) + 1
+    roomState.sessionStats.lastRoundWinner = playerName
+
+    broadcast(code, {
+      type: 'round:win',
+      winnerName: playerName,
+      winningTileIds,
+      songHistory: round.songHistory,
+      winnerCard: card,
+    })
+
+    broadcast(code, {
+      type: 'stats:updated',
+      winsByName: { ...roomState.sessionStats.winsByName },
+      lastRoundWinner: roomState.sessionStats.lastRoundWinner,
+    })
+
+    persistRoomState(code)
+    deleteActiveRoom(code)
+
+    return ctx.json({})
+  } finally {
+    roomState.pendingClaims.delete(playerName)
+    roomState.pendingClaims.delete(CLAIM_PENDING_SENTINEL)
   }
-  if (!winningTileIds) { round.ended = false; return ctx.json({ message: 'No complete winning line in claimed tiles' }, 422) }
-
-  clearRoundTimers(round)
-  round.active = false
-
-  // Story 13-1: persist win details so reconnecting clients can receive a round:win replay.
-  // Snapshot songHistory and winnerCard (not live refs) so post-win mutations can't leak into the replay payload.
-  round.winData = {
-    winnerName: playerName,
-    winningTileIds,
-    songHistory: round.songHistory.slice(),
-    winnerCard: card.map(t => ({ ...t })),
-  }
-
-  roomState.sessionStats.winsByName[playerName] = (roomState.sessionStats.winsByName[playerName] ?? 0) + 1
-  roomState.sessionStats.lastRoundWinner = playerName
-
-  broadcast(code, {
-    type: 'round:win',
-    winnerName: playerName,
-    winningTileIds,
-    songHistory: round.songHistory,
-    winnerCard: card,
-  })
-
-  broadcast(code, {
-    type: 'stats:updated',
-    winsByName: { ...roomState.sessionStats.winsByName },
-    lastRoundWinner: roomState.sessionStats.lastRoundWinner,
-  })
-
-  persistRoomState(code)
-  deleteActiveRoom(code)
-
-  return ctx.json({})
 })
 
 // PATCH /round-config — host edits the live round's config mid-round (Story 9-2).

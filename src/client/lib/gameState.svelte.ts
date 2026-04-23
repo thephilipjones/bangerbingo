@@ -242,6 +242,24 @@ export function createGameState({
         type: data.type as 'player:joined' | 'player:left',
         name: data.name as string,
       })
+    } else if (data.type === 'player:renamed') {
+      const oldName = data.oldName as string
+      const newName = data.newName as string
+      players = players.map(p => p === oldName ? newName : p)
+      if (winsByName[oldName] !== undefined) {
+        const wins = winsByName[oldName]
+        const next = { ...winsByName }
+        delete next[oldName]
+        next[newName] = wins
+        winsByName = next
+      }
+      if (lastRoundWinner === oldName) lastRoundWinner = newName
+      if (casualModePlayers.has(oldName)) {
+        const next = new Set(casualModePlayers)
+        next.delete(oldName)
+        next.add(newName)
+        casualModePlayers = next
+      }
     }
     // song:pause, songs:exhausted, and all page-specific messages are handled by the caller.
   }

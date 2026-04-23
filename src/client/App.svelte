@@ -8,6 +8,7 @@
   import HostRoomPage from './pages/HostRoomPage.svelte'
   import { getMe } from './lib/api.ts'
   import { determineInitialPage, type Page } from './lib/ws.ts'
+  import { setStoredGuestName } from './lib/guestName.ts'
 
   let page: Page = $state('loading')
   let prefillCode = $state('')
@@ -94,6 +95,11 @@
     page = 'dashboard'
   }
 
+  function handleGuestRename(newName: string) {
+    guestName = newName
+    setStoredGuestName(newName)
+  }
+
   function handleGuestLeave() {
     if (guestWs?.readyState === WebSocket.OPEN) {
       guestWs.send(JSON.stringify({ type: 'guest:leave' }))
@@ -115,7 +121,7 @@
 {:else if page === 'lobby'}
   <LobbyPage code={currentRoomCode} onRoundStarted={handleRoundStarted} onBackToDashboard={handleBackToDashboard} onJoinAsGuest={handleJoinAsGuest} />
 {:else if page === 'room'}
-  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} initialWinsByName={guestWinsByName} initialLastRoundWinner={guestLastRoundWinner} initialCasualModeNames={guestCasualModeNames} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} />
+  <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} initialWinsByName={guestWinsByName} initialLastRoundWinner={guestLastRoundWinner} initialCasualModeNames={guestCasualModeNames} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} onSelfRename={handleGuestRename} />
 {:else if page === 'hostroom'}
   <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} onSessionEnded={handleSessionEnded} />
 {/if}

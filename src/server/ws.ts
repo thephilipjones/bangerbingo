@@ -4,7 +4,7 @@ import type { Socket } from 'node:net'
 import type { ServerType } from '@hono/node-server'
 import { authEvents } from './refresh.ts'
 import { verifySession } from './auth.ts'
-import { getRoomByCode, getHostById, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms } from './db.ts'
+import { getRoomByCode, getHostById, upsertActiveRoom, deleteActiveRoom, getAllActiveRooms, setRoomHostName } from './db.ts'
 import { runCasualModeSweep, replayAutoMarksToSocket } from './rooms.ts'
 import type { Track } from './music/spotify.ts'
 import { generateCard, type Tile } from './game/cards.ts'
@@ -97,7 +97,17 @@ export interface RoomState {
   // Snapshot of names who had casual mode ON before the host revoked it mid-session
   // (allowCasualMode: true → false). Consumed on restore (false → true). Story 9-2.
   priorCasualModes?: Set<string>
+  // Names of guests whose bingo claim is currently in-flight. player:rename rejects
+  // if the claimer's name is in this set to prevent identity change during claim RPC.
+  // CLAIM_PENDING_SENTINEL is added synchronously at /round/claim entry (before the
+  // async body parse) so a rename arriving during the await can't slip past the guard.
+  pendingClaims: Set<string>
 }
+
+// Sentinel entry added to pendingClaims at claim-handler entry, before the body
+// is read. Rename handlers reject whenever pendingClaims is non-empty, so the
+// sentinel keeps the rename guard live across the body-parse await window.
+export const CLAIM_PENDING_SENTINEL = '__claim_pending__'
 
 export const roomSockets = new Map<string, RoomState>()
 
@@ -169,6 +179,7 @@ export function rehydrateRooms(): void {
       activeDeviceId: snap.activeDeviceId ?? snap.sdkDeviceId,
       sessionStats: emptySessionStats(),
       playerCasualModes: restoredCasualModes,
+      pendingClaims: new Set(),
       currentRound: snap.currentRound ? (() => {
         // Drop pre-9-3 winnerName from persisted snapshots — field removed from RoundState.
         const { winnerName: _winnerName, ...snapRound } = snap.currentRound
@@ -372,7 +383,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
 
     const wasInMap = roomSockets.has(code)
     if (!wasInMap) {
-      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), playerCasualModes: new Map() })
+      roomSockets.set(code, { host: null, hostUserId: sessionUserId, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), playerCasualModes: new Map(), pendingClaims: new Set() })
     }
     const roomState = roomSockets.get(code)!
 
@@ -454,6 +465,63 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
           } else {
             r.currentRound?.autoMarkedTileIndices.delete(currentHostName)
           }
+        } else if (msg.type === 'player:rename') {
+          const r = roomSockets.get(code)
+          if (!r) return
+          const currentRoom = getRoomByCode(code)
+          if (!currentRoom?.host_name) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'no-host-name' }))
+            return
+          }
+          const oldName = currentRoom.host_name
+          const newName = typeof msg.newName === 'string' ? msg.newName.trim() : ''
+          if (!newName || newName.length > 30 || newName === oldName) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'invalid' }))
+            return
+          }
+          // Reject if colliding with a connected guest
+          const conflictGuest = r.guests.get(newName)
+          if (conflictGuest && conflictGuest.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'taken' }))
+            return
+          }
+          // Reject if any claim is in-flight — the sentinel guards the narrow
+          // window between /round/claim entry and body-parse completion.
+          if (r.pendingClaims.size > 0) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'claiming' }))
+            return
+          }
+          // Update host name in DB
+          setRoomHostName(code, newName)
+          // Atomic migration of name-keyed structures — no await between writes
+          // Host cards key is hostUserId (stable) — do NOT migrate cards
+          const casualMode = r.playerCasualModes.get(oldName)
+          r.playerCasualModes.delete(oldName)
+          if (casualMode !== undefined) r.playerCasualModes.set(newName, casualMode)
+          if (r.priorCasualModes?.has(oldName)) {
+            r.priorCasualModes.delete(oldName)
+            r.priorCasualModes.add(newName)
+          }
+          if (r.currentRound) {
+            const autoMarked = r.currentRound.autoMarkedTileIndices.get(oldName)
+            if (autoMarked !== undefined) {
+              r.currentRound.autoMarkedTileIndices.delete(oldName)
+              r.currentRound.autoMarkedTileIndices.set(newName, autoMarked)
+            }
+            if (r.currentRound.winData?.winnerName === oldName) {
+              r.currentRound.winData.winnerName = newName
+            }
+          }
+          const wins = r.sessionStats.winsByName[oldName]
+          if (wins !== undefined) {
+            delete r.sessionStats.winsByName[oldName]
+            r.sessionStats.winsByName[newName] = wins
+          }
+          if (r.sessionStats.lastRoundWinner === oldName) {
+            r.sessionStats.lastRoundWinner = newName
+          }
+          broadcast(code, { type: 'player:renamed', oldName, newName, isHost: true })
+          persistRoomState(code)
         }
       } catch { /* ignore malformed */ }
     })
@@ -468,8 +536,10 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
   } else {
     // ── Guest path ─────────────────────────────────────────────────────────
     // Rate-limit already enforced at the top of handleConnection.
-    const name = guestName?.trim() ?? ''
-    if (!name) {
+    // Mutable ref so close/leave/casual-mode handlers always use the current
+    // name after a successful rename (nameRef.current updated atomically).
+    const nameRef = { current: guestName?.trim() ?? '' }
+    if (!nameRef.current) {
       ws.close(4000, 'missing name')
       return
     }
@@ -481,19 +551,19 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     }
 
     if (!roomSockets.has(code)) {
-      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), playerCasualModes: new Map() })
+      roomSockets.set(code, { host: null, hostUserId: room.host_user_id, hostHasEverConnected: false, guests: new Map(), sessionStats: emptySessionStats(), playerCasualModes: new Map(), pendingClaims: new Set() })
     }
     const roomState = roomSockets.get(code)!
 
     // Reject if name is taken by a currently-connected guest
-    const existing = roomState.guests.get(name)
+    const existing = roomState.guests.get(nameRef.current)
     if (existing && existing.readyState === WebSocket.OPEN) {
       ws.close(4009, 'name taken')
       return
     }
 
     // Add/overwrite slot (handles reconnect)
-    roomState.guests.set(name, ws)
+    roomState.guests.set(nameRef.current, ws)
 
     ws.send(JSON.stringify({
       type: 'session:connect',
@@ -511,10 +581,10 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     // should not mint a new card against a dead round nor receive a round:win replay with
     // another player's winningTileIds.
     const round = roomState.currentRound
-    if (round?.active || (round?.ended && round.cards.has(name))) {
-      const existingCard = round.cards.get(name)
+    if (round?.active || (round?.ended && round.cards.has(nameRef.current))) {
+      const existingCard = round.cards.get(nameRef.current)
       const card = existingCard ?? generateCard(round.playlist)
-      if (!existingCard) round.cards.set(name, card)
+      if (!existingCard) round.cards.set(nameRef.current, card)
       ws.send(JSON.stringify({
         ...round.roundStartPayload,
         card,
@@ -535,22 +605,22 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
       // returning socket in a single square:auto-marked event. One event = one
       // catch-up toast.
       // runCasualModeSweep/replayAutoMarksToSocket guard !round.active — no-op for ended rounds.
-      if (roomState.playerCasualModes.get(name) === true) {
-        runCasualModeSweep(code, roomState, { playerName: name, suppressEmit: true })
-        replayAutoMarksToSocket(roomState, ws, name)
+      if (roomState.playerCasualModes.get(nameRef.current) === true) {
+        runCasualModeSweep(code, roomState, { playerName: nameRef.current, suppressEmit: true })
+        replayAutoMarksToSocket(roomState, ws, nameRef.current)
       }
     }
 
-    broadcast(code, { type: 'player:joined', name }, ws)
+    broadcast(code, { type: 'player:joined', name: nameRef.current }, ws)
 
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString())
         if (msg.type === 'guest:leave') {
           const r = roomSockets.get(code)
-          if (r && r.guests.get(name) === ws) {
-            r.guests.delete(name)
-            broadcast(code, { type: 'player:left', name })
+          if (r && r.guests.get(nameRef.current) === ws) {
+            r.guests.delete(nameRef.current)
+            broadcast(code, { type: 'player:left', name: nameRef.current })
           }
         } else if (msg.type === 'player:casual-mode-changed') {
           if (typeof msg.enabled !== 'boolean') return
@@ -558,16 +628,82 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
           if (!r) return
           // Story 9-2: reject new opt-ins while the host has the permission off.
           if (msg.enabled === true && r.currentRound?.config.allowCasualMode === false) return
-          r.playerCasualModes.set(name, msg.enabled)
-          broadcast(code, { type: 'player:casual-mode-changed', name, enabled: msg.enabled })
+          r.playerCasualModes.set(nameRef.current, msg.enabled)
+          broadcast(code, { type: 'player:casual-mode-changed', name: nameRef.current, enabled: msg.enabled })
           // Casual Mode (Story 8-5) — AC #4. On enable, run a catch-up sweep for this
           // player so they pick up any tiles matching already-played songs. On disable,
           // clear the per-player swept set so a later re-enable re-sweeps everything.
           if (msg.enabled === true) {
-            runCasualModeSweep(code, r, { playerName: name, isCatchUp: true })
+            runCasualModeSweep(code, r, { playerName: nameRef.current, isCatchUp: true })
           } else {
-            r.currentRound?.autoMarkedTileIndices.delete(name)
+            r.currentRound?.autoMarkedTileIndices.delete(nameRef.current)
           }
+        } else if (msg.type === 'player:rename') {
+          const r = roomSockets.get(code)
+          if (!r) return
+          const newName = typeof msg.newName === 'string' ? msg.newName.trim() : ''
+          const oldName = nameRef.current
+          // Client-side should prevent empty/unchanged, but validate on server too
+          if (!newName || newName.length > 30 || newName === oldName) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'invalid' }))
+            return
+          }
+          // Reject if rename would collide with host name
+          const currentRoom = getRoomByCode(code)
+          if (!currentRoom) return
+          if (newName === currentRoom.host_name) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'taken' }))
+            return
+          }
+          // Reject if colliding with a connected guest (other than self)
+          const conflictSocket = r.guests.get(newName)
+          if (conflictSocket && conflictSocket.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'taken' }))
+            return
+          }
+          // Reject if any claim is in-flight — the sentinel guards the narrow
+          // window between /round/claim entry and body-parse completion.
+          if (r.pendingClaims.size > 0) {
+            ws.send(JSON.stringify({ type: 'player:rename-rejected', reason: 'claiming' }))
+            return
+          }
+          // Atomic migration — no await between map writes
+          r.guests.delete(oldName)
+          r.guests.set(newName, ws)
+          const activeRound = r.currentRound
+          if (activeRound) {
+            const card = activeRound.cards.get(oldName)
+            if (card !== undefined) {
+              activeRound.cards.delete(oldName)
+              activeRound.cards.set(newName, card)
+            }
+            const autoMarked = activeRound.autoMarkedTileIndices.get(oldName)
+            if (autoMarked !== undefined) {
+              activeRound.autoMarkedTileIndices.delete(oldName)
+              activeRound.autoMarkedTileIndices.set(newName, autoMarked)
+            }
+            if (activeRound.winData?.winnerName === oldName) {
+              activeRound.winData.winnerName = newName
+            }
+          }
+          const casualMode = r.playerCasualModes.get(oldName)
+          r.playerCasualModes.delete(oldName)
+          if (casualMode !== undefined) r.playerCasualModes.set(newName, casualMode)
+          if (r.priorCasualModes?.has(oldName)) {
+            r.priorCasualModes.delete(oldName)
+            r.priorCasualModes.add(newName)
+          }
+          const wins = r.sessionStats.winsByName[oldName]
+          if (wins !== undefined) {
+            delete r.sessionStats.winsByName[oldName]
+            r.sessionStats.winsByName[newName] = wins
+          }
+          if (r.sessionStats.lastRoundWinner === oldName) {
+            r.sessionStats.lastRoundWinner = newName
+          }
+          nameRef.current = newName
+          broadcast(code, { type: 'player:renamed', oldName, newName })
+          persistRoomState(code)
         }
       } catch { /* ignore malformed */ }
     })
@@ -575,13 +711,13 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
     ws.on('close', () => {
       const r = roomSockets.get(code)
       // Only remove if this is still the registered socket (not a reconnect)
-      if (r && r.guests.get(name) === ws) {
-        r.guests.delete(name)
+      if (r && r.guests.get(nameRef.current) === ws) {
+        r.guests.delete(nameRef.current)
         // Casual Mode (Story 8-5) — AC #6. Clear the per-player swept set so the next
         // reconnect's catch-up sweep re-emits every eligible tile (fresh-device safe).
         // Do NOT clear r.playerCasualModes — the ☕ indicator persists across reconnects.
-        r.currentRound?.autoMarkedTileIndices.delete(name)
-        broadcast(code, { type: 'player:left', name })
+        r.currentRound?.autoMarkedTileIndices.delete(nameRef.current)
+        broadcast(code, { type: 'player:left', name: nameRef.current })
       }
     })
   }

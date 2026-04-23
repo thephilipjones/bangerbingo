@@ -12,8 +12,9 @@
   import { createGameState } from '../lib/gameState.svelte.ts'
   import { createWsClient, type WsClient, type WsState } from '../lib/wsClient.ts'
   import { playWinAudio } from '../lib/winAudio.ts'
+  import { setStoredGuestName } from '../lib/guestName.ts'
 
-  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialCasualModeNames = [], pendingMessages = [], onLeave }: {
+  let { name, code, ws, initialPlayers = [], hostName = null, initialWinsByName = {}, initialLastRoundWinner = null, initialCasualModeNames = [], pendingMessages = [], onLeave, onSelfRename }: {
     name: string
     code: string
     ws: WebSocket
@@ -24,7 +25,14 @@
     initialCasualModeNames?: string[]
     pendingMessages?: MessageEvent[]
     onLeave?: () => void
+    onSelfRename?: (newName: string) => void
   } = $props()
+
+  // Tracks the current name — updated on successful self-rename
+  let currentName = $state(untrack(() => name))
+  // Mirror hostName locally so host renames propagate into this view.
+  // Initialized from the prop; updated on `player:renamed` with isHost:true.
+  let currentHostName = $state<string | null>(untrack(() => hostName))
 
   let sessionEnded = $state(false)
   let wsState = $state<WsState>('open')
@@ -43,7 +51,7 @@
     }
   }
 
-  let casualModeOn = $state(untrack(() => initialCasualModeNames.includes(name)))
+  let casualModeOn = $state(untrack(() => initialCasualModeNames.includes(currentName)))
 
   function handleCasualToggle() {
     const next = !casualModeOn
@@ -53,7 +61,7 @@
 
   const game = createGameState({
     code: untrack(() => code),
-    getPlayerName: () => name,
+    getPlayerName: () => currentName,
     initialPlayers: untrack(() => initialPlayers),
     initialWinsByName: untrack(() => initialWinsByName),
     initialLastRoundWinner: untrack(() => initialLastRoundWinner),
@@ -86,6 +94,17 @@
     if (game.hasBingo) game.handleBingoClick()
   })
 
+  function buildWsUrl(forName: string): string {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${wsProtocol}//${window.location.host}/ws?name=${encodeURIComponent(forName)}&code=${encodeURIComponent(code)}`
+  }
+
+  function handleRename(newName: string) {
+    // Persist before WS send so a drop between send and in-memory update uses new name
+    setStoredGuestName(newName)
+    wsClient?.send({ type: 'player:rename', newName })
+  }
+
   function handleWsData(data: Record<string, unknown>) {
     // Capture before processWsMessage sets winData — guards audio replay in Story 13-6.
     const isWinReplay = data.type === 'round:win' && game.winData !== null
@@ -102,7 +121,24 @@
       game.lastRoundWinner = (data.lastRoundWinner as string | null | undefined) ?? null
       const casualNames = (data.casualModeNames as string[] | undefined) ?? []
       game.casualModePlayers = new Set(casualNames)
-      casualModeOn = casualNames.includes(name)
+      casualModeOn = casualNames.includes(currentName)
+    } else if (data.type === 'player:renamed') {
+      const oldName = data.oldName as string
+      const newName = data.newName as string
+      const isHost = data.isHost as boolean | undefined
+      if (isHost) {
+        currentHostName = newName
+      } else if (oldName === currentName) {
+        currentName = newName
+        onSelfRename?.(newName)
+        // Reconnects must use the new name — rebuild the ws query param.
+        wsClient?.setUrl(buildWsUrl(newName))
+      }
+    } else if (data.type === 'player:rename-rejected') {
+      console.warn('[rename] rejected:', data.reason)
+      // Roll back the optimistic localStorage write in handleRename() so a
+      // reload after a rejected rename doesn't re-join under the refused name.
+      setStoredGuestName(currentName)
     } else if (data.type === 'round:start') {
       clearTimeout(toastTimer)
       toastMessage = null
@@ -120,11 +156,8 @@
       try { handleWsData(JSON.parse(event.data)) } catch { /* ignore */ }
     }
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws?name=${encodeURIComponent(name)}&code=${encodeURIComponent(code)}`
-
     wsClient = createWsClient({
-      url: wsUrl,
+      url: buildWsUrl(currentName),
       existingSocket: ws,
       onMessage: (raw) => handleWsData(raw as Record<string, unknown>),
       onStateChange: (s) => { wsState = s },
@@ -168,14 +201,14 @@
 {/if}
 
 {#if game.showPlayers}
-  <PlayersOverlay players={game.players} {hostName} selfName={name} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} />
+  <PlayersOverlay players={game.players} hostName={currentHostName} selfName={currentName} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} onRename={handleRename} isClaiming={game.isClaiming} />
 {/if}
 
 <main class="room-page" class:game-active={game.tiles.length > 0 || game.winData !== null}>
   {#if game.winData !== null}
     <GameOverView
       role="guest"
-      selfName={name}
+      selfName={currentName}
       winData={game.winData}
       audioPreset={game.audioPreset}
       ownTiles={game.tiles}
@@ -215,7 +248,7 @@
       </div>
     {/if}
   {:else}
-    <GuestWaitingRoom {code} selfName={name} {hostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {onLeave} allowCasualMode={game.allowCasualMode} {casualModeOn} onCasualToggle={handleCasualToggle} casualModeNames={game.casualModePlayers} />
+    <GuestWaitingRoom {code} selfName={currentName} hostName={currentHostName} players={game.players} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} {onLeave} allowCasualMode={game.allowCasualMode} {casualModeOn} onCasualToggle={handleCasualToggle} casualModeNames={game.casualModePlayers} onRename={handleRename} isClaiming={game.isClaiming} />
   {/if}
 </main>
 

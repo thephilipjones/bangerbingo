@@ -6,7 +6,7 @@
   import PlayerList from './PlayerList.svelte'
   import InfoTooltip from './InfoTooltip.svelte'
 
-  let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, onLeave, allowCasualMode = false, casualModeOn = false, onCasualToggle, casualModeNames = new Set() }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; onLeave?: () => void; allowCasualMode?: boolean; casualModeOn?: boolean; onCasualToggle?: () => void; casualModeNames?: Set<string> } = $props()
+  let { code, selfName, hostName, players, winsByName = {}, lastRoundWinner = null, showStats = false, onLeave, allowCasualMode = false, casualModeOn = false, onCasualToggle, casualModeNames = new Set(), onRename, isClaiming = false }: { code: string; selfName: string; hostName: string | null; players: string[]; winsByName?: Record<string, number>; lastRoundWinner?: string | null; showStats?: boolean; onLeave?: () => void; allowCasualMode?: boolean; casualModeOn?: boolean; onCasualToggle?: () => void; casualModeNames?: Set<string>; onRename?: (newName: string) => void; isClaiming?: boolean } = $props()
 
   // Host row is always rendered (with name or generic "Host"), so always count host as +1
   const playerCount = $derived(players.length + 1)
@@ -92,7 +92,7 @@
   <!-- Player list -->
   <div class="players-section">
     <h2 class="players-label">Players here ({playerCount})</h2>
-    <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} {casualModeNames} />
+    <PlayerList {players} {hostName} {selfName} {winsByName} {lastRoundWinner} {showStats} {casualModeNames} {onRename} {isClaiming} />
   </div>
 
   <!-- Casual Mode toggle (waiting room) -->

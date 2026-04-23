@@ -122,6 +122,10 @@
     wsClient?.send({ type: 'player:casual-mode-changed', enabled: next })
   }
 
+  function handleRename(newName: string) {
+    wsClient?.send({ type: 'player:rename', newName })
+  }
+
   function handleSessionEnd() {
     if (sessionEnded) return
     sessionEnded = true
@@ -555,6 +559,12 @@
         } else if (data.type === 'session:end') {
           pendingAutoPlay = false
           handleSessionEnd()
+        } else if (data.type === 'player:renamed') {
+          const newName = data.newName as string | undefined
+          const isHost = data.isHost as boolean | undefined
+          if (isHost && newName !== undefined) hostName = newName
+        } else if (data.type === 'player:rename-rejected') {
+          console.warn('[rename] rejected:', data.reason)
         } else if (data.type === 'auth:degraded') {
           authDegraded = true
         } else if (data.type === 'auth:restored') {
@@ -656,7 +666,7 @@
 {/if}
 
 {#if game.showPlayers}
-  <PlayersOverlay players={game.players} {hostName} selfName={null} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} />
+  <PlayersOverlay players={game.players} {hostName} selfName={null} winsByName={game.winsByName} lastRoundWinner={game.lastRoundWinner} showStats={game.showStats} casualModeNames={game.casualModePlayers} onClose={() => { game.showPlayers = false }} onRename={handleRename} isClaiming={game.isClaiming} />
 {/if}
 
 <div class="host-game" inert={isRoundConfigOpen || undefined}>

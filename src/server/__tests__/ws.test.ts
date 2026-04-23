@@ -913,6 +913,7 @@ describe('rehydrateRooms', () => {
       guests: new Map(),
       sessionStats: { winsByName: {}, lastRoundWinner: null },
       playerCasualModes: new Map<string, boolean>([['Alice', true], ['Bob', true], ['Carol', false]]),
+      pendingClaims: new Set<string>(),
       currentRound: {
         roundNumber: 1,
         config: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1, audioPreset: 'minimal', allowCasualMode: true },
@@ -1573,5 +1574,257 @@ describe('Guest join rate limit', () => {
     const closed = await waitClose(ws)
     expect(closed.code).toBe(4429)
     expect(closed.reason).toBe('Too many requests')
+  })
+})
+
+// ── player:rename (Self-rename story) ────────────────────────────────────────
+
+describe('player:rename — guest happy path', () => {
+  it('guest renames: server migrates guests map and broadcasts player:renamed to all', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+    await host.next('player:joined')
+
+    const carol = await connect('/ws?code=AAAA&name=Carol')
+    await carol.next('session:connect')
+    await host.next('player:joined')
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Bobby' }))
+
+    const hostMsg = await host.next('player:renamed')
+    expect(hostMsg).toEqual({ type: 'player:renamed', oldName: 'Bob', newName: 'Bobby' })
+
+    const bobMsg = await bob.next('player:renamed')
+    expect(bobMsg.oldName).toBe('Bob')
+    expect(bobMsg.newName).toBe('Bobby')
+
+    const carolMsg = await carol.next('player:renamed')
+    expect(carolMsg.oldName).toBe('Bob')
+    expect(carolMsg.newName).toBe('Bobby')
+
+    // guests map should now have Bobby, not Bob
+    const room = roomSockets.get('AAAA')!
+    expect(room.guests.has('Bobby')).toBe(true)
+    expect(room.guests.has('Bob')).toBe(false)
+
+    host.close(); bob.close(); carol.close()
+  })
+
+  it('guest rename migrates winsByName key', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+
+    // Manually seed a win under "Bob"
+    const room = roomSockets.get('AAAA')!
+    room.sessionStats.winsByName['Bob'] = 2
+    room.sessionStats.lastRoundWinner = 'Bob'
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Bobby' }))
+    await bob.next('player:renamed')
+
+    expect(room.sessionStats.winsByName['Bobby']).toBe(2)
+    expect(room.sessionStats.winsByName['Bob']).toBeUndefined()
+    expect(room.sessionStats.lastRoundWinner).toBe('Bobby')
+
+    bob.close()
+  })
+
+  it('rename after disconnect / left uses new name in close handler', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+    await host.next('player:joined')
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Bobby' }))
+    await bob.next('player:renamed')
+    await host.next('player:renamed')
+
+    // Now Bob (now Bobby) disconnects — should broadcast player:left with newName
+    bob.close()
+    const leftMsg = await host.next('player:left')
+    expect(leftMsg).toEqual({ type: 'player:left', name: 'Bobby' })
+
+    host.close()
+  })
+})
+
+describe('player:rename — guest rejection cases', () => {
+  it('empty name → player:rename-rejected', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: '   ' }))
+    const rej = await bob.next('player:rename-rejected')
+    expect(rej.type).toBe('player:rename-rejected')
+
+    bob.close()
+  })
+
+  it('name over 30 chars → player:rename-rejected', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'A'.repeat(31) }))
+    const rej = await bob.next('player:rename-rejected')
+    expect(rej.type).toBe('player:rename-rejected')
+
+    bob.close()
+  })
+
+  it('unchanged name → player:rename-rejected', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Bob' }))
+    const rej = await bob.next('player:rename-rejected')
+    expect(rej.type).toBe('player:rename-rejected')
+
+    bob.close()
+  })
+
+  it('collision with connected guest → player:rename-rejected', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+
+    const carol = await connect('/ws?code=AAAA&name=Carol')
+    await carol.next('session:connect')
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Carol' }))
+    const rej = await bob.next('player:rename-rejected')
+    expect(rej.reason).toBe('taken')
+
+    bob.close(); carol.close()
+  })
+
+  it('collision with host_name → player:rename-rejected', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+    setRoomHostName('AAAA', 'Alice')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Alice' }))
+    const rej = await bob.next('player:rename-rejected')
+    expect(rej.reason).toBe('taken')
+
+    bob.close()
+  })
+})
+
+describe('player:rename — host happy path', () => {
+  it('host renames: DB updated, player:renamed broadcast with isHost:true', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+    setRoomHostName('AAAA', 'Alice')
+
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+    await host.next('player:joined')
+
+    host.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Ali' }))
+
+    const hostMsg = await host.next('player:renamed')
+    expect(hostMsg).toEqual({ type: 'player:renamed', oldName: 'Alice', newName: 'Ali', isHost: true })
+
+    const bobMsg = await bob.next('player:renamed')
+    expect(bobMsg.isHost).toBe(true)
+    expect(bobMsg.newName).toBe('Ali')
+
+    // DB should reflect new host name
+    const room = getRoomByCode('AAAA')
+    expect(room?.host_name).toBe('Ali')
+
+    host.close(); bob.close()
+  })
+
+  it('host rename migrates winsByName and lastRoundWinner', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+    setRoomHostName('AAAA', 'Alice')
+
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const r = roomSockets.get('AAAA')!
+    r.sessionStats.winsByName['Alice'] = 3
+    r.sessionStats.lastRoundWinner = 'Alice'
+
+    host.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Ali' }))
+    await host.next('player:renamed')
+
+    expect(r.sessionStats.winsByName['Ali']).toBe(3)
+    expect(r.sessionStats.winsByName['Alice']).toBeUndefined()
+    expect(r.sessionStats.lastRoundWinner).toBe('Ali')
+
+    host.close()
+  })
+
+  it('host rename rejected when host_name is null (not yet set)', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const host = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    host.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Alice' }))
+    const rejected = await host.next('player:rename-rejected')
+    expect(rejected.reason).toBe('no-host-name')
+
+    host.close()
+  })
+})
+
+describe('player:rename — concurrent rename guard', () => {
+  it('second rename to same new name by different guest is rejected as taken', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const bob = await connect('/ws?code=AAAA&name=Bob')
+    await bob.next('session:connect')
+
+    const carol = await connect('/ws?code=AAAA&name=Carol')
+    await carol.next('session:connect')
+
+    // Bob renames to "Newname" successfully
+    bob.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Newname' }))
+    await bob.next('player:renamed')
+    await carol.next('player:renamed')
+
+    // Carol now tries to rename to "Newname" — should be rejected
+    carol.ws.send(JSON.stringify({ type: 'player:rename', newName: 'Newname' }))
+    const rej = await carol.next('player:rename-rejected')
+    expect(rej.reason).toBe('taken')
+
+    bob.close(); carol.close()
   })
 })
