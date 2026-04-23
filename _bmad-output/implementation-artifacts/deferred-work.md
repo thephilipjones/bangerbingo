@@ -1,5 +1,12 @@
 # Deferred Work
 
+## Deferred from: code review of 13-11-playback-indicator-bar (2026-04-23)
+
+- **Clock skew: bar starts WS-latency ms late per track** — `playbackStartedAt = Date.now()` is set when the `song:start` WS message is *received*, not when the server fires it. LAN latency (~10–50ms) means the bar lags audio slightly; resets per-track so drift doesn't accumulate. Spec accepts this ("verified by observation"); would require a server-side broadcast timestamp to eliminate. (src/client/lib/gameState.svelte.ts)
+- **`round:win` does not reset bar — bar remains at last progress during win overlay** — AC 7 only requires reset on `round:start`; bar stays at its current position (may be mid-sweep) until the next round begins. Visible if GameHeader is shown behind the win overlay. Fix: add `playbackStartedAt = 0` to the `round:win` branch of `processWsMessage`. (src/client/lib/gameState.svelte.ts)
+- **Reconnect mid-clip: bar stays empty for the remainder of the clip** — `round:start` reconnect payload carries no clip-start timestamp or `effectiveDurationMs`, so `playbackStartedAt` stays 0 until the next `song:start`. Safe fallback (bar hidden rather than showing garbage), but clip progress is lost for reconnecting clients. Fix would require server to include clip-start time in `round:start` replay payload. (src/server/ws.ts)
+- **Test magic number `179_000` — pre-computed literal for `FULL_MODE_TAIL_MS` offset** — `expect(msg.effectiveDurationMs).toBe(179_000)` with a comment explaining `180_000 - 1_000`. If `FULL_MODE_TAIL_MS` changes, the test fails with a cryptic mismatch rather than pointing at the constant. Consider expressing as `DEFAULT_TRACK_DURATION_MS - FULL_MODE_TAIL_MS` via imported constants. (src/server/__tests__/rooms.test.ts)
+
 ## Deferred from: code review of 13-2-casual-mode-persistence-across-restart (2026-04-22)
 
 - **Array-typed snapshot passes `playerCasualModes` guard silently** — `typeof snap.playerCasualModes === 'object'` also matches arrays; an empty array produces a correct empty Map, but a non-empty array (corrupted snapshot) would yield numeric string keys as player names with no warning. An `!Array.isArray` guard would surface the anomaly. (src/server/ws.ts:161)

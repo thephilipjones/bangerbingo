@@ -1112,6 +1112,9 @@ describe('POST /api/rooms/:code/round/play', () => {
     const msg = JSON.parse(sent[0])
     expect(msg.type).toBe('song:start')
     expect(msg.seekPositionMs).toBe(0)
+    // Story 13-11 — broadcast includes effectiveDurationMs derived server-side via
+    // clipDurationMs(). Full-mode default tracks are 180_000ms, so 180_000 - 1_000 = 179_000.
+    expect(msg.effectiveDurationMs).toBe(179_000)
 
     // Also verify the outbound Spotify PUT body — broadcast and API call must
     // agree. startSong fires the fetch via a fire-and-forget chain; flush
@@ -1145,6 +1148,8 @@ describe('POST /api/rooms/:code/round/play', () => {
     const msg = JSON.parse(sent[0])
     expect(msg.type).toBe('song:start')
     expect(msg.seekPositionMs).toBe(60_000)
+    // Story 13-11 — effectiveDurationMs for a timed clip is clipDuration * 1000.
+    expect(msg.effectiveDurationMs).toBe(30_000)
   })
 
   // AC 5 — Full-mode autoAdvance fires at durationMs - 1000

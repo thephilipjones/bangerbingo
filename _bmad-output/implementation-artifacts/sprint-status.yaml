@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-23 # story 13-9 → done (code review patches applied)
+last_updated: 2026-04-23 # story 13-11 → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -150,5 +150,5 @@ development_status:
   13-8-independent-cards-exclude-played-auto-reset: done
   13-9-clip-duration-full-fixes: done
   13-10-first-round-start-gate-and-lobby-header-passthrough: done
-  13-11-playback-indicator-bar: ready-for-dev
+  13-11-playback-indicator-bar: done
   epic-13-retrospective: done

@@ -270,6 +270,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     songIndex,
     roundNumber: round.roundNumber,
     currentSongRevealed: round.currentSongRevealed,
+    effectiveDurationMs: clipDurationMs(round.config.clipDuration, track),
   })
 
   persistRoomState(roomCode)

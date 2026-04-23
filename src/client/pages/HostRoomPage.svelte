@@ -707,6 +707,8 @@
         playersOpen={game.showPlayers}
         onPlayersClick={() => { game.showPlayers = !game.showPlayers; game.showHistory = false }}
         onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
+        playbackStartedAt={game.playbackStartedAt}
+        effectiveDurationMs={game.effectiveDurationMs}
       />
       <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
       {#if game.allowCasualMode && hostName !== null}

@@ -103,6 +103,8 @@ export function createGameState({
   let casualModePlayers = $state<Set<string>>(new Set(initialCasualModeNames))
   let catchUpToastCount = $state<number | null>(null)
   let catchUpToastId = $state<number | null>(null)
+  let playbackStartedAt = $state(0)
+  let effectiveDurationMs = $state(0)
 
   function handleTileClick(index: number) {
     const tile = tiles[index]
@@ -173,6 +175,8 @@ export function createGameState({
       songIndex = rawHistory.length > 0 ? rawHistory[rawHistory.length - 1].songIndex : null
       currentRevealed = (data.currentSongRevealed as boolean | undefined) ?? false
       highestRoundNumber = Math.max(highestRoundNumber, (data.roundNumber as number | undefined) ?? 0)
+      playbackStartedAt = 0
+      effectiveDurationMs = 0
     } else if (data.type === 'round-config:changed') {
       const cfg = (data.config as Record<string, unknown> | undefined) ?? {}
       if ('clipDuration' in cfg && isValidClipDuration(cfg.clipDuration)) {
@@ -221,6 +225,10 @@ export function createGameState({
         },
         ...songHistory.filter(e => e.songIndex !== data.songIndex),
       ]
+      playbackStartedAt = Date.now()
+      effectiveDurationMs = (data.effectiveDurationMs as number | undefined) ?? 0
+    } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
+      playbackStartedAt = 0
     } else if (data.type === 'song:reveal') {
       currentRevealed = true
       tiles = startReveal(tiles, data.trackId as string)
@@ -261,7 +269,8 @@ export function createGameState({
         casualModePlayers = next
       }
     }
-    // song:pause, songs:exhausted, and all page-specific messages are handled by the caller.
+    // songs:exhausted playback reset is handled above; its UI transition is handled by the caller.
+    // All other page-specific messages are handled by the caller.
   }
 
   /**
@@ -321,6 +330,8 @@ export function createGameState({
     set casualModePlayers(v: Set<string>) { casualModePlayers = v },
     get catchUpToastCount() { return catchUpToastCount },
     get catchUpToastId() { return catchUpToastId },
+    get playbackStartedAt() { return playbackStartedAt },
+    get effectiveDurationMs() { return effectiveDurationMs },
     clearCatchUpToast() { catchUpToastCount = null },
     handleTileClick,
     handleBingoClick,

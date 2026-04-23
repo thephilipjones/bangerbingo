@@ -3,6 +3,7 @@
   import { copyRoomCode } from '../lib/ws.ts'
   import Logo from '../lib/components/Logo.svelte'
   import ThemeToggle from '../lib/components/ThemeToggle.svelte'
+  import PlaybackBar from './PlaybackBar.svelte'
 
   let {
     playerCount,
@@ -12,6 +13,8 @@
     playersOpen = false,
     onPlayersClick,
     onHistoryClick,
+    playbackStartedAt = 0,
+    effectiveDurationMs = 0,
   }: {
     playerCount: number
     code: string
@@ -20,6 +23,8 @@
     playersOpen?: boolean
     onPlayersClick: () => void
     onHistoryClick: () => void
+    playbackStartedAt?: number
+    effectiveDurationMs?: number
   } = $props()
 
   let copied = $state(false)
@@ -62,6 +67,8 @@
       {playerCount} {playerCount === 1 ? 'Player' : 'Players'}
     </button>
   </div>
+
+  <PlaybackBar startedAt={playbackStartedAt} durationMs={effectiveDurationMs} />
 </div>
 
 <style>
@@ -75,7 +82,6 @@
     align-items: center;
     justify-content: space-between;
     background: var(--bg);
-    border-bottom: var(--rule-thick) solid var(--rule);
     padding: 10px 8px;
     box-sizing: border-box;
   }
