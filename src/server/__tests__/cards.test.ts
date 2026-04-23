@@ -8,6 +8,7 @@ function makeTracks(n: number): Track[] {
     title: `Song ${i}`,
     artist: `Artist ${i}`,
     albumArtUrl: `https://img/${i}`,
+    durationMs: 180000,
   }))
 }
 
