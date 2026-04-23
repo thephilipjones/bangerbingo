@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { X, ArrowRight } from 'phosphor-svelte'
+  import { X, ArrowRight, CaretRight } from 'phosphor-svelte'
   import { startRound } from '../lib/api.ts'
   import type { AudioPreset } from '../lib/api.ts'
   import type { TitleRevealDelay } from '../lib/bingo.ts'
@@ -408,7 +408,7 @@
       <details class="advanced-details">
         <summary class="advanced-summary">
           <span>Settings</span>
-          <span class="chevron" aria-hidden="true">▸</span>
+          <CaretRight class="chevron" aria-hidden="true" weight="bold" size={14} />
         </summary>
         <div class="advanced-body">
           <AdvancedSettings
@@ -755,17 +755,16 @@
   .advanced-summary::marker { content: ''; }
   .advanced-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .chevron {
+  :global(.chevron) {
     color: var(--fg-muted);
-    font-size: 0.85rem;
     transition: transform 0.15s ease;
     display: inline-block;
   }
-  .advanced-details[open] .chevron {
+  .advanced-details[open] :global(.chevron) {
     transform: rotate(90deg);
   }
   @media (prefers-reduced-motion: reduce) {
-    .chevron { transition: none; }
+    :global(.chevron) { transition: none; }
   }
 
   .advanced-body {
