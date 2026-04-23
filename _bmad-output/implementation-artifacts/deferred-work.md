@@ -1,5 +1,16 @@
 # Deferred Work
 
+## Deferred from: code review of 14-4-websocket-origin-check (2026-04-23)
+
+- **`new URL(req.url)` outside try/catch in upgrade handler** — pre-existing: if `req.url` is a full absolute URI, the `URL` constructor can throw in the `upgrade` event handler, crashing the process. Guard would be `try { url = new URL(...) } catch { socket.destroy(); return }`. Not introduced by 14-4. (src/server/ws.ts:788)
+- **IPv6 loopback `[::1]` not accepted in dev mode** — `u.hostname === '127.0.0.1'` covers IPv4 only; a dev browser resolving `localhost` to `::1` gets a 403. Low impact for current dev setup; fix when IPv6 dev support is needed. (src/server/ws.ts:766)
+- **Allowlist match is case-sensitive raw string** — `cfg.allowlist.has(origin)` does no URL normalisation; an operator who sets `WS_ALLOWED_ORIGINS=HTTPS://BANGERBINGO.NET` silently rejects all connections. Browsers always send lowercase scheme+host per RFC 6454, so risk is misconfiguration only. (src/server/ws.ts:761)
+- **Origin with path component or explicit default port fails allowlist** — `https://bangerbingo.net/` (trailing slash) or `https://bangerbingo.net:443` won't match `https://bangerbingo.net`. Browsers never include path per RFC 6454; risk is operator misconfiguration or non-browser client. (src/server/ws.ts:761)
+- **`WS_ALLOWED_ORIGINS` blank slots dropped silently** — `filter(Boolean)` removes empty entries after trimming without logging; a fat-fingered comma (e.g. `a.com, ,b.com`) silently reduces the allowlist. (src/server/ws.ts:756)
+- **`roomSockets.has('AAAA')` origin-rejection test assertions lack explicit afterEach cleanup** — pre-existing test isolation pattern; if a prior test leaves `AAAA` in `roomSockets`, the assertion fails with a misleading failure message. (src/server/__tests__/ws.test.ts:1955,1971)
+- **`0.0.0.0` not treated as loopback in dev mode** — some tools bind Vite to `0.0.0.0`, which would produce an origin of `http://0.0.0.0:5173` in the browser (unusual but possible). Not a blocking concern for the current dev setup. (src/server/ws.ts:766)
+- **403 response lacks `Content-Length: 0` header** — technically non-conformant per RFC 7230 §3.3 for responses with no body, but `Connection: close` prevents keep-alive reuse and all tested clients handle it correctly. Pre-existing pattern matching the 400 path. (src/server/ws.ts:793)
+
 ## Deferred from: code review of 13-11-playback-indicator-bar (2026-04-23)
 
 - **Clock skew: bar starts WS-latency ms late per track** — `playbackStartedAt = Date.now()` is set when the `song:start` WS message is *received*, not when the server fires it. LAN latency (~10–50ms) means the bar lags audio slightly; resets per-track so drift doesn't accumulate. Spec accepts this ("verified by observation"); would require a server-side broadcast timestamp to eliminate. (src/client/lib/gameState.svelte.ts)

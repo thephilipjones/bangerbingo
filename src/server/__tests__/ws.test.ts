@@ -12,7 +12,7 @@ vi.stubEnv('PORT', '3000')
 vi.stubEnv('NODE_ENV', 'test')
 
 const { app } = await import('../index.ts')
-const { setupWebSocketServer, roomSockets, getPlayerList, rehydrateRooms, joinRateLimit } = await import('../ws.ts')
+const { setupWebSocketServer, roomSockets, getPlayerList, rehydrateRooms, joinRateLimit, parseAllowedOrigins, isOriginAllowed } = await import('../ws.ts')
 const { authEvents } = await import('../refresh.ts')
 const { signUserId } = await import('../auth.ts')
 
@@ -39,15 +39,30 @@ function seedHost(userId = 'host_1') {
   })
 }
 
+interface ConnectOptions {
+  cookie?: string
+  // `origin` defaults to an allowed test origin so existing tests pass unchanged.
+  // Pass a string to override, or `null` to omit the Origin header entirely.
+  origin?: string | null
+}
+
+function buildHeaders(options: ConnectOptions): Record<string, string> {
+  const headers: Record<string, string> = {}
+  if (options.cookie) headers.Cookie = options.cookie
+  const origin = options.origin === undefined ? `http://127.0.0.1:${port}` : options.origin
+  if (origin !== null) headers.Origin = origin
+  return headers
+}
+
 /**
  * Connect a WebSocket client with a message buffer.
  * Messages are buffered from the moment the socket is created,
  * so callers never miss messages that arrive before a listener is attached.
  */
-function connect(path: string, options: { cookie?: string } = {}): Promise<WsClient> {
+function connect(path: string, options: ConnectOptions = {}): Promise<WsClient> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`, {
-      headers: options.cookie ? { Cookie: options.cookie } : {},
+      headers: buildHeaders(options),
     })
 
     const buf: Msg[] = []
@@ -99,9 +114,9 @@ function connect(path: string, options: { cookie?: string } = {}): Promise<WsCli
   })
 }
 
-function rawConnect(path: string, options: { cookie?: string } = {}): WebSocket {
+function rawConnect(path: string, options: ConnectOptions = {}): WebSocket {
   return new WebSocket(`ws://127.0.0.1:${port}${path}`, {
-    headers: options.cookie ? { Cookie: options.cookie } : {},
+    headers: buildHeaders(options),
   })
 }
 
@@ -1907,5 +1922,160 @@ describe('player:rename — concurrent rename guard', () => {
     expect(rej.reason).toBe('taken')
 
     bob.close(); carol.close()
+  })
+})
+
+// ── Story 14-4: WebSocket Origin check (CSWSH hardening) ──────────────────
+
+describe('parseAllowedOrigins', () => {
+  it('returns empty set for undefined/empty', () => {
+    expect(parseAllowedOrigins(undefined).size).toBe(0)
+    expect(parseAllowedOrigins('').size).toBe(0)
+    expect(parseAllowedOrigins('   ').size).toBe(0)
+  })
+
+  it('parses comma-separated list and trims whitespace', () => {
+    const s = parseAllowedOrigins('https://a.example, https://b.example ,  https://c.example')
+    expect(Array.from(s).sort()).toEqual(['https://a.example', 'https://b.example', 'https://c.example'])
+  })
+})
+
+describe('isOriginAllowed', () => {
+  const allowlist = new Set(['https://bangerbingo.net'])
+
+  it('rejects empty/missing origin in dev and prod', () => {
+    expect(isOriginAllowed('', { allowlist, devMode: true })).toBe(false)
+    expect(isOriginAllowed('', { allowlist, devMode: false })).toBe(false)
+  })
+
+  it('accepts exact allowlist match in either mode', () => {
+    expect(isOriginAllowed('https://bangerbingo.net', { allowlist, devMode: false })).toBe(true)
+    expect(isOriginAllowed('https://bangerbingo.net', { allowlist, devMode: true })).toBe(true)
+  })
+
+  it('rejects non-listed origins in prod mode', () => {
+    expect(isOriginAllowed('https://evil.example.com', { allowlist, devMode: false })).toBe(false)
+    expect(isOriginAllowed('http://localhost:5173', { allowlist, devMode: false })).toBe(false)
+  })
+
+  it('dev mode allows localhost, 127.0.0.1, and *.ts.net (any port, http/https)', () => {
+    const cfg = { allowlist: new Set<string>(), devMode: true }
+    expect(isOriginAllowed('http://localhost:5173', cfg)).toBe(true)
+    expect(isOriginAllowed('http://localhost', cfg)).toBe(true)
+    expect(isOriginAllowed('http://127.0.0.1:3000', cfg)).toBe(true)
+    expect(isOriginAllowed('https://127.0.0.1:3000', cfg)).toBe(true)
+    expect(isOriginAllowed('http://macbook.tailnet.ts.net:3000', cfg)).toBe(true)
+  })
+
+  it('dev mode rejects non-http(s) schemes and unrelated hosts', () => {
+    const cfg = { allowlist: new Set<string>(), devMode: true }
+    expect(isOriginAllowed('file:///local', cfg)).toBe(false)
+    expect(isOriginAllowed('javascript:alert(1)', cfg)).toBe(false)
+    expect(isOriginAllowed('https://evil.example.com', cfg)).toBe(false)
+    expect(isOriginAllowed('not a url', cfg)).toBe(false)
+  })
+})
+
+describe('WebSocket origin check — upgrade enforcement', () => {
+  function attemptUpgrade(path: string, options: ConnectOptions): Promise<{ outcome: 'rejected'; statusCode: number } | { outcome: 'opened' }> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers: buildHeaders(options) })
+      const timer = setTimeout(() => reject(new Error('upgrade timed out')), 2000)
+      ws.once('unexpected-response', (_req, res) => {
+        clearTimeout(timer)
+        const statusCode = res.statusCode ?? 0
+        res.resume()
+        ws.terminate()
+        resolve({ outcome: 'rejected', statusCode })
+      })
+      ws.once('open', () => {
+        clearTimeout(timer)
+        ws.close()
+        resolve({ outcome: 'opened' })
+      })
+      ws.once('error', () => { /* swallow — 403 surfaces via unexpected-response */ })
+    })
+  }
+
+  it('rejects upgrade with disallowed Origin (HTTP 403, no session:connect)', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const result = await attemptUpgrade('/ws?code=AAAA', {
+      cookie: sessionCookie(),
+      origin: 'https://evil.example.com',
+    })
+    expect(result).toEqual({ outcome: 'rejected', statusCode: 403 })
+    // No room state created — handleConnection never ran
+    expect(roomSockets.has('AAAA')).toBe(false)
+  })
+
+  it('rejects upgrade with missing Origin header (HTTP 403)', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const result = await attemptUpgrade('/ws?code=AAAA', {
+      cookie: sessionCookie(),
+      origin: null,
+    })
+    expect(result).toEqual({ outcome: 'rejected', statusCode: 403 })
+    expect(roomSockets.has('AAAA')).toBe(false)
+  })
+
+  it('accepts upgrade with allowed (dev-default) Origin and fires session:connect', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const c = await connect('/ws?code=AAAA', { cookie: sessionCookie(), origin: `http://127.0.0.1:${port}` })
+    const msg = await c.next()
+    expect(msg.type).toBe('session:connect')
+    expect(msg.role).toBe('host')
+    c.close()
+  })
+})
+
+describe('WebSocket origin check — production misconfig fails closed', () => {
+  it('NODE_ENV=production + WS_ALLOWED_ORIGINS unset rejects ALL upgrades with 403', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('WS_ALLOWED_ORIGINS', '')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const prodServer = createAdaptorServer({ fetch: app.fetch })
+    setupWebSocketServer(prodServer)
+    await new Promise<void>((resolve) => prodServer.listen(0, '127.0.0.1', resolve))
+    const prodPort = (prodServer.address() as AddressInfo).port
+
+    try {
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('WS_ALLOWED_ORIGINS is unset'))
+
+      seedHost('host_1')
+      createRoom('AAAA', 'host_1')
+
+      // Even an origin that would otherwise be allowed in prod (via allowlist)
+      // is rejected when the allowlist is empty from misconfiguration.
+      const result = await new Promise<number>((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${prodPort}/ws?code=AAAA`, {
+          headers: { Cookie: sessionCookie(), Origin: 'https://bangerbingo.net' },
+        })
+        const timer = setTimeout(() => reject(new Error('timeout')), 2000)
+        ws.once('unexpected-response', (_req, res) => {
+          clearTimeout(timer)
+          const s = res.statusCode ?? 0
+          res.resume()
+          ws.terminate()
+          resolve(s)
+        })
+        ws.once('open', () => { clearTimeout(timer); ws.close(); reject(new Error('unexpected open')) })
+        ws.once('error', () => {})
+      })
+
+      expect(result).toBe(403)
+    } finally {
+      warnSpy.mockRestore()
+      // Restore test env so subsequent tests' beforeEach setupWebSocketServer sees dev mode.
+      vi.stubEnv('NODE_ENV', 'test')
+      vi.stubEnv('WS_ALLOWED_ORIGINS', '')
+      await new Promise<void>((resolve) => prodServer.close(() => resolve()))
+    }
   })
 })

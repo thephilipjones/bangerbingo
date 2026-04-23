@@ -744,16 +744,57 @@ authEvents.on('restored', (userId: string) => {
   }
 })
 
+// ── WebSocket origin allowlist (Story 14-4 — CSWSH hardening) ─────────────
+
+export interface OriginCheckConfig {
+  allowlist: Set<string>
+  devMode: boolean
+}
+
+export function parseAllowedOrigins(raw: string | undefined): Set<string> {
+  if (!raw) return new Set()
+  return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))
+}
+
+export function isOriginAllowed(origin: string, cfg: OriginCheckConfig): boolean {
+  if (!origin) return false
+  if (cfg.allowlist.has(origin)) return true
+  if (!cfg.devMode) return false
+  let u: URL
+  try { u = new URL(origin) } catch { return false }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
+  if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true
+  if (u.hostname.endsWith('.ts.net')) return true
+  return false
+}
+
 // ── WebSocket server setup ─────────────────────────────────────────────────
 
 export function setupWebSocketServer(httpServer: ServerType): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
+
+  const rawAllowed = process.env.WS_ALLOWED_ORIGINS
+  const isProd = process.env.NODE_ENV === 'production'
+  const cfg: OriginCheckConfig = {
+    allowlist: parseAllowedOrigins(rawAllowed),
+    devMode: !isProd,
+  }
+  const prodMisconfig = isProd && cfg.allowlist.size === 0
+  if (prodMisconfig) {
+    console.warn('[ws] NODE_ENV=production but WS_ALLOWED_ORIGINS is unset — rejecting ALL WebSocket upgrades. Set WS_ALLOWED_ORIGINS on deploy.')
+  }
 
   httpServer.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     if (url.pathname !== '/ws') {
       socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
       socket.destroy()
+      return
+    }
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : ''
+    const allowed = !prodMisconfig && isOriginAllowed(origin, cfg)
+    if (!allowed) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
       return
     }
     wss.handleUpgrade(req, socket, head, (ws) => {

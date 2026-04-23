@@ -1,6 +1,6 @@
 # Story 14-4: WebSocket Origin Check (CSWSH Hardening)
 
-## Status: ready-for-dev
+## Status: done
 
 ## Context
 
@@ -66,3 +66,37 @@ Host from `https://bangerbingo.net`, guest from `https://bangerbingo.net`, local
 - Deferred entry in `_bmad-output/implementation-artifacts/deferred-work.md` under *"Deferred from: code review of 13-5-light-security-hardening"*
 - Story 13-5 for the rate-limit + cookie-signing pattern (similar-shape change)
 - Story 6-1 for the tailnet dev-mode allowances that the dev default preserves
+
+## Dev Agent Record
+
+### Completion Notes
+
+- Added pure helpers `parseAllowedOrigins` and `isOriginAllowed` (exported for unit test) plus an enforcement block inside `setupWebSocketServer` that runs before `wss.handleUpgrade`. Rejections emit a raw `HTTP/1.1 403 Forbidden` and destroy the socket — pre-handshake, so no WS close frame is needed.
+- Dev mode (NODE_ENV ≠ production) allows any http(s)://localhost, http(s)://127.0.0.1, and http(s)://*.ts.net origin in addition to anything explicitly listed in `WS_ALLOWED_ORIGINS`. Missing Origin is always rejected, in dev and prod alike.
+- Prod misconfig path: when `NODE_ENV=production` and `WS_ALLOWED_ORIGINS` is unset/empty, startup logs `[ws] NODE_ENV=production but WS_ALLOWED_ORIGINS is unset — rejecting ALL WebSocket upgrades. Set WS_ALLOWED_ORIGINS on deploy.` and the upgrade handler rejects every request with 403 regardless of Origin value (safe-by-default).
+- Env config is read inside `setupWebSocketServer` rather than at module load, so tests can stub env and spin up an isolated prod-misconfig server without a fresh import graph.
+- Test harness: extended `connect` / `rawConnect` helpers with a `ConnectOptions.origin` field (defaults to `http://127.0.0.1:<port>` — dev-allowed; pass `null` to omit). All 73 existing `ws.test.ts` cases pass unchanged.
+- New tests cover: pure helper logic (parse + dev/prod accept/reject matrix), integration rejection of evil/missing origin with 403 and no `session:connect`, integration success with dev-default origin, and the prod-misconfig fail-closed path (warn emitted, all upgrades 403 even with a would-be-allowed Origin).
+
+### File List
+
+- `src/server/ws.ts` — added `OriginCheckConfig`, `parseAllowedOrigins`, `isOriginAllowed`; reworked `setupWebSocketServer` to read env, log prod-misconfig WARN, and gate upgrades on origin check.
+- `src/server/__tests__/ws.test.ts` — added `ConnectOptions`/`buildHeaders` with default Origin; imported `parseAllowedOrigins`/`isOriginAllowed`; added three new describe blocks (parser, allowlist predicate, upgrade enforcement) plus a prod-misconfig describe block.
+- `.env.example` — documented `WS_ALLOWED_ORIGINS` with prod-required / dev-default behavior.
+
+### Change Log
+
+- 2026-04-23 — Implemented 14-4 WebSocket Origin check. Upgrade handler now rejects cross-origin WS connect attempts with HTTP 403 before handshake; prod fails closed on missing `WS_ALLOWED_ORIGINS`. Full test suite (588) + tsc build pass.
+
+### Review Findings
+
+- [x] [Review][Patch] WS_ALLOWED_ORIGINS set to whitespace/commas-only triggers `prodMisconfig=false` but builds an empty allowlist — prod silently rejects ALL upgrades with no WARN logged [src/server/ws.ts:754–756] — fixed: `prodMisconfig` now checks `cfg.allowlist.size === 0` after parsing
+- [x] [Review][Patch] `socket.write` + immediate `socket.destroy()` may drop 403 before TCP buffer flushes — use `socket.end(data)` instead [src/server/ws.ts:793–796] — fixed: changed to `socket.end(...)`
+- [x] [Review][Defer] `new URL(req.url)` outside try/catch in upgrade handler — pre-existing, not introduced by this change [src/server/ws.ts:788] — deferred, pre-existing
+- [x] [Review][Defer] IPv6 loopback `[::1]` not accepted in dev mode — beyond spec scope [src/server/ws.ts:766] — deferred, pre-existing
+- [x] [Review][Defer] Allowlist match is case-sensitive raw string; uppercase scheme/host in `WS_ALLOWED_ORIGINS` silently rejects all — operator edge case [src/server/ws.ts:761] — deferred, pre-existing
+- [x] [Review][Defer] Origin with path component or explicit default port fails allowlist match — browsers never include path per RFC 6454, operator misconfiguration risk [src/server/ws.ts:761] — deferred, pre-existing
+- [x] [Review][Defer] `WS_ALLOWED_ORIGINS` blank slots (e.g. `a.com, ,b.com`) silently dropped by `filter(Boolean)` with no warning [src/server/ws.ts:756] — deferred, pre-existing
+- [x] [Review][Defer] `roomSockets.has('AAAA')` assertion in origin-rejection tests lacks explicit `afterEach` cleanup — pre-existing test isolation pattern [src/server/__tests__/ws.test.ts:1955,1971] — deferred, pre-existing
+- [x] [Review][Defer] `0.0.0.0` not treated as loopback in dev mode — edge case beyond spec scope [src/server/ws.ts:766] — deferred, pre-existing
+- [x] [Review][Defer] 403 response lacks `Content-Length: 0` header (RFC 7230 §3.3) — pre-existing pattern, matches existing 400 path [src/server/ws.ts:793] — deferred, pre-existing
