@@ -106,15 +106,19 @@ export async function getPlaylistTracks(playlistId: string, accessToken: string)
 
   const data = await res.json() as SpotifyTracksResponse
 
-  // Spotify playlists can contain the same track id twice (users add manually;
-  // Spotify does not enforce uniqueness). Dedupe here so a single round can
-  // never surface duplicate tiles on a card.
-  const seen = new Set<string>()
+  // Dedupe by track ID first (same entry added twice), then by normalised
+  // title+artist so different versions of the same song (album vs. live, same
+  // name/artist but different IDs) don't both land on a card as look-alike tiles.
+  const seenIds = new Set<string>()
+  const seenNames = new Set<string>()
   const tracks = data.items
     .filter(item => item.track && item.track.id)
     .filter(item => {
-      if (seen.has(item.track!.id)) return false
-      seen.add(item.track!.id)
+      if (seenIds.has(item.track!.id)) return false
+      seenIds.add(item.track!.id)
+      const nameKey = `${item.track!.name.toLowerCase()}|${(item.track!.artists?.[0]?.name ?? '').toLowerCase()}`
+      if (seenNames.has(nameKey)) return false
+      seenNames.add(nameKey)
       return true
     })
     .map(item => ({

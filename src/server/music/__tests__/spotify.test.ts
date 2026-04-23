@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { getPlaylistTracks, InsufficientTracksError } from '../spotify.ts'
 
-function makeItem(id: string, name = `Song ${id}`) {
+function makeItem(id: string, name = `Song ${id}`, artist = `Artist ${id}`) {
   return {
     track: {
       id,
       name,
-      artists: [{ name: `Artist ${id}` }],
+      artists: [{ name: artist }],
       album: { images: [{ url: `https://img/${id}` }] },
     },
   }
@@ -40,6 +40,22 @@ describe('getPlaylistTracks', () => {
     expect(tracks).toHaveLength(25)
     const ids = tracks.map(t => t.id)
     expect(new Set(ids).size).toBe(25)
+  })
+
+  it('dedupes by title+artist (different versions of the same song)', async () => {
+    const items: ReturnType<typeof makeItem>[] = []
+    for (let i = 0; i < 24; i++) items.push(makeItem(`t${i}`))
+    // Same name+artist as t0 but a different track id (live version etc.)
+    items.push(makeItem('t0-live', 'Song t0', 'Artist t0'))
+    // A different song with the same name but a different artist should survive
+    items.push(makeItem('t25', 'Song t0', 'Artist Other'))
+    mockSpotifyOk(items)
+
+    const tracks = await getPlaylistTracks('pl', 'tok')
+    // t0-live is dropped; t25 survives → 25 unique tracks
+    expect(tracks).toHaveLength(25)
+    expect(tracks.map(t => t.id)).not.toContain('t0-live')
+    expect(tracks.map(t => t.id)).toContain('t25')
   })
 
   // AC 6 — durationMs populated from Spotify duration_ms
