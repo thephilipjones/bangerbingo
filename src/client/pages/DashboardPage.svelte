@@ -153,7 +153,9 @@
 
 <div class="dashboard">
   <header class="dashboard__top">
-    <Logo size={36} variant="full" />
+    <button class="logo-home" type="button" aria-label="Home" onclick={onJoinAsGuest}>
+      <Logo size={36} variant="full" />
+    </button>
     <ThemeToggle />
   </header>
 
@@ -191,8 +193,6 @@
   <Button variant="primary" size="lg" onclick={handleCreateRoom} disabled={creating}>
     {creating ? 'Creating…' : 'Start New Session'}
   </Button>
-
-  <Button variant="ghost" size="lg" onclick={onJoinAsGuest}>Join a Session</Button>
 
   {#if loading}
     <p class="muted u-small">Loading sessions…</p>
@@ -257,6 +257,19 @@
     padding-bottom: var(--space-4);
     border-bottom: var(--rule-thick) solid var(--rule);
   }
+
+  .logo-home {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .logo-home:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .spotify-panel {
     width: 100%;

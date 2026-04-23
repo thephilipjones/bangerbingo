@@ -27,6 +27,7 @@
 
   let name = $state(untrack(() => getStoredGuestName()))
   let code = $state(untrack(() => prefillCode))
+  let locked = $state(untrack(() => !!prefillCode))
   let nameError = $state('')
   let codeError = $state('')
   const autoRejoining = untrack(() => !!(prefillCode && name))
@@ -47,6 +48,15 @@
   onDestroy(() => {
     activeWs?.close()
   })
+
+  function handleHome() {
+    if (connecting) return
+    code = ''
+    codeError = ''
+    nameError = ''
+    locked = false
+    history.pushState(null, '', '/')
+  }
 
   function handleCodeInput(e: Event) {
     const input = e.currentTarget as HTMLInputElement
@@ -101,7 +111,9 @@
 
 <div class="join-page" class:hidden={autoRejoining && !autoRejoinFailed}>
   <header class="top-bar">
-    <Logo size={28} variant="mark-only" />
+    <button class="logo-home" type="button" aria-label="Home" onclick={handleHome}>
+      <Logo size={28} variant="mark-only" />
+    </button>
     <div class="top-bar__actions">
       <ThemeToggle />
       <Button variant="ghost" size="sm" onclick={onHostLogin} disabled={connecting}>Host Login</Button>
@@ -134,11 +146,11 @@
         <div class="field">
           <label for="code-input" class="u-small">
             Room code
-            {#if prefillCode}
+            {#if locked}
               <span class="lock" aria-label="locked"><Lock size={16} weight="fill" aria-hidden="true" /></span>
             {/if}
           </label>
-          {#if prefillCode}
+          {#if locked}
             <input
               id="code-input"
               type="text"
@@ -194,6 +206,19 @@
     padding: var(--space-4) var(--space-5);
     border-bottom: var(--rule-thick) solid var(--rule);
   }
+  .logo-home {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .logo-home:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
   .top-bar__actions {
     display: flex;
     align-items: center;
