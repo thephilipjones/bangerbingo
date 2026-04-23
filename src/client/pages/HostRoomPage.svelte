@@ -41,6 +41,7 @@
   let isRoundConfigOpen = $state(false)
   let playbackError = $state(false)
   let pendingAutoPlay = $state(false)
+  let awaitingFirstStart = $state(false)
   let nextRoundError = $state<string | null>(null)
   let playbackErrorTimer: ReturnType<typeof setTimeout> | undefined
   let nextRoundErrorTimer: ReturnType<typeof setTimeout> | undefined
@@ -204,6 +205,8 @@
   $effect(() => {
     if (game.hasBingo) game.handleBingoClick()
   })
+
+  const playbackReady = $derived(sdkReady || selectedDevice?.id != null)
 
   $effect(() => {
     if (sdkReady && pendingAutoPlay && !sdkFailed) {
@@ -505,7 +508,9 @@
           const currentSongIndex = (data as Record<string, unknown>).currentSongIndex as number | undefined
           const paused = (data as Record<string, unknown>).paused as boolean | undefined
           if (!history || history.length === 0) {
-            if (sdkReady && !sdkFailed) {
+            if (paused === true) {
+              awaitingFirstStart = true
+            } else if (sdkReady && !sdkFailed) {
               fetch(`/api/rooms/${code}/round/play`, { method: 'POST' })
                 .then(res => { if (!res.ok) showPlaybackError() })
                 .catch(() => showPlaybackError())
@@ -546,10 +551,13 @@
           currentTrackId = data.trackId
           isPlaying = true
           pendingAutoPlay = false
+          awaitingFirstStart = false
         } else if (data.type === 'song:pause' || data.type === 'songs:exhausted') {
           isPlaying = false
+          awaitingFirstStart = false
         } else if (data.type === 'round:win') {
           isPlaying = false
+          awaitingFirstStart = false
           if (!isWinReplay) {
             // Story 13-6: play win jingle here
           }
@@ -736,6 +744,8 @@
   {confirmPill}
   devicePickerOpen={showDevicePicker}
   disabled={sdkReconnecting}
+  {awaitingFirstStart}
+  {playbackReady}
 />
 
 {#if mobileHost && mobileNoDevice}

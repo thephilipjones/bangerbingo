@@ -694,8 +694,67 @@ describe('POST /api/rooms/:code/round — card generation', () => {
     const roomState = roomSockets.get('ABCD')!
     expect(roomState.currentRound?.currentSongIndex).toBe(-1)
     expect(roomState.currentRound?.songHistory).toEqual([])
-    expect(roomState.currentRound?.paused).toBe(false)
+    // Story 13-10: fresh room → first round starts paused so the host taps Play.
+    expect(roomState.currentRound?.paused).toBe(true)
     expect(roomState.currentRound?.timers).toEqual({})
+  })
+
+  // Story 13-10 — first-round start gate
+  it('startRound broadcasts paused:true on first round of session', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(30))
+
+    seedHost()
+    await seedRoom()
+
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+
+    const starts = hostWs.getSent().filter(m => m.type === 'round:start')
+    expect(starts).toHaveLength(1)
+    expect(starts[0].paused).toBe(true)
+
+    const roomState = roomSockets.get('ABCD')!
+    expect(roomState.currentRound?.paused).toBe(true)
+    expect((roomState.currentRound?.roundStartPayload as { paused?: boolean }).paused).toBe(true)
+  })
+
+  it('startRound broadcasts paused:false when played_songs has entries', async () => {
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(makeTracks(40))
+
+    seedHost()
+    await seedRoom()
+
+    const { recordPlayedSongs } = await import('../db.ts')
+    recordPlayedSongs('ABCD', ['track_0'])
+
+    const hostWs = makeMockWs()
+    roomSockets.get('ABCD')!.host = hostWs as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(validPayload),
+    })
+    expect(res.status).toBe(200)
+
+    const starts = hostWs.getSent().filter(m => m.type === 'round:start')
+    expect(starts).toHaveLength(1)
+    expect(starts[0].paused).toBe(false)
+
+    const roomState = roomSockets.get('ABCD')!
+    expect(roomState.currentRound?.paused).toBe(false)
+    expect((roomState.currentRound?.roundStartPayload as { paused?: boolean }).paused).toBe(false)
   })
 
   // Story 13-8 — previously-played excluded from pool + playlist

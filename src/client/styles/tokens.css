@@ -70,6 +70,7 @@
   --danger: var(--palette-danger);
   --ok: var(--palette-ok);
   --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --backdrop-bg: rgba(0, 0, 0, 0.45);
 }
 
 /* Dark theme */
@@ -84,4 +85,5 @@
   --danger: var(--palette-signal);
   --ok: var(--palette-ok);
   --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(239, 235, 228, 0.06);
+  --backdrop-bg: rgba(0, 0, 0, 0.85);
 }

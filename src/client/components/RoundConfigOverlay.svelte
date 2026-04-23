@@ -5,6 +5,8 @@
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
+  import { fade } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
   import { X, ArrowRight, CaretRight } from 'phosphor-svelte'
   import { startRound } from '../lib/api.ts'
   import type { AudioPreset } from '../lib/api.ts'
@@ -12,6 +14,38 @@
   import { validateHostName, buildStartRoundPayload } from '../lib/roundConfig.ts'
   import { readHostPrefs, writeHostPrefs } from '../lib/hostPrefs.ts'
   import AdvancedSettings from './AdvancedSettings.svelte'
+
+  function ticketIn(_node: Element) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return { duration: 0, css: () => '' }
+    }
+    return {
+      duration: 380,
+      delay: 60,
+      easing: cubicOut,
+      css: (t: number) => {
+        const translateY = (1 - t) * -100
+        const rotateX = (1 - t) * 6
+        return `transform: perspective(900px) translateY(${translateY}%) rotateX(${rotateX}deg);`
+      }
+    }
+  }
+
+  function ticketOut(_node: Element) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return { duration: 0, css: () => '' }
+    }
+    return {
+      duration: 320,
+      easing: (t: number) => t * t,
+      css: (t: number) => {
+        const translateY = (1 - t) * 120
+        const rotateX = (1 - t) * -8
+        const opacity = t < 0.3 ? t / 0.3 : 1
+        return `transform: perspective(900px) translateY(${translateY}%) rotateX(${rotateX}deg); opacity: ${opacity};`
+      }
+    }
+  }
 
   type ClipDuration = number | 'full'
 
@@ -24,6 +58,7 @@
     code,
     initialHostName,
     roundActive = false,
+    topOffset,
     onClose,
     onStarted,
     onHostNameMaybeSaved,
@@ -31,6 +66,7 @@
     code: string
     initialHostName: string | null
     roundActive?: boolean
+    topOffset?: number
     onClose: () => void
     onStarted: (submittedHostName: string | null) => void
     // Called when a hostName was submitted to the server but startRound itself failed.
@@ -303,11 +339,20 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="backdrop"
+  style:padding-top={topOffset != null ? `${topOffset}px` : undefined}
   onclick={requestClose}
+  in:fade={{ duration: 80 }} out:fade={{ duration: 220 }}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_interactive_supports_focus -->
-  <div class="panel" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Round configuration">
+  <div
+    class="panel"
+    onclick={(e) => e.stopPropagation()}
+    role="dialog"
+    aria-modal="true"
+    aria-label="Round configuration"
+    in:ticketIn out:ticketOut
+  >
     <header class="panel-header">
       <h2 class="picker-header">Pick a playlist</h2>
       <button class="close-btn" onclick={requestClose} aria-label="Close"><X size={16} weight="bold" aria-hidden="true" /></button>
@@ -470,7 +515,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--backdrop-bg);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -487,6 +532,7 @@
     width: 100%;
     max-width: 480px;
     padding: 0;
+    transform-origin: top center;
   }
 
   .panel-header {

@@ -27,6 +27,7 @@
   let isConfigOpen = $state(false)
   let roomHostName = $state<string | null>(null)
   let hasEverOpenedConfig = $state(false)
+  let headerHeight = $state(0)
 
   // ── Vinyl / header ──────────────────────────────────────────────────────────
   let copied = $state(false)
@@ -111,8 +112,13 @@
         if (!row) return
         roomHostName = row.host_name ?? null
         if (roomHostName === null && !hasEverOpenedConfig) {
-          isConfigOpen = true
           hasEverOpenedConfig = true
+          // Story 13-10: brief delay on fresh-session auto-open lets the
+          // lobby render (code, vinyl, players) before the modal slides up.
+          setTimeout(() => {
+            if (cancelled) return
+            isConfigOpen = true
+          }, 1_000)
         }
       })
       .catch(() => {
@@ -147,7 +153,7 @@
 
 <div class="lobby">
   <!-- Header: room code -->
-  <header class="lobby-header">
+  <header class="lobby-header" bind:offsetHeight={headerHeight}>
     <button class="back-btn" onclick={onBackToDashboard} aria-label="Back to session manager"><ArrowLeft size={18} aria-hidden="true" /> Sessions</button>
     <div class="header-center">
       <div class="room-invite">
@@ -204,6 +210,7 @@
   <RoundConfigOverlay
     {code}
     initialHostName={roomHostName}
+    topOffset={headerHeight > 0 ? headerHeight - 4 : undefined}
     onClose={() => (isConfigOpen = false)}
     onStarted={(name) => {
       if (name) roomHostName = name
@@ -239,7 +246,9 @@
     padding: var(--space-3) var(--space-5);
     background: var(--bg);
     border-bottom: var(--rule-thick) solid var(--rule);
-    z-index: 20;
+    /* Story 13-10: lift above RoundConfigOverlay backdrop (z-index 100) so
+       the room code and Back button stay visible and tappable during config. */
+    z-index: 110;
   }
 
   .back-btn {
@@ -393,6 +402,6 @@
     }
     .lobby-header { padding: var(--space-4) var(--space-7); }
     .players-section,
-    .fact { max-width: 32rem; }
+    .fact { max-width: 30rem; }
   }
 </style>

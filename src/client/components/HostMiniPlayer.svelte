@@ -20,6 +20,8 @@
     confirmPill = null,
     devicePickerOpen = false,
     disabled = false,
+    awaitingFirstStart = false,
+    playbackReady = true,
   }: {
     currentTrack: { title: string; artist: string } | null
     isPlaying: boolean
@@ -37,6 +39,8 @@
     confirmPill?: string | null
     devicePickerOpen?: boolean
     disabled?: boolean
+    awaitingFirstStart?: boolean
+    playbackReady?: boolean
   } = $props()
 
   let hostRevealed = $state(false)
@@ -47,6 +51,38 @@
   })
 
   const blurred = $derived(titleRevealDelay !== 0 && !currentRevealed && !hostRevealed)
+
+  // Story 13-10: first-round readiness gate with a 10s safety valve. While
+  // awaiting the first start and playback isn't ready, the Play button is
+  // disabled and a small caption explains why. If readiness never arrives,
+  // the gate opens after 10s so the host can tap Play anyway.
+  let readinessTimedOut = $state(false)
+  let readinessTimer: ReturnType<typeof setTimeout> | null = null
+
+  $effect(() => {
+    if (awaitingFirstStart && !playbackReady) {
+      if (readinessTimer === null) {
+        readinessTimer = setTimeout(() => { readinessTimedOut = true }, 10_000)
+      }
+    } else {
+      if (readinessTimer !== null) { clearTimeout(readinessTimer); readinessTimer = null }
+      readinessTimedOut = false
+    }
+    return () => {
+      if (readinessTimer !== null) { clearTimeout(readinessTimer); readinessTimer = null }
+    }
+  })
+
+  const waitingForPlayback = $derived(
+    awaitingFirstStart && !playbackReady && !readinessTimedOut
+  )
+  const firstStartCaption = $derived(
+    awaitingFirstStart && !playbackReady
+      ? (readinessTimedOut
+          ? 'No device detected — tap Play to try anyway.'
+          : 'Waiting for Spotify…')
+      : null
+  )
 </script>
 
 <div class="mini-player">
@@ -57,7 +93,7 @@
         href={currentTrackId ? `spotify:track:${currentTrackId}` : 'https://open.spotify.com'}
       >Open Spotify</a>
     {:else}
-      <button class="ctrl-btn play-pause-btn" onclick={onPlayPause} disabled={!sdkReady || disabled} aria-label={isPlaying ? 'Pause' : 'Play'}>
+      <button class="ctrl-btn play-pause-btn" onclick={onPlayPause} disabled={disabled || waitingForPlayback} aria-label={isPlaying ? 'Pause' : 'Play'}>
         <span class="btn-icon">{#if isPlaying}<Pause size={18} weight="fill" aria-hidden="true" />{:else}<Play size={18} weight="fill" aria-hidden="true" />{/if}</span><span class="btn-label">{isPlaying ? 'Pause' : 'Play'}</span>
       </button>
     {/if}
@@ -67,7 +103,9 @@
   </div>
 
   <div class="track-info">
-    {#if currentTrack}
+    {#if firstStartCaption}
+      <span class="first-start-caption" role="status" aria-live="polite">{firstStartCaption}</span>
+    {:else if currentTrack}
       {#if blurred}
         <button
           type="button"
@@ -165,6 +203,16 @@
   .track-text.waiting {
     display: block;
     font-size: 14px;
+    font-weight: 400;
+    color: var(--fg-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .first-start-caption {
+    display: block;
+    font-size: 13px;
     font-weight: 400;
     color: var(--fg-muted);
     white-space: nowrap;

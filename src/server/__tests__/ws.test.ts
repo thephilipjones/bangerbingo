@@ -896,6 +896,39 @@ describe('rehydrateRooms', () => {
     expect(room!.currentRound!.songHistory).toHaveLength(1)
   })
 
+  // Story 13-10 AC 8 — first-round pause survives restart
+  it('restored currentRound preserves paused:true from a first-round snapshot', () => {
+    const snapshot = {
+      hostUserId: 'host_1',
+      hostHasEverConnected: true,
+      pendingRound: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1 },
+      activeDeviceId: null,
+      currentRound: {
+        roundNumber: 1,
+        config: { playlistId: 'pl_1', clipDuration: 30, titleRevealDelay: 5, roundNumber: 1 },
+        playlist: [{ id: 't0', title: 'S0', artist: 'A0', albumArtUrl: '' }],
+        cards: { host_1: [{ trackId: 't0', title: 'S0', artist: 'A0', albumArtUrl: '', free: false }] },
+        roundStartPayload: { type: 'round:start', roundNumber: 1, paused: true },
+        active: true,
+        currentSongIndex: -1,
+        currentSongRevealed: false,
+        songHistory: [],
+        paused: true,
+        ended: false,
+      },
+    }
+
+    seedHost('host_1')
+    createRoom('PAUS', 'host_1')
+    upsertActiveRoom('PAUS', JSON.stringify(snapshot))
+    rehydrateRooms()
+
+    const room = roomSockets.get('PAUS')
+    expect(room).toBeDefined()
+    expect(room!.currentRound!.paused).toBe(true)
+    expect((room!.currentRound!.roundStartPayload as { paused?: boolean }).paused).toBe(true)
+  })
+
   // Story 13-2: Casual Mode state survives server restart.
   it('persists allowCasualMode + playerCasualModes and restores them via DB round-trip', async () => {
     const { persistRoomState } = await import('../ws.ts')

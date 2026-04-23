@@ -476,6 +476,9 @@ async function startRound(
   // and notify the host inline. A playlist with <25 unique tracks at all
   // still errors out — reset cannot manufacture tracks.
   let excluded = new Set(getPlayedSongs(code))
+  // Story 13-10: first-round-of-session signal. Compute BEFORE any auto-reset
+  // so a mid-session cycle-reset doesn't accidentally re-arm the round-1 pause.
+  const isFirstRound = excluded.size === 0
   let pool = buildPool(tracks, excluded)
   let didReset = false
   if (pool.length < 25) {
@@ -502,6 +505,7 @@ async function startRound(
     titleRevealDelay: config.titleRevealDelay,
     audioPreset: config.audioPreset,
     allowCasualMode: config.allowCasualMode,
+    paused: isFirstRound,
   }
 
   roomState.currentRound = {
@@ -514,7 +518,7 @@ async function startRound(
     currentSongIndex: -1,
     currentSongRevealed: false,
     songHistory: [],
-    paused: false,
+    paused: isFirstRound,
     timers: {},
     autoMarkedTileIndices: new Map(),
   }

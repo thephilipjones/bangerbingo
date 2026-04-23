@@ -84,6 +84,19 @@ beforeEach(() => {
     ok: true,
     json: async () => [{ name: '80s Pop', description: '', playlistId: 'pl_80s' }],
   }))
+  // jsdom stubs for Svelte transitions added in Story 13-10.
+  if (typeof Element !== 'undefined' && !Element.prototype.animate) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Element.prototype.animate = function (): any {
+      return { cancel() {}, finish() {}, play() {}, pause() {}, addEventListener() {}, removeEventListener() {}, finished: Promise.resolve() }
+    }
+  }
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
 })
 
 afterEach(() => {

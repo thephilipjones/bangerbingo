@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-22 # story 13-9 created (epic-13 reopened)
+last_updated: 2026-04-22 # story 13-10 → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -137,7 +137,7 @@ development_status:
   epic-12-retrospective: done
 
   # Epic 13: Reliability & Tech Debt
-  # NOTE (2026-04-22): reopened from 'done' to land 13-9 (clip-duration Full fixes from post-retro playtest).
+  # NOTE (2026-04-22): reopened from 'done' to land 13-9 (clip-duration Full fixes) and 13-10 (first-round start gate + lobby-header passthrough).
   epic-13: in-progress
   13-1-reconnect-after-win-state-replay: done
   13-2-casual-mode-persistence-across-restart: done
@@ -148,4 +148,5 @@ development_status:
   13-7-host-guest-neither-identity-flow: done
   13-8-independent-cards-exclude-played-auto-reset: done
   13-9-clip-duration-full-fixes: ready-for-dev
+  13-10-first-round-start-gate-and-lobby-header-passthrough: done
   epic-13-retrospective: done
