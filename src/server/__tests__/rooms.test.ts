@@ -200,7 +200,7 @@ describe('POST /api/rooms/:code/round', () => {
     // Mock Spotify so validation tests don't hit the real API
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
   })
 
@@ -488,6 +488,7 @@ function makeTracks(n: number) {
     title: `Song ${i}`,
     artist: `Artist ${i}`,
     albumArtUrl: `https://img/${i}`,
+    durationMs: 180_000,
   }))
 }
 
@@ -854,12 +855,13 @@ describe('POST /api/rooms/:code/round — card generation', () => {
 
 // ── Song scheduling helpers ────────────────────────────────────────────────
 
-function makeTracksLocal(n: number): Track[] {
+function makeTracksLocal(n: number, durationMs = 180_000): Track[] {
   return Array.from({ length: n }, (_, i) => ({
     id: `track_${i}`,
     title: `Song ${i}`,
     artist: `Artist ${i}`,
     albumArtUrl: `https://img/${i}`,
+    durationMs,
   }))
 }
 
@@ -1083,6 +1085,149 @@ describe('POST /api/rooms/:code/round/play', () => {
 
     expect(sent).toHaveLength(1)
     expect(JSON.parse(sent[0]).type).toBe('song:start')
+  })
+
+  // AC 1 — Full-mode starts at position 0
+  it('Full-mode song:start uses seekPositionMs 0', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'device_xyz'
+    seedActiveRound('ABCD', 'full', 0)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 204 }) as unknown as Response,
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('song:start')
+    expect(msg.seekPositionMs).toBe(0)
+
+    // Also verify the outbound Spotify PUT body — broadcast and API call must
+    // agree. startSong fires the fetch via a fire-and-forget chain; flush
+    // pending microtasks so the call is visible to the spy.
+    await vi.runOnlyPendingTimersAsync()
+    const playCall = fetchSpy.mock.calls.find(([url, init]) =>
+      typeof url === 'string' && url.includes('/me/player/play') && (init as RequestInit | undefined)?.method === 'PUT',
+    )
+    expect(playCall).toBeDefined()
+    const playBody = JSON.parse((playCall![1] as RequestInit).body as string)
+    expect(playBody.position_ms).toBe(0)
+  })
+
+  // AC 2 — Timed clips still use seekPositionMs 60_000
+  it('timed-clip song:start uses seekPositionMs 60_000', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    seedActiveRound('ABCD', 30, 0)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+
+    const msg = JSON.parse(sent[0])
+    expect(msg.type).toBe('song:start')
+    expect(msg.seekPositionMs).toBe(60_000)
+  })
+
+  // AC 5 — Full-mode autoAdvance fires at durationMs - 1000
+  it('Full-mode schedules autoAdvance for durationMs - 1000', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound('ABCD', 'full', 0)
+    // Seed playlist with a track of known durationMs
+    round.playlist = makeTracksLocal(10, 200_000)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(JSON.parse(sent[0]).songIndex).toBe(0)
+
+    // 198_999ms: should not have advanced yet (timer is 199_000ms)
+    vi.advanceTimersByTime(198_999)
+    expect(sent).toHaveLength(1)
+
+    // 1ms more: timer fires, song 1 starts
+    vi.advanceTimersByTime(1)
+    expect(sent).toHaveLength(2)
+    expect(JSON.parse(sent[1]).type).toBe('song:start')
+    expect(JSON.parse(sent[1]).songIndex).toBe(1)
+  })
+
+  // AC 9 — Mode switch mid-song applies to next song, not current
+  it('mode switch mid-song: current song keeps its timer, next song uses new mode', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    const round = seedActiveRound('ABCD', 30, 0)
+    round.playlist = makeTracksLocal(10, 200_000)
+
+    const sent: string[] = []
+    roomState.host = { readyState: 1, send: (msg: string) => sent.push(msg) } as unknown as WebSocket
+
+    const app = makeApp()
+    // Start song 0 in 30s mode
+    await app.request('/api/rooms/ABCD/round/play', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(JSON.parse(sent[0]).songIndex).toBe(0)
+
+    // Switch to Full mode mid-song
+    await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 'full' }),
+    })
+
+    // PATCH must not re-arm the running song's timer. Only the initial
+    // song:start for song 0 should have been broadcast — a regression that
+    // cleared and re-armed autoAdvance for the current song would emit a
+    // second song:start (via restart) or silently skip the 30s fire below.
+    const songStartsAfterPatch = sent.map((s) => JSON.parse(s)).filter((m) => m.type === 'song:start')
+    expect(songStartsAfterPatch).toHaveLength(1)
+    expect(songStartsAfterPatch[0].songIndex).toBe(0)
+
+    // 30s timer fires → song 0 ends, song 1 starts under Full mode
+    vi.advanceTimersByTime(30_000)
+    expect(sent.length).toBeGreaterThanOrEqual(2)
+    const song1Start = sent.slice(1).map(s => JSON.parse(s)).find(m => m.type === 'song:start' && m.songIndex === 1)
+    expect(song1Start).toBeDefined()
+    expect(song1Start!.seekPositionMs).toBe(0)
+
+    // Song 1's autoAdvance is scheduled for 199_000ms from its start
+    // Advance 198_999ms past song 1's start — should not have advanced to song 2 yet
+    vi.advanceTimersByTime(198_999)
+    const song2Starts = sent.map(s => JSON.parse(s)).filter(m => m.type === 'song:start' && m.songIndex === 2)
+    expect(song2Starts).toHaveLength(0)
+
+    // One more ms — song 2 starts
+    vi.advanceTimersByTime(1)
+    const song2Start = sent.map(s => JSON.parse(s)).find(m => m.type === 'song:start' && m.songIndex === 2)
+    expect(song2Start).toBeDefined()
   })
 })
 
@@ -2596,7 +2741,7 @@ describe('Casual Mode — round:start includes allowCasualMode', () => {
     vi.restoreAllMocks()
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
   })
 
@@ -2831,7 +2976,7 @@ describe('Casual Mode — Auto-Mark Engine', () => {
     // so the endpoint can build a playlist without hitting the network.
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
     const startRes = await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
@@ -3093,7 +3238,7 @@ describe('PATCH /api/rooms/:code/round-config', () => {
     vi.restoreAllMocks()
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
   })
 
@@ -3397,7 +3542,7 @@ describe('PATCH /api/rooms/:code/round-config', () => {
     // Start a new round — snapshot must survive.
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
     await app.request('/api/rooms/ABCD/round', {
       method: 'POST',
@@ -3407,6 +3552,35 @@ describe('PATCH /api/rooms/:code/round-config', () => {
 
     expect(roomState.priorCasualModes).toEqual(new Set(['Alice']))
     expect(roomState.playerCasualModes.get('Alice')).toBe(false)
+  })
+
+  // AC 3 — PATCH updates the frozen replay payload
+  it('PATCH /round-config updates currentRound.roundStartPayload', async () => {
+    seedHost()
+    await seedRoom()
+    const app = await startLiveRound()
+
+    const roomState = roomSockets.get('ABCD')!
+    expect((roomState.currentRound!.roundStartPayload as Record<string, unknown>).clipDuration).toBe(30)
+
+    await app.request('/api/rooms/ABCD/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clipDuration: 'full',
+        titleRevealDelay: 10,
+        audioPreset: 'hype',
+        allowCasualMode: true,
+      }),
+    })
+
+    // All four refreshed fields must roll forward — a regression in any one
+    // would produce a stale replay on reconnect.
+    const payload = roomState.currentRound!.roundStartPayload as Record<string, unknown>
+    expect(payload.clipDuration).toBe('full')
+    expect(payload.titleRevealDelay).toBe(10)
+    expect(payload.audioPreset).toBe('hype')
+    expect(payload.allowCasualMode).toBe(true)
   })
 })
 
@@ -3719,6 +3893,70 @@ describe('POST /api/rooms/:code/host/resume', () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     // Route bails at !roundActive before reaching the clip check
+    expect(json.state).toBe('ok')
+    expect(round.currentSongIndex).toBe(0)
+  })
+
+  // AC 8 — host/resume drift check handles Full mode
+  it('Full-mode host/resume returns advanced when Spotify position >= durationMs - 1000', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound('ABCD', 'full')
+    round.playlist = makeTracksLocal(10, 200_000)
+    round.currentSongIndex = 0
+    round.clipStartedAt = Date.now() - 200_000
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: `spotify:track:${round.playlist[0].id}` },
+        // Full mode: startOffsetMs=0, so spotifyElapsedMs = progress_ms directly.
+        // 199_500ms >= clipMs(199_000ms) → advanced
+        progress_ms: 199_500,
+        is_playing: true,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.state).toBe('advanced')
+    expect(roomState.currentRound?.currentSongIndex).toBe(1)
+  })
+
+  // AC 8 — host/resume does NOT advance when clipMs not yet reached in Full mode
+  it('Full-mode host/resume returns ok when Spotify position < durationMs - 1000', async () => {
+    seedHost()
+    await seedRoom()
+    const roomState = roomSockets.get('ABCD')!
+    roomState.activeDeviceId = 'dev'
+    const round = seedActiveRound('ABCD', 'full')
+    round.playlist = makeTracksLocal(10, 200_000)
+    round.currentSongIndex = 0
+    round.clipStartedAt = Date.now() - 5_000
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      spotifyPlayerResponse({
+        device: { id: 'dev', name: 'Phone', type: 'Smartphone', is_active: true },
+        item: { uri: `spotify:track:${round.playlist[0].id}` },
+        progress_ms: 5_000,  // 5s elapsed < 199s clipMs → ok
+        is_playing: true,
+      }),
+    )
+
+    const app = makeApp()
+    const res = await app.request('/api/rooms/ABCD/host/resume', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(200)
+    const json = await res.json()
     expect(json.state).toBe('ok')
     expect(round.currentSongIndex).toBe(0)
   })

@@ -465,7 +465,7 @@ describe('Late-join after round:start', () => {
     // Mock getPlaylistTracks so the HTTP round endpoint works
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
 
     // Import the app for HTTP requests
@@ -518,7 +518,7 @@ describe('Late-join includes songHistory', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg` }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg`, durationMs: 180_000 }))
     )
 
     const { app: honoApp } = await import('../index.ts')
@@ -562,7 +562,7 @@ describe('Late-join includes songHistory', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg` }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg`, durationMs: 180_000 }))
     )
 
     const { app: honoApp } = await import('../index.ts')
@@ -613,7 +613,7 @@ describe('Late-join includes songHistory', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg` }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg`, durationMs: 180_000 }))
     )
 
     const { app: honoApp } = await import('../index.ts')
@@ -651,6 +651,54 @@ describe('Late-join includes songHistory', () => {
     vi.restoreAllMocks()
     host2.close()
   })
+
+  // AC 4 — reconnect after PATCH replays round:start with updated clipDuration
+  it('host reconnect after PATCH to full replays round:start with clipDuration full', async () => {
+    seedHost('host_1')
+    createRoom('AAAA', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `Song ${i}`, artist: `Artist ${i}`, albumArtUrl: `https://art/${i}.jpg`, durationMs: 180_000 }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host1 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host1.next('session:connect')
+
+    // Start round in 30s mode
+    const roundRes = await honoApp.request('/api/rooms/AAAA/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 5, hostName: 'Host' }),
+    })
+    expect(roundRes.status).toBe(200)
+    await host1.next('round:start')
+
+    // PATCH to Full mode
+    const patchRes = await honoApp.request('/api/rooms/AAAA/round-config', {
+      method: 'PATCH',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipDuration: 'full' }),
+    })
+    expect(patchRes.status).toBe(200)
+
+    // Host disconnects and reconnects
+    await new Promise<void>((resolve) => {
+      host1.ws.once('close', () => resolve())
+      host1.close()
+    })
+
+    const host2 = await connect('/ws?code=AAAA', { cookie: sessionCookie() })
+    await host2.next('session:connect')
+    const roundMsg = await host2.next('round:start')
+
+    expect(roundMsg.clipDuration).toBe('full')
+
+    vi.restoreAllMocks()
+    host2.close()
+  })
 })
 
 // ── host:info (Story 13-8) ────────────────────────────────────────────────
@@ -664,7 +712,7 @@ describe('host:info delivery', () => {
     // below the 25 threshold, which triggers clearPlayedSongs + host:info.
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
     recordPlayedSongs('AAAA', Array.from({ length: 10 }, (_, i) => `t${i}`))
 
@@ -1028,7 +1076,7 @@ describe('persistRoomState triggers', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
 
     const host = await connect('/ws?code=PERS', { cookie: sessionCookie() })
@@ -1055,7 +1103,7 @@ describe('persistRoomState triggers', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
 
     const host = await connect('/ws?code=ENDR', { cookie: sessionCookie() })
@@ -1096,7 +1144,7 @@ describe('Reconnect after win', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
 
     const { app: honoApp } = await import('../index.ts')
@@ -1146,7 +1194,7 @@ describe('Reconnect after win', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' }))
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
     )
 
     const { app: honoApp } = await import('../index.ts')
@@ -1380,7 +1428,7 @@ describe('square:auto-marked', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' })),
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 })),
     )
 
     const { app: honoApp } = await import('../index.ts')
@@ -1523,7 +1571,7 @@ describe('square:auto-marked', () => {
 
     const spotifyModule = await import('../music/spotify.ts')
     vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
-      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '' })),
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 })),
     )
     const { app: honoApp } = await import('../index.ts')
 

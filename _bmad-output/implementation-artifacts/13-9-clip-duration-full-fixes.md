@@ -1,6 +1,6 @@
 # Story 13-9: Clip Duration "Full" — Playback, Reconnect, and Auto-Advance Fixes
 
-## Status: ready-for-dev
+## Status: done
 
 ## Context
 
@@ -271,9 +271,34 @@ No client file changes. No CSS changes.
 ## Dev Agent Record
 
 ### Agent Model Used
+claude-sonnet-4-6
 
 ### Debug Log References
+None — no blocking issues encountered.
 
 ### Completion Notes List
+- **Change A:** `startSong` now derives `startOffsetMs = clipDuration === 'full' ? 0 : SEEK_POSITION_MS` and uses it for both the `song:start` broadcast `seekPositionMs` and the Spotify play `position_ms`. Also applied to `handleSetPlayerDevice` and `host/resume` wrong-track reissue call sites.
+- **Change B:** PATCH `/round-config` handler now rebuilds `roundStartPayload` after mutating `config`, keeping reconnect replays in sync with live config.
+- **Change C:** `Track` interface gains `durationMs: number`; `SpotifyTracksResponse` gains `duration_ms`; `fields` query updated; mapper uses `?? 180_000` fallback for missing values.
+- **Change D:** Unified autoAdvance block replaces the full/timed branch split. Full mode schedules `Math.max(1_000, durationMs - FULL_MODE_TAIL_MS)`. `clipStartedAt` is now set in all modes.
+- **Change E:** `clipDurationMs` now accepts `track: Track` and always returns `number` (no null). Drift check in `host/resume` uses `startOffsetMs=0` for Full mode, removing the stale `SEEK_POSITION_MS` offset from elapsed calculation.
+- All 577 tests pass. TypeScript clean (one pre-existing unrelated client test hint suppressed by skipLibCheck).
 
 ### File List
+- `src/server/music/spotify.ts`
+- `src/server/rooms.ts`
+- `src/server/__tests__/rooms.test.ts`
+- `src/server/__tests__/ws.test.ts`
+- `src/server/__tests__/music.test.ts`
+- `src/server/music/__tests__/spotify.test.ts`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+### Change Log
+- 2026-04-23: Implemented story 13-9 — clip duration Full playback, reconnect, and auto-advance fixes (Changes A–E). Added 9 new tests covering AC 1–9; updated Track fixtures across 3 test files for new `durationMs` field.
+
+### Review Findings
+
+- [x] [Review][Patch] Rehydrated pre-13-9 Full-mode snapshots crash timer math [src/server/rooms.ts:334, :821; src/server/ws.ts:183-201] — Any active room persisted before this story has `round.playlist[i].durationMs === undefined`. After server restart, `startSong` computes `Math.max(1_000, undefined - 1_000) = NaN`; `setTimeout(fn, NaN)` fires ~immediately, cascading through all songs. Same NaN in `clipDurationMs` used by `host/resume` drift check silently skips drift-advance. Fix: add a `durationMs` fallback at the read sites (`?? 180_000` in `startSong` and `clipDurationMs`), OR migrate snapshots in `rehydrateRooms` by defaulting playlist items. The mapper-side fallback only guards fresh Spotify fetches — not persisted rooms.
+- [x] [Review][Patch] AC 1 test doesn't assert outbound Spotify `position_ms: 0` [src/server/__tests__/rooms.test.ts — 'Full-mode song:start uses seekPositionMs 0'] — Test only inspects the WS broadcast `seekPositionMs`. A regression where broadcast is 0 but the Spotify PUT body still sends `60_000` would pass. Intercept the `fetch` mock and assert the parsed request body's `position_ms`.
+- [x] [Review][Patch] AC 3 test only verifies 1 of 4 refreshed roundStartPayload fields [src/server/__tests__/rooms.test.ts — 'PATCH /round-config updates currentRound.roundStartPayload'] — The handler rebuilds `clipDuration`, `titleRevealDelay`, `audioPreset`, and `allowCasualMode`, but the test only asserts `clipDuration`. A regression where `audioPreset` fails to propagate would pass. Add assertions for the other three fields.
+- [x] [Review][Patch] Mid-song mode-switch test has weak explicit coverage [src/server/__tests__/rooms.test.ts — 'mode switch mid-song: current song keeps its timer, next song uses new mode'] — The test advances 30_000ms and finds song 1 started, which happens to distinguish "current timer kept" from "current timer reset", but only implicitly. Assert `sent.length === 1` immediately after the PATCH (before advancing timers) to pin the invariant explicitly.

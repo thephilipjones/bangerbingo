@@ -42,6 +42,41 @@ describe('getPlaylistTracks', () => {
     expect(new Set(ids).size).toBe(25)
   })
 
+  // AC 6 — durationMs populated from Spotify duration_ms
+  it('populates durationMs from duration_ms field', async () => {
+    const items = Array.from({ length: 25 }, (_, i) => ({
+      track: {
+        id: `t${i}`,
+        name: `Song ${i}`,
+        artists: [{ name: `Artist ${i}` }],
+        album: { images: [{ url: `https://img/${i}` }] },
+        duration_ms: 215_000,
+      },
+    }))
+    mockSpotifyOk(items)
+
+    const tracks = await getPlaylistTracks('pl', 'tok')
+    expect(tracks.every(t => t.durationMs === 215_000)).toBe(true)
+  })
+
+  // AC 6 — missing duration_ms falls back to 180_000
+  it('falls back to 180_000 when duration_ms is missing', async () => {
+    const items = Array.from({ length: 25 }, (_, i) => ({
+      track: {
+        id: `t${i}`,
+        name: `Song ${i}`,
+        artists: [{ name: `Artist ${i}` }],
+        album: { images: [{ url: `https://img/${i}` }] },
+        // duration_ms intentionally omitted to trigger the fallback
+        duration_ms: undefined as unknown as number,
+      },
+    }))
+    mockSpotifyOk(items)
+
+    const tracks = await getPlaylistTracks('pl', 'tok')
+    expect(tracks.every(t => t.durationMs === 180_000)).toBe(true)
+  })
+
   it('throws InsufficientTracksError when unique count < 25', async () => {
     const items: ReturnType<typeof makeItem>[] = []
     // 30 items but only 20 unique ids — the other 10 are duplicates.

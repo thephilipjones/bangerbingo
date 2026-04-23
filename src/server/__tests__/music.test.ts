@@ -242,6 +242,7 @@ describe('GET /api/music/tracks/:playlistId', () => {
         name: `Song ${i}`,
         artists: [{ name: `Artist ${i}` }],
         album: { images: [{ url: `https://img.example.com/${i}.jpg` }] },
+        duration_ms: 210_000,
       },
     }))
 
@@ -264,6 +265,7 @@ describe('GET /api/music/tracks/:playlistId', () => {
       title: 'Song 0',
       artist: 'Artist 0',
       albumArtUrl: 'https://img.example.com/0.jpg',
+      durationMs: 210_000,
     })
   })
 

@@ -4,7 +4,7 @@ import WebSocket from 'ws'
 import { createRoom, getRoomsByHost, getRoomByCode, getHostById, getPlayedSongs, recordPlayedSongs, clearPlayedSongs, deleteRoom, setRoomHostName, deleteActiveRoom, clearHostTokens, type Room, type Host } from './db.ts'
 import { requireAuth, withFreshToken, type AuthEnv } from './auth.ts'
 import { roomSockets, broadcast, destroyRoom, persistRoomState, CLAIM_PENDING_SENTINEL, type RoundConfig, type ClipDuration, type TitleRevealDelay, type AudioPreset, type RoundState, type RoomState, type SongHistoryEntry } from './ws.ts'
-import { getPlaylistTracks, SpotifyApiError } from './music/spotify.ts'
+import { getPlaylistTracks, SpotifyApiError, type Track } from './music/spotify.ts'
 import { refreshWithRetry } from './refresh.ts'
 import { buildPool, generateCards } from './game/cards.ts'
 
@@ -19,6 +19,12 @@ const WIN_LINES: number[][] = [
 // ── Song scheduling constants and helpers ─────────────────────────────────
 
 const SEEK_POSITION_MS = 60_000  // Fixed chorus-position offset for MVP (validated in Epic 2 spike)
+const FULL_MODE_TAIL_MS = 1_000  // advance this far before track end to pre-empt Spotify autoplay
+const DEFAULT_TRACK_DURATION_MS = 180_000  // fallback for rehydrated pre-13-9 snapshots whose playlist items predate Track.durationMs
+
+function trackDurationMs(track: Track): number {
+  return typeof track.durationMs === 'number' ? track.durationMs : DEFAULT_TRACK_DURATION_MS
+}
 
 function clearRoundTimers(round: RoundState): void {
   clearTimeout(round.timers.autoAdvance)
@@ -218,6 +224,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
   if (songIndex < 0 || songIndex >= round.playlist.length) return
 
   const track = round.playlist[songIndex]
+  const startOffsetMs = round.config.clipDuration === 'full' ? 0 : SEEK_POSITION_MS
 
   clearRoundTimers(round)
 
@@ -257,7 +264,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     title: track.title,
     artist: track.artist,
     albumArtUrl: track.albumArtUrl,
-    seekPositionMs: SEEK_POSITION_MS,
+    seekPositionMs: startOffsetMs,
     clipDuration: round.config.clipDuration,
     titleRevealDelay: round.config.titleRevealDelay,
     songIndex,
@@ -281,7 +288,7 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     init: {
       method: 'PUT' as const,
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uris: [`spotify:track:${track.id}`], position_ms: SEEK_POSITION_MS }),
+      body: JSON.stringify({ uris: [`spotify:track:${track.id}`], position_ms: startOffsetMs }),
     },
   })
 
@@ -328,15 +335,14 @@ function startSong(roomCode: string, roomState: RoomState, songIndex: number): v
     }, round.config.titleRevealDelay * 1000)
   }
 
-  if (round.config.clipDuration !== 'full') {
-    round.clipStartedAt = Date.now()
-    round.timers.autoAdvance = setTimeout(() => {
-      if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
-      advanceToNext(roomCode, roomState)
-    }, (round.config.clipDuration as number) * 1000)
-  } else {
-    round.clipStartedAt = undefined
-  }
+  round.clipStartedAt = Date.now()
+  const effectiveMs = round.config.clipDuration === 'full'
+    ? Math.max(1_000, trackDurationMs(track) - FULL_MODE_TAIL_MS)
+    : (round.config.clipDuration as number) * 1000
+  round.timers.autoAdvance = setTimeout(() => {
+    if (roomState.currentRound?.roundNumber !== capturedRoundNumber) return
+    advanceToNext(roomCode, roomState)
+  }, effectiveMs)
 }
 
 // P2: returns true when playlist is exhausted so callers can reflect that in HTTP response
@@ -748,7 +754,7 @@ const handleSetPlayerDevice = async (ctx: Context<AuthEnv>) => {
       // (the "test song" activation problem on mobile).
       const prevDeviceId = roomState.activeDeviceId
       roomState.activeDeviceId = newId
-      const ok = await reissueExpectedTrack(code, roomState, expectedTrack.id, SEEK_POSITION_MS, freshHost.access_token)
+      const ok = await reissueExpectedTrack(code, roomState, expectedTrack.id, round!.config.clipDuration === 'full' ? 0 : SEEK_POSITION_MS, freshHost.access_token)
       if (!ok) {
         console.error('[spotify:transfer] reissue failed', { code, deviceId: newId })
         roomState.activeDeviceId = prevDeviceId
@@ -815,8 +821,10 @@ roomsRouter.get('/rooms/:code/player/devices', requireAuth, async (ctx) => {
 // position drift (realign next-song timer), and paused state. See AC #5/#6.
 const POSITION_DRIFT_TOLERANCE_MS = 2_000
 
-function clipDurationMs(cd: ClipDuration): number | null {
-  return cd === 'full' ? null : cd * 1000
+function clipDurationMs(cd: ClipDuration, track: Track): number {
+  return cd === 'full'
+    ? Math.max(1_000, trackDurationMs(track) - FULL_MODE_TAIL_MS)
+    : cd * 1000
 }
 
 roomsRouter.post('/rooms/:code/host/resume', requireAuth, async (ctx) => {
@@ -935,7 +943,8 @@ roomsRouter.post('/rooms/:code/host/resume', requireAuth, async (ctx) => {
       console.log(`[host:resume] code=${code} state=ok device=${device.id} (round advanced mid-resume)`)
       return ctx.json({ state: 'ok', device: spotifyDevice, track: spotifyTrackUri, position: spotifyPositionMs, isPlaying: spotifyIsPlaying })
     }
-    const reissueOk = await reissueExpectedTrack(code, roomState, expectedTrack.id, SEEK_POSITION_MS, freshHost.access_token)
+    const reissueStartOffsetMs = round.config.clipDuration === 'full' ? 0 : SEEK_POSITION_MS
+    const reissueOk = await reissueExpectedTrack(code, roomState, expectedTrack.id, reissueStartOffsetMs, freshHost.access_token)
     if (!reissueOk) {
       console.log(`[host:resume] code=${code} state=drift-unresolvable device=${device.id}`)
       return ctx.json({ state: 'drift-unresolvable' })
@@ -945,7 +954,7 @@ roomsRouter.post('/rooms/:code/host/resume', requireAuth, async (ctx) => {
       state: 'drift-corrected',
       device: spotifyDevice,
       track: expectedUri,
-      position: SEEK_POSITION_MS,
+      position: reissueStartOffsetMs,
     })
   }
 
@@ -953,9 +962,11 @@ roomsRouter.post('/rooms/:code/host/resume', requireAuth, async (ctx) => {
   // Skip when round.paused — the server is in a pause window where clipStartedAt
   // is stale relative to the playback clock; falsely "correcting" would re-arm
   // the autoAdvance timer against a phantom elapsed time.
-  const clipMs = clipDurationMs(round.config.clipDuration)
-  if (clipMs !== null && round.clipStartedAt !== undefined && !round.paused) {
-    const spotifyElapsedMs = Math.max(0, spotifyPositionMs - SEEK_POSITION_MS)
+  const currentTrack = round.playlist[round.currentSongIndex]
+  const clipMs = clipDurationMs(round.config.clipDuration, currentTrack)
+  const startOffsetMs = round.config.clipDuration === 'full' ? 0 : SEEK_POSITION_MS
+  if (round.clipStartedAt !== undefined && !round.paused) {
+    const spotifyElapsedMs = Math.max(0, spotifyPositionMs - startOffsetMs)
 
     if (spotifyElapsedMs >= clipMs) {
       if (roomState.currentRound?.active && roomState.currentRound.roundNumber === round.roundNumber) {
@@ -1209,6 +1220,13 @@ roomsRouter.patch('/rooms/:code/round-config', requireAuth, async (ctx) => {
   }
 
   roomState.currentRound.config = merged
+  roomState.currentRound.roundStartPayload = {
+    ...roomState.currentRound.roundStartPayload,
+    clipDuration: merged.clipDuration,
+    titleRevealDelay: merged.titleRevealDelay,
+    audioPreset: merged.audioPreset,
+    allowCasualMode: merged.allowCasualMode,
+  }
   if (roomState.pendingRound) {
     roomState.pendingRound = {
       ...roomState.pendingRound,

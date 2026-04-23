@@ -21,6 +21,7 @@ export interface Track {
   title: string
   artist: string
   albumArtUrl: string
+  durationMs: number
 }
 
 // ── Spotify response shapes ────────────────────────────────────────────────
@@ -44,6 +45,7 @@ interface SpotifyTracksResponse {
       name: string
       artists: Array<{ name: string }>
       album: { images: Array<{ url: string }> }
+      duration_ms: number
     } | null
   }>
 }
@@ -94,7 +96,7 @@ export async function searchPlaylists(
 export async function getPlaylistTracks(playlistId: string, accessToken: string): Promise<Track[]> {
   const url = new URL(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`)
   url.searchParams.set('limit', '100')
-  url.searchParams.set('fields', 'items(track(id,name,artists,album(images)))')
+  url.searchParams.set('fields', 'items(track(id,name,artists,album(images),duration_ms))')
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -120,6 +122,7 @@ export async function getPlaylistTracks(playlistId: string, accessToken: string)
       title: item.track!.name,
       artist: item.track!.artists?.[0]?.name ?? 'Unknown',
       albumArtUrl: item.track!.album.images[0]?.url ?? '',
+      durationMs: item.track!.duration_ms ?? 180_000,
     }))
 
   if (tracks.length < 25) throw new InsufficientTracksError(tracks.length)
