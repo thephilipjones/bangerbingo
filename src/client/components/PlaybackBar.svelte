@@ -1,5 +1,5 @@
 <script lang="ts">
-  let { startedAt, durationMs }: { startedAt: number; durationMs: number } = $props()
+  let { startedAt, durationMs, pausedAt }: { startedAt: number; durationMs: number; pausedAt: number } = $props()
 
   let now = $state(Date.now())
 
@@ -17,7 +17,7 @@
 
   let progress = $derived(
     startedAt > 0 && durationMs > 0
-      ? Math.min(1, Math.max(0, (now - startedAt) / durationMs))
+      ? Math.min(1, Math.max(0, ((pausedAt || now) - startedAt) / durationMs))
       : 0
   )
 </script>

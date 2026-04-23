@@ -125,7 +125,7 @@
         </span>
       {/if}
     {:else}
-      <span class="track-text waiting">Waiting for round to start…</span>
+      <span class="track-text waiting">Press play when ready</span>
     {/if}
   </div>
 

@@ -15,6 +15,7 @@
     onHistoryClick,
     playbackStartedAt = 0,
     effectiveDurationMs = 0,
+    playbackPausedAt = 0,
   }: {
     playerCount: number
     code: string
@@ -25,6 +26,7 @@
     onHistoryClick: () => void
     playbackStartedAt?: number
     effectiveDurationMs?: number
+    playbackPausedAt?: number
   } = $props()
 
   let copied = $state(false)
@@ -68,7 +70,7 @@
     </button>
   </div>
 
-  <PlaybackBar startedAt={playbackStartedAt} durationMs={effectiveDurationMs} />
+  <PlaybackBar startedAt={playbackStartedAt} durationMs={effectiveDurationMs} pausedAt={playbackPausedAt} />
 </div>
 
 <style>

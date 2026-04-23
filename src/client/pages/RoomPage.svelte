@@ -232,6 +232,7 @@
       onHistoryClick={() => { game.showHistory = !game.showHistory; game.showPlayers = false }}
       playbackStartedAt={game.playbackStartedAt}
       effectiveDurationMs={game.effectiveDurationMs}
+      playbackPausedAt={game.pausedAt}
     />
     <BingoCard tiles={game.tiles} nopeIndex={game.nopeIndex} onTileClick={game.handleTileClick} />
     {#if toastMessage}
