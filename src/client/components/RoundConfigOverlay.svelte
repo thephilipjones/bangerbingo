@@ -100,6 +100,7 @@
   let presets = $state<Preset[]>([])
   let presetsLoading = $state(false)
   let presetsError = $state('')
+  let spotifyDegraded = $state(false)
 
   let searchQuery = $state('')
   let searchResults = $state<PlaylistResult[]>([])
@@ -117,10 +118,17 @@
   async function loadPresets() {
     presetsLoading = true
     presetsError = ''
+    spotifyDegraded = false
     try {
       const res = await fetch('/api/music/presets')
-      if (!res.ok) throw new Error('Failed to load genres')
-      presets = await res.json()
+      if (res.status === 503) {
+        spotifyDegraded = true
+        presetsError = 'Spotify connection expired.'
+      } else if (!res.ok) {
+        throw new Error('Failed to load genres')
+      } else {
+        presets = await res.json()
+      }
     } catch {
       presetsError = 'Failed to load genres. Please try again.'
     } finally {
@@ -431,7 +439,12 @@
           {:else if presetsLoading}
             <p class="status-msg">Loading genres…</p>
           {:else if presetsError}
-            <p class="error-msg">{presetsError}</p>
+            <div class="error-msg">
+              <p>{presetsError}</p>
+              {#if spotifyDegraded}
+                <a class="reconnect-btn" href="/auth/login">Reconnect Spotify</a>
+              {/if}
+            </div>
           {:else}
             <div class="preset-grid">
               {#each presets as preset (preset.playlistId)}
@@ -693,6 +706,18 @@
     color: var(--danger);
     padding: 1rem 0;
     text-align: center;
+  }
+
+  .reconnect-btn {
+    display: inline-block;
+    margin-top: 0.5rem;
+    padding: 0.4rem 1rem;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
   }
 
   /* Genre preset cards */
