@@ -59,7 +59,7 @@ export function writeHostPrefs(partial: Partial<HostPrefs>): void {
     clipDuration: 30,
     titleRevealDelay: 10,
     audioPreset: 'minimal' as AudioPreset,
-    allowCasualMode: false,
+    allowCasualMode: true,
   }
   const next: StoredHostPrefs = {
     schemaVersion: SCHEMA_VERSION,

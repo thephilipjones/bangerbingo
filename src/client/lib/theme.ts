@@ -11,7 +11,7 @@ export function resolveInitialTheme(): ThemeMode {
     /* localStorage may be unavailable (private mode, etc.) — fall through */
   }
   if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark'
-  return 'light'
+  return 'dark'
 }
 
 export function setTheme(mode: ThemeMode): void {
