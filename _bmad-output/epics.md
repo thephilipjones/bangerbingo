@@ -211,3 +211,13 @@ Epics are sequenced by dependency. Each epic's acceptance bar is the minimum nee
 **Stories:** 13-1 (Reconnect-After-Win State Replay), 13-2 (Casual Mode Persistence Across Restart), 13-3 (Server & Client Micro-Fixes Bundle), 13-4 (Test Quality Pass), 13-5 (Light Security Hardening), 13-6 (Win Jingle Audio)
 
 **Acceptance bar:** A reconnecting winner lands back on the Game Over screen with full CTAs. Casual Mode opt-ins survive a server restart. Session cookie is HMAC-signed. Playlist ID input is validated. Guest join is rate-limited. Win jingle plays on bingo (preset-matched). All 507 tests pass.
+
+---
+
+## Epic 14: Polish, Tension & Spring Cleaning
+
+*Party-mode retrospective (2026-04-23) after Epic 13 surfaced two product-experience features worth building and three low-LOE cleanup opportunities clustered in the deferred-work log. Two crowd-pleaser features (near-bingo tension, smart playlist URL paste), three targeted cleanups (reconnect replay gaps, WS origin check, overlay Escape/focus helper), and a lightweight perf instrumentation surface to finally put numbers behind NFR1–NFR5.*
+
+**Stories:** 14-1 (Near-Bingo Tension Broadcast), 14-2 (Smart Playlist URL Paste + How-to-Share Tip), 14-3 (Reconnect Replay Completeness), 14-4 (WebSocket Origin Check), 14-5 (Overlay Escape + Focus Helper), 14-6 (Lightweight Performance Instrumentation)
+
+**Acceptance bar:** Game header shows a muted "X is one away" line when any player is one tile from bingo. Hosts can paste a Spotify playlist URL (or URI, or bare ID) into search and load it directly, with an inline tip explaining the public-playlist requirement. Reconnecting clients receive `round:end` replay and `currentSongRevealed` correctly, and the playback bar resets on `round:win`. WebSocket upgrades from disallowed origins are rejected 403. Every overlay closes on Escape and returns focus to its trigger. `GET /api/metrics` exposes count/avg/p95/max for WS broadcasts, Spotify API calls, and `/round` start-round latency.
