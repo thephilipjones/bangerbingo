@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 14-3-reconnect-replay-completeness (2026-04-23)
+
+- **Host/guest divergence on `paused` field in reconnect `round:start` payload** — host branch sends `paused: activeRound.paused === true`; guest branch omits `paused` entirely. Pre-existing inconsistency; not introduced by 14-3. (src/server/ws.ts)
+- **Late-joiner reconnect into a won round replays winner's `winningTileIds` against own card** — gate `round.cards.has(name)` admits any player who ever had a card in the round; the replayed `round:win` carries `winnerCard` which the client renders against, so visuals are correct, but the guest's own card shown in the preceding `round:start` replay doesn't align with the winning highlight semantics. Pre-existing 13-1 behavior. (src/server/ws.ts)
+
 ## Deferred from: code review of 14-4-websocket-origin-check (2026-04-23)
 
 - **`new URL(req.url)` outside try/catch in upgrade handler** — pre-existing: if `req.url` is a full absolute URI, the `URL` constructor can throw in the `upgrade` event handler, crashing the process. Guard would be `try { url = new URL(...) } catch { socket.destroy(); return }`. Not introduced by 14-4. (src/server/ws.ts:788)

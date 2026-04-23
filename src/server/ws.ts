@@ -420,12 +420,23 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         currentSongIndex: activeRound.currentSongIndex,
         paused: activeRound.paused === true,
         currentSongRevealed: activeRound.currentSongRevealed,
+        // Story 14-3 AC-3: zero playbackStartedAt on reconnect into a won round so
+        // the playback bar renders hidden behind the Win Overlay (not stale/maxed).
+        ...(activeRound.ended && activeRound.winData ? { playbackStartedAt: 0 } : {}),
       }))
 
-      // Story 13-1: replay round:win when reconnecting into an ended round so the
-      // host lands on the Game Over screen rather than an empty active-round shell.
-      if (activeRound.ended && activeRound.winData) {
-        ws.send(JSON.stringify({ type: 'round:win', ...activeRound.winData }))
+      // Story 13-1: replay round:win or round:end when reconnecting into an ended round.
+      // Story 14-3 AC-1: also replay round:end for rounds that ended without a winner.
+      // Skip the no-winner replay while a claim is mid-validation: /round/claim flips
+      // round.ended = true synchronously before its body-parse await, and rolls it back
+      // on validation failure. A reconnect in that window would otherwise send round:end
+      // for a round that's still live.
+      if (activeRound.ended) {
+        if (activeRound.winData) {
+          ws.send(JSON.stringify({ type: 'round:win', ...activeRound.winData }))
+        } else if (!roomState.pendingClaims.has(CLAIM_PENDING_SENTINEL)) {
+          ws.send(JSON.stringify({ type: 'round:end' }))
+        }
       }
 
       // Story 12-3: on host reconnect, fold any songs played during the disconnect
@@ -591,11 +602,19 @@ function handleConnection(ws: WebSocket, req: IncomingMessage): void {
         lateJoin: !existingCard,
         songHistory: round.songHistory,
         currentSongRevealed: round.currentSongRevealed,
+        // Story 14-3 AC-3: zero playbackStartedAt on reconnect into a won round.
+        ...(round.ended && round.winData ? { playbackStartedAt: 0 } : {}),
       }))
 
-      // Story 13-1: replay round:win so the guest lands on the Game Over screen.
-      if (round.ended && round.winData) {
-        ws.send(JSON.stringify({ type: 'round:win', ...round.winData }))
+      // Story 13-1: replay round:win or round:end when reconnecting into an ended round.
+      // Story 14-3 AC-1: also replay round:end for rounds that ended without a winner.
+      // See host branch above for the claim-window rationale behind pendingClaims gate.
+      if (round.ended) {
+        if (round.winData) {
+          ws.send(JSON.stringify({ type: 'round:win', ...round.winData }))
+        } else if (!roomState.pendingClaims.has(CLAIM_PENDING_SENTINEL)) {
+          ws.send(JSON.stringify({ type: 'round:end' }))
+        }
       }
 
       // Casual Mode (Story 8-5) — catch-up sweep on reconnect. AC #5. Must be AFTER

@@ -1259,6 +1259,248 @@ describe('Reconnect after win', () => {
   })
 })
 
+// ── Story 14-3: Reconnect replay completeness ─────────────────────────────
+
+describe('Story 14-3: Reconnect replay completeness', () => {
+  // AC-1: round:end replayed for host reconnecting into a no-winner ended round
+  it('host reconnects into manually-ended round (no winner) → receives round:end after round:start', async () => {
+    seedHost('host_1')
+    createRoom('ENDR', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=ENDR', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    await honoApp.request('/api/rooms/ENDR/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+
+    // Simulate manually-ended round (no winner)
+    const rs = roomSockets.get('ENDR')!
+    const round = rs.currentRound!
+    round.active = false
+    round.ended = true
+    // winData intentionally absent
+
+    await new Promise<void>((resolve) => { host.ws.once('close', () => resolve()); host.close() })
+
+    const host2 = await connect('/ws?code=ENDR', { cookie: sessionCookie() })
+    await host2.next('session:connect')
+    await host2.next('round:start')
+    const endMsg = await host2.next('round:end')
+    expect(endMsg.type).toBe('round:end')
+
+    vi.restoreAllMocks()
+    host2.close()
+  })
+
+  // AC-1: round:end replayed for guest reconnecting into a no-winner ended round
+  it('guest reconnects into manually-ended round (no winner) → receives round:end after round:start', async () => {
+    seedHost('host_1')
+    createRoom('ENDG', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=ENDG', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=ENDG&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    await honoApp.request('/api/rooms/ENDG/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+    await alice.next('round:start')
+
+    // Simulate manually-ended round (no winner)
+    const rs = roomSockets.get('ENDG')!
+    const round = rs.currentRound!
+    round.active = false
+    round.ended = true
+    // winData intentionally absent
+
+    await new Promise<void>((resolve) => { alice.ws.once('close', () => resolve()); alice.close() })
+
+    const alice2 = await connect('/ws?code=ENDG&name=Alice')
+    await alice2.next('session:connect')
+    await alice2.next('round:start')
+    const endMsg = await alice2.next('round:end')
+    expect(endMsg.type).toBe('round:end')
+
+    vi.restoreAllMocks()
+    host.close()
+    alice2.close()
+  })
+
+  // AC-2: guest reconnect after song revealed includes currentSongRevealed: true
+  it('guest reconnects after song revealed → round:start payload includes currentSongRevealed: true', async () => {
+    seedHost('host_1')
+    createRoom('REVL', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=REVL', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    const alice = await connect('/ws?code=REVL&name=Alice')
+    await alice.next('session:connect')
+    await host.next('player:joined')
+
+    await honoApp.request('/api/rooms/REVL/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+    await alice.next('round:start')
+
+    // Simulate song having been revealed
+    const rs = roomSockets.get('REVL')!
+    rs.currentRound!.currentSongRevealed = true
+
+    await new Promise<void>((resolve) => { alice.ws.once('close', () => resolve()); alice.close() })
+
+    const alice2 = await connect('/ws?code=REVL&name=Alice')
+    await alice2.next('session:connect')
+    const startMsg = await alice2.next('round:start')
+    expect(startMsg.currentSongRevealed).toBe(true)
+
+    vi.restoreAllMocks()
+    host.close()
+    alice2.close()
+  })
+
+  // AC-3: reconnect into a won round → round:start has playbackStartedAt zeroed
+  it('reconnect into won round → replayed round:start has playbackStartedAt zeroed; live broadcast unaffected', async () => {
+    seedHost('host_1')
+    createRoom('PBST', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=PBST', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    await honoApp.request('/api/rooms/PBST/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+
+    // Inject a non-zero playbackStartedAt into roundStartPayload to simulate a live round
+    const rs = roomSockets.get('PBST')!
+    const round = rs.currentRound!
+    ;(round.roundStartPayload as Record<string, unknown>).playbackStartedAt = Date.now() - 15_000
+
+    // Simulate a win
+    round.active = false
+    round.ended = true
+    ;(round as any).winData = {
+      winnerName: 'Host',
+      winningTileIds: ['t0', 'FREE'],
+      songHistory: [],
+      winnerCard: [],
+    }
+
+    await new Promise<void>((resolve) => { host.ws.once('close', () => resolve()); host.close() })
+
+    // Host reconnects — round:start should have playbackStartedAt zeroed
+    const host2 = await connect('/ws?code=PBST', { cookie: sessionCookie() })
+    await host2.next('session:connect')
+    const startMsg = await host2.next('round:start')
+    expect(startMsg.playbackStartedAt).toBe(0)
+
+    // round:win replay carries the original winData (unaffected)
+    const winMsg = await host2.next('round:win')
+    expect(winMsg.type).toBe('round:win')
+    expect(winMsg.winnerName).toBe('Host')
+
+    // roundStartPayload in server state still has the original timestamp (live path unchanged)
+    expect((round.roundStartPayload as Record<string, unknown>).playbackStartedAt).toBeGreaterThan(0)
+
+    vi.restoreAllMocks()
+    host2.close()
+  })
+
+  // Review finding #1: reconnect during /round/claim validation window must NOT
+  // replay round:end. `round.ended` flips true synchronously before body-parse;
+  // pendingClaims sentinel gates the replay.
+  it('reconnect during claim validation window → no round:end replay (pendingClaims guard)', async () => {
+    const { CLAIM_PENDING_SENTINEL } = await import('../ws.ts')
+    seedHost('host_1')
+    createRoom('CLMW', 'host_1')
+
+    const spotifyModule = await import('../music/spotify.ts')
+    vi.spyOn(spotifyModule, 'getPlaylistTracks').mockResolvedValue(
+      Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, title: `S${i}`, artist: `A${i}`, albumArtUrl: '', durationMs: 180_000 }))
+    )
+
+    const { app: honoApp } = await import('../index.ts')
+
+    const host = await connect('/ws?code=CLMW', { cookie: sessionCookie() })
+    await host.next('session:connect')
+
+    await honoApp.request('/api/rooms/CLMW/round', {
+      method: 'POST',
+      headers: { Cookie: sessionCookie(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId: 'aaaaaaaaaaaaaaaaaaaaaa', clipDuration: 30, titleRevealDelay: 0, hostName: 'Host' }),
+    })
+    await host.next('round:start')
+
+    // Simulate the mid-validation claim state: ended=true, winData absent,
+    // sentinel present (mirrors the state rooms.ts:1087-1088 briefly holds).
+    const rs = roomSockets.get('CLMW')!
+    const round = rs.currentRound!
+    round.ended = true
+    rs.pendingClaims.add(CLAIM_PENDING_SENTINEL)
+
+    await new Promise<void>((resolve) => { host.ws.once('close', () => resolve()); host.close() })
+
+    const host2 = await connect('/ws?code=CLMW', { cookie: sessionCookie() })
+    await host2.next('session:connect')
+    await host2.next('round:start')
+
+    // No round:end should follow round:start while the sentinel is held.
+    const sawRoundEnd = await Promise.race([
+      host2.next('round:end').then(() => true).catch(() => false),
+      new Promise<boolean>((r) => setTimeout(() => r(false), 200)),
+    ])
+    expect(sawRoundEnd).toBe(false)
+
+    vi.restoreAllMocks()
+    rs.pendingClaims.delete(CLAIM_PENDING_SENTINEL)
+    host2.close()
+  })
+})
+
 // ── Casual Mode (Story 8-4) ────────────────────────────────────────────────
 
 describe('player:casual-mode-changed', () => {
