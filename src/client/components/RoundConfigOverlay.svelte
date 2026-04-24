@@ -4,16 +4,18 @@
   + confirmation dialog for the End Round entry point (when a round is live).
 -->
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount } from 'svelte'
   import { fade } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
-  import { X, ArrowRight, CaretRight } from 'phosphor-svelte'
+  import { X, ArrowRight, CaretRight, Info } from 'phosphor-svelte'
   import { startRound } from '../lib/api.ts'
   import type { AudioPreset } from '../lib/api.ts'
   import type { TitleRevealDelay } from '../lib/bingo.ts'
   import { validateHostName, buildStartRoundPayload } from '../lib/roundConfig.ts'
   import { readHostPrefs, writeHostPrefs } from '../lib/hostPrefs.ts'
   import AdvancedSettings from './AdvancedSettings.svelte'
+  import { useOverlay } from '../lib/useOverlay.svelte.ts'
+  import { extractPlaylistId } from '../lib/playlistUrl.ts'
 
   function ticketIn(_node: Element) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -109,6 +111,7 @@
   let searchOffset = $state(0)
   let searchHasMore = $state(false)
   let paginating = $state(false)
+  let showPlaylistTip = $state(false)
 
   let selectedPlaylist = $state<{ id: string; name: string } | null>(null)
   let playlistRegionEl = $state<HTMLDivElement | null>(null)
@@ -160,6 +163,45 @@
       paginating = false
       return
     }
+    // URL/URI paste branch — skip debounced keyword search
+    const pastedId = extractPlaylistId(q)
+    if (pastedId) {
+      searchLoading = true
+      searchError = ''
+      searchResults = []
+      searchHasMore = false
+      searchOffset = 0
+      paginating = false
+      void (async () => {
+        try {
+          const res = await fetch(`/api/music/tracks/${pastedId}`)
+          if (seq !== searchSeq) return
+          if (res.status === 404 || res.status === 401) {
+            searchError =
+              "Couldn't load this playlist. Is it set to Public in Spotify? (Private playlists can't be read.)"
+            return
+          }
+          if (!res.ok) {
+            searchError = 'Failed to load. Try again.'
+            return
+          }
+          const tracks = (await res.json()) as { id: string }[]
+          if (seq !== searchSeq) return
+          const name = 'Pasted playlist'
+          searchResults = [{ playlistId: pastedId, name, owner: '', trackCount: tracks.length }]
+          searchHasMore = false
+          selectedPlaylist = { id: pastedId, name }
+          if (playlistRegionEl) playlistRegionEl.scrollTop = 0
+        } catch {
+          if (seq !== searchSeq) return
+          searchError = 'Failed to load. Try again.'
+        } finally {
+          if (seq === searchSeq) searchLoading = false
+        }
+      })()
+      return
+    }
+
     searchLoading = true
     searchError = ''
     searchOffset = 0
@@ -322,9 +364,8 @@
     onClose()
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') requestClose()
-  }
+  let panelEl = $state<HTMLElement | null>(null)
+  useOverlay({ onClose: () => requestClose(), root: () => panelEl })
 
   onMount(() => {
     const prefs = readHostPrefs()
@@ -335,11 +376,6 @@
       allowCasualMode = prefs.allowCasualMode
     }
     loadPresets()
-    window.addEventListener('keydown', handleKeydown)
-  })
-
-  onDestroy(() => {
-    window.removeEventListener('keydown', handleKeydown)
   })
 </script>
 
@@ -360,6 +396,7 @@
     aria-modal="true"
     aria-label="Round configuration"
     in:ticketIn out:ticketOut
+    bind:this={panelEl}
   >
     <header class="panel-header">
       <h2 class="picker-header">Pick a playlist</h2>
@@ -390,7 +427,21 @@
               onclick={clearSearch}
             ><X size={16} weight="bold" aria-hidden="true" /></button>
           {/if}
+          <button
+            class="info-tip-btn"
+            type="button"
+            aria-label="Playlist tip"
+            aria-expanded={showPlaylistTip}
+            onclick={() => { showPlaylistTip = !showPlaylistTip }}
+          ><Info size={14} aria-hidden="true" /></button>
         </div>
+        {#if showPlaylistTip}
+          <div class="playlist-tip" role="note">
+            <strong>Tip — use your own playlist</strong>
+            <p>Paste a Spotify playlist link here (e.g. <code>open.spotify.com/playlist/…</code>) and we'll load it directly.</p>
+            <p>Note: the playlist must be set to <strong>Public</strong> in Spotify. Private playlists aren't readable by the app.</p>
+          </div>
+        {/if}
 
         {#if selectedPlaylist && !selectionVisibleInCurrentList}
           <div class="selected-chip">
@@ -626,7 +677,7 @@
 
   .clear-btn {
     position: absolute;
-    right: 0.25rem;
+    right: 2rem;
     top: 50%;
     transform: translateY(-50%);
     min-width: 44px;
@@ -644,6 +695,47 @@
   .clear-btn:hover {
     color: var(--fg);
     background: var(--bg-2);
+  }
+
+  .info-tip-btn {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    min-width: 32px;
+    min-height: 44px;
+    background: none;
+    border: none;
+    color: var(--fg-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.25rem;
+  }
+
+  .info-tip-btn:hover { color: var(--fg); }
+  .info-tip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .playlist-tip {
+    background: var(--bg-2);
+    border: var(--rule-thin) solid var(--rule);
+    padding: 0.65rem 0.75rem;
+    font-size: 0.82rem;
+    color: var(--fg);
+  }
+
+  .playlist-tip strong { font-weight: 700; }
+
+  .playlist-tip p {
+    margin: 0.35rem 0 0;
+    color: var(--fg-muted);
+  }
+
+  .playlist-tip code {
+    font-family: monospace;
+    font-size: 0.8rem;
   }
 
   .selected-chip {
@@ -770,7 +862,7 @@
   /* Search input */
   .search-input {
     width: 100%;
-    padding: 0.6rem 3rem 0.6rem 0.75rem;
+    padding: 0.6rem 4.75rem 0.6rem 0.75rem;
     min-height: 44px;
     background: var(--bg);
     border: var(--rule-thin) solid var(--rule);

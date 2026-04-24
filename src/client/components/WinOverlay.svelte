@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { Star } from 'phosphor-svelte'
   import type { AudioPreset } from '../lib/api.ts'
+  import { useOverlay } from '../lib/useOverlay.svelte.ts'
 
   let {
     winnerName,
@@ -36,6 +37,12 @@
   const isWinner = $derived(!isHost && selfName !== null && selfName === winnerName)
   const isOtherGuest = $derived(!isHost && !isWinner)
 
+  let overlayEl = $state<HTMLElement | null>(null)
+  useOverlay({
+    onClose: () => { if (showCtas || showGuestDismiss) onDismiss() },
+    root: () => overlayEl,
+  })
+
   onMount(() => {
     if (isHost) {
       ctaTimer = setTimeout(() => { showCtas = true }, 1500)
@@ -58,6 +65,7 @@
   role="dialog"
   aria-modal="true"
   aria-label="Bingo winner"
+  bind:this={overlayEl}
 >
   {#if effectivePreset === 'hype'}
     <div class="confetti-container" aria-hidden="true">

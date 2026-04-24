@@ -56,7 +56,6 @@
   let deviceSwitchResultTimer: ReturnType<typeof setTimeout> | undefined
   let hostMessage = $state<string | null>(null)
   let hostMessageTimer: ReturnType<typeof setTimeout> | null = null
-  let chipRef = $state<HTMLElement | undefined>(undefined)
   let sessionEnded = false
   let wsClient: WsClient | null = null
   let visibilityListener: (() => void) | null = null
@@ -252,7 +251,6 @@
   function handleOpenDevicePicker(source: 'chip' | 'settings' | 'banner' = 'chip') {
     pickerSource = source
     pickerError = null
-    chipRef = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
     showDevicePicker = true
   }
 
@@ -777,7 +775,6 @@
     incomingError={pickerError}
     onDeviceSelected={handleDeviceSelected}
     onClose={() => { showDevicePicker = false }}
-    returnFocusEl={chipRef}
     {sdkFailed}
   />
 {/if}

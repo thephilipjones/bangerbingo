@@ -3,6 +3,7 @@
   import AdvancedSettings from './AdvancedSettings.svelte'
   import type { AudioPreset } from '../lib/api.ts'
   import type { TitleRevealDelay } from '../lib/bingo.ts'
+  import { useOverlay } from '../lib/useOverlay.svelte.ts'
 
   type ClipDuration = number | 'full'
 
@@ -41,13 +42,16 @@
     onOpenDevicePicker?: () => void
     deviceSwitchResult?: 'saved' | 'error' | null
   } = $props()
+
+  let sheetEl = $state<HTMLElement | null>(null)
+  useOverlay({ onClose: () => onClose(), root: () => sheetEl })
 </script>
 
 <!-- Background overlay -->
 <div class="overlay" role="presentation" onclick={onClose}></div>
 
 <!-- Sheet -->
-<div class="sheet" role="dialog" aria-label="Host controls">
+<div class="sheet" role="dialog" aria-label="Host controls" bind:this={sheetEl}>
   <header class="sheet-header">
     <span class="sheet-title">Host Controls</span>
     <button class="close-btn" onclick={onClose} aria-label="Close controls"><X size={16} weight="bold" aria-hidden="true" /></button>

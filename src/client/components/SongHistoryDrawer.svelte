@@ -1,5 +1,6 @@
 <script lang="ts">
   import { MusicNote, X } from 'phosphor-svelte'
+  import { useOverlay } from '../lib/useOverlay.svelte.ts'
 
   type HistoryEntry = {
     trackId: string
@@ -11,13 +12,16 @@
 
   let { entries, currentRevealed = false, onClose }: { entries: HistoryEntry[]; currentRevealed?: boolean; onClose: () => void } = $props()
   let failedImages = $state(new Set<number>())
+
+  let sheetEl = $state<HTMLElement | null>(null)
+  useOverlay({ onClose: () => onClose(), root: () => sheetEl })
 </script>
 
 <!-- Background overlay -->
 <div class="overlay" role="presentation" onclick={onClose}></div>
 
 <!-- Sheet -->
-<div class="sheet" role="dialog" aria-label="Song history">
+<div class="sheet" role="dialog" aria-label="Song history" bind:this={sheetEl}>
   <div class="sheet-header">
     <span class="sheet-title">Song History</span>
     <button class="close-btn" onclick={onClose} aria-label="Close history"><X size={16} weight="bold" aria-hidden="true" /></button>

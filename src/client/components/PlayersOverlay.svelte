@@ -2,6 +2,7 @@
   import { X } from 'phosphor-svelte'
   import { computePlayerCount } from '../lib/waitingRoom.ts'
   import PlayerList from './PlayerList.svelte'
+  import { useOverlay } from '../lib/useOverlay.svelte.ts'
 
   let {
     players,
@@ -28,13 +29,16 @@
   } = $props()
 
   const playerCount = $derived(computePlayerCount(players))
+
+  let sheetEl = $state<HTMLElement | null>(null)
+  useOverlay({ onClose: () => onClose(), root: () => sheetEl })
 </script>
 
 <!-- Background overlay -->
 <div class="overlay" role="presentation" onclick={onClose}></div>
 
 <!-- Sheet -->
-<div class="sheet" role="dialog" aria-label="Players list">
+<div class="sheet" role="dialog" aria-label="Players list" bind:this={sheetEl}>
   <div class="sheet-header">
     <span class="sheet-title">Players ({playerCount})</span>
     <button class="close-btn" onclick={onClose} aria-label="Close players"><X size={16} weight="bold" aria-hidden="true" /></button>

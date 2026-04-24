@@ -196,7 +196,61 @@ describe('RoundConfigOverlay (DOM)', () => {
     expect('hostName' in payload2).toBe(false)
   })
 
-  it('(iv) close button and Esc both call onClose without calling startRound', async () => {
+  it('(iv) URL paste auto-selects the playlist and shows synthetic result', async () => {
+    const VALID_ID = '37i9dQZF1DXcBWIGoYBM5M'
+    const tracks = Array.from({ length: 30 }, (_, i) => ({ id: `t${i}` }))
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/music/tracks/')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => tracks })
+      }
+      return Promise.resolve({ ok: true, json: async () => [] })
+    }))
+
+    const { default: RoundConfigOverlay } = await import('../components/RoundConfigOverlay.svelte')
+    const { getByRole, findByText } = render(RoundConfigOverlay, {
+      code: 'ABCD',
+      initialHostName: 'Sarah',
+      onClose: vi.fn(),
+      onStarted: vi.fn(),
+    })
+
+    const input = getByRole('searchbox') as HTMLInputElement
+    await fireEvent.input(input, { target: { value: `https://open.spotify.com/playlist/${VALID_ID}` } })
+
+    // Wait for synthetic result to appear
+    const result = await findByText('Pasted playlist')
+    expect(result).toBeTruthy()
+
+    // Start Round should now be enabled (playlist pre-selected)
+    const startBtn = getByRole('button', { name: /Start Round/i }) as HTMLButtonElement
+    expect(startBtn.disabled).toBe(false)
+  })
+
+  it('(v) URL paste 404 shows the "is it public?" error message', async () => {
+    const VALID_ID = '37i9dQZF1DXcBWIGoYBM5M'
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/music/tracks/')) {
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({ message: 'not found' }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => [] })
+    }))
+
+    const { default: RoundConfigOverlay } = await import('../components/RoundConfigOverlay.svelte')
+    const { getByRole, findByText } = render(RoundConfigOverlay, {
+      code: 'ABCD',
+      initialHostName: 'Sarah',
+      onClose: vi.fn(),
+      onStarted: vi.fn(),
+    })
+
+    const input = getByRole('searchbox') as HTMLInputElement
+    await fireEvent.input(input, { target: { value: `https://open.spotify.com/playlist/${VALID_ID}` } })
+
+    const err = await findByText(/Is it set to Public in Spotify/)
+    expect(err).toBeTruthy()
+  })
+
+  it('(vi) close button and Esc both call onClose without calling startRound', async () => {
     const { default: RoundConfigOverlay } = await import('../components/RoundConfigOverlay.svelte')
     const api = await import('../lib/api.ts')
 
@@ -221,7 +275,7 @@ describe('RoundConfigOverlay (DOM)', () => {
       onClose: onClose2,
       onStarted: vi.fn(),
     })
-    await fireEvent.keyDown(window, { key: 'Escape' })
+    await fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose2).toHaveBeenCalledTimes(1)
     expect(api.startRound).not.toHaveBeenCalled()
   })

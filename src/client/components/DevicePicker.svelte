@@ -3,6 +3,7 @@
   import { DeviceMobile, SpeakerHigh, Desktop, MusicNote, Check, X, ArrowsClockwise } from 'phosphor-svelte'
   import { getDevices } from '../lib/api.ts'
   import type { SpotifyDevice } from '../lib/api.ts'
+  import { useOverlay } from '../lib/useOverlay.svelte.ts'
 
   let {
     code,
@@ -10,7 +11,6 @@
     incomingError,
     onDeviceSelected,
     onClose,
-    returnFocusEl,
     sdkFailed = false,
   }: {
     code: string
@@ -18,7 +18,6 @@
     incomingError: string | null
     onDeviceSelected: (device: SpotifyDevice) => void
     onClose: () => void
-    returnFocusEl?: HTMLElement
     sdkFailed?: boolean
   } = $props()
 
@@ -68,29 +67,21 @@
     onClose()
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose()
-  }
-
-  function handleClose() {
-    onClose()
-  }
+  let sheetEl = $state<HTMLElement | null>(null)
+  useOverlay({ onClose: () => onClose(), root: () => sheetEl })
 
   onDestroy(() => {
     mounted = false
     fetchController?.abort()
     clearTimeout(errorTimer)
-    if (returnFocusEl?.isConnected) returnFocusEl.focus()
   })
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
 <!-- Backdrop -->
-<div class="overlay" role="presentation" onclick={handleClose}></div>
+<div class="overlay" role="presentation" onclick={onClose}></div>
 
 <!-- Sheet -->
-<div class="sheet" role="dialog" aria-labelledby="device-picker-title" aria-modal="true">
+<div class="sheet" role="dialog" aria-labelledby="device-picker-title" aria-modal="true" bind:this={sheetEl}>
   <header class="sheet-header">
     <span class="sheet-title" id="device-picker-title">Playback Device</span>
     <div class="header-actions">
