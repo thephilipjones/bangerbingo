@@ -1,6 +1,6 @@
 # Story 14-5: Universal Overlay Escape + Focus Helper
 
-## Status: ready-for-dev
+## Status: done
 
 ## Context
 
@@ -93,3 +93,65 @@ Each overlay calls `useOverlay({ onClose: closeOverlay, root: () => overlayEl })
 
 - Deferred entries in `_bmad-output/implementation-artifacts/deferred-work.md` — multiple ("No focus trap", "no Escape key handler", "keyboard equivalent for backdrop dismiss", etc.) across 5-3, 5-6, 7-3, 7-5, 7-6, 10-2, 5-5
 - [src/client/components/](src/client/components/) — home for all overlays listed in AC-2
+
+## Tasks/Subtasks
+
+- [x] Task 1: Create `useOverlay` helper
+  - [x] Write `src/client/lib/useOverlay.svelte.ts` with Escape listener, initial focus, and focus return
+- [x] Task 2: Retrofit all overlays
+  - [x] HostControlsOverlay.svelte — add useOverlay + bind:this
+  - [x] PlayersOverlay.svelte — add useOverlay + bind:this
+  - [x] SongHistoryDrawer.svelte — add useOverlay + bind:this
+  - [x] RoundConfigOverlay.svelte — replace manual window listener with useOverlay
+  - [x] DevicePicker.svelte — replace svelte:window + returnFocusEl with useOverlay
+  - [x] WinOverlay.svelte — add useOverlay with hold-window guard
+- [x] Task 3: Clean up returnFocusEl from HostRoomPage.svelte
+- [x] Task 4: Write tests (AC-6)
+  - [x] Helper test: Escape fires onClose
+  - [x] Helper test: focus moves to first/specified element on mount; returns on unmount
+- [x] Task 5: Fix RoundConfigOverlay test (keydown target: window → document)
+
+## File List
+
+- `src/client/lib/useOverlay.svelte.ts` — new shared helper
+- `src/client/__tests__/useOverlay.test.ts` — new unit tests (7 tests)
+- `src/client/__tests__/helpers/OverlayHarness.svelte` — test harness component
+- `src/client/components/HostControlsOverlay.svelte` — retrofitted
+- `src/client/components/PlayersOverlay.svelte` — retrofitted
+- `src/client/components/SongHistoryDrawer.svelte` — retrofitted
+- `src/client/components/RoundConfigOverlay.svelte` — replaced manual window listener
+- `src/client/components/DevicePicker.svelte` — replaced svelte:window + returnFocusEl
+- `src/client/components/WinOverlay.svelte` — retrofitted with hold-window guard
+- `src/client/pages/HostRoomPage.svelte` — removed chipRef and returnFocusEl prop
+- `src/client/__tests__/RoundConfigOverlay.test.ts` — updated keydown target to document
+
+## Dev Agent Record
+
+### Completion Notes
+
+Implemented `useOverlay` as a Svelte 5 `$effect`-based helper in `.svelte.ts` format. The helper:
+1. Records `document.activeElement` at mount time as the return target
+2. Finds the first focusable element inside the overlay root (or uses `initialFocus()`) and calls `.focus()`
+3. Attaches a `keydown` listener on `document`; Escape calls `onClose`
+4. On cleanup: removes listener and returns focus to the recorded target (falls back silently if detached)
+
+All six overlays retrofitted. `DevicePicker` had an existing manual handler and `returnFocusEl` prop — both replaced. `RoundConfigOverlay` had manual `window.addEventListener` — replaced with `useOverlay`. `WinOverlay` uses a hold-window guard: `onClose: () => { if (showCtas || showGuestDismiss) onDismiss() }`.
+
+All props use `() => prop()` closure pattern to avoid the Svelte 5 "captures initial value" warning.
+
+Pre-existing test failure in `hostPrefs.test.ts` (unrelated to this story — present on main before these changes).
+
+### Review Findings
+
+- [x] [Review][Patch] Stacking overlays — Escape closes all simultaneously, not just topmost [`src/client/lib/useOverlay.svelte.ts`]
+- [x] [Review][Patch] Detached `returnTo` silently no-ops — spec requires `document.body.focus()` fallback [`src/client/lib/useOverlay.svelte.ts:26`]
+- [x] [Review][Patch] AC-4 test asserts only "no throw", not that `activeElement === document.body` [`src/client/__tests__/useOverlay.test.ts:79-93`]
+- [x] [Review][Patch] `handleClose` in DevicePicker is a dead-code wrapper around `onClose` — remove the indirection [`src/client/components/DevicePicker.svelte`]
+- [x] [Review][Patch] No `beforeEach(cleanup)` — focus state from a prior test can bleed into focus assertions [`src/client/__tests__/useOverlay.test.ts`]
+- [x] [Review][Defer] `document.contains()` passes for inert-subtree elements — `focus()` silently no-ops on inert targets [`src/client/lib/useOverlay.svelte.ts:26`] — deferred, narrow edge case, pre-existing inert usage
+- [x] [Review][Defer] `RoundConfigOverlay` Escape gives no feedback during `submitting` state — pre-existing design decision [`src/client/components/RoundConfigOverlay.svelte`] — deferred, pre-existing
+
+## Change Log
+
+- 2026-04-23: Implemented story 14-5 — universal overlay Escape + focus helper. Created `useOverlay.svelte.ts`, added 7 unit tests, retrofitted 6 overlays, removed `returnFocusEl` prop from DevicePicker. Status → review.
+- 2026-04-23: Code review complete — 5 patches, 2 deferred, 10 dismissed.

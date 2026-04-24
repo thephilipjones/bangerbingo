@@ -1,5 +1,10 @@
 # Deferred Work
 
+## Deferred from: code review of 14-5-overlay-escape-and-focus (2026-04-23)
+
+- **`document.contains()` passes for inert-subtree elements** — `returnTo.focus()` silently no-ops when `returnTo` is inside an `inert` ancestor. Fix would be to add `&& !returnTo.closest('[inert]')` to the guard. Narrow edge case; inert usage in HostRoomPage only applies to `.host-game` when RoundConfigOverlay is open, and overlays are rendered outside that subtree in the common path. (`src/client/lib/useOverlay.svelte.ts:26`)
+- **`RoundConfigOverlay` Escape gives no feedback during `submitting` state** — pressing Escape while a round-start fetch is in flight silently no-ops (guard `if (submitting) return`). No shake, toast, or aria-live announcement. Pre-existing design decision, not introduced by 14-5. (`src/client/components/RoundConfigOverlay.svelte`)
+
 ## Deferred from: code review of 14-3-reconnect-replay-completeness (2026-04-23)
 
 - **Host/guest divergence on `paused` field in reconnect `round:start` payload** — host branch sends `paused: activeRound.paused === true`; guest branch omits `paused` entirely. Pre-existing inconsistency; not introduced by 14-3. (src/server/ws.ts)
