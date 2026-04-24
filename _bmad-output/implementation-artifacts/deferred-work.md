@@ -1,5 +1,20 @@
 # Deferred Work
 
+## Deferred from: code review of 14-2-playlist-url-paste-and-help-tip (2026-04-23)
+
+- **`err.message` raw-interpolated into 502 response** — pre-existing: `ctx.json({ message: \`Spotify API error: ${err.message}\` }, 502)` forwards upstream error text verbatim; sanitise or use a static string. (`src/server/music/router.ts`)
+- **`showPlaylistTip` has no Escape/outside-click dismissal** — lower-priority UX gap; tip `<div role="note">` stays visible until toggled manually. (`src/client/components/RoundConfigOverlay.svelte`)
+- **HTTP 403 from Spotify collapses to generic 502** — Spotify 403 on `/playlists/:id/tracks` typically means token-scope issue not playlist privacy; showing generic "try again" is reasonable but 403 currently gets no specific user guidance. (`src/server/music/router.ts`)
+- **Bare 22-char ID false-positives** — any 22-char alphanumeric input (SHA-ish strings) triggers a Spotify API call instead of keyword search. Spec-defined AC-1 behavior; acceptable in practice. (`src/client/lib/playlistUrl.ts`)
+- **HTTP 429 rate-limit not handled** — falls through to generic 502; no `Retry-After` forwarding. Pre-existing across all Spotify API calls, not limited to paste path. (`src/server/music/router.ts`)
+- **Track fetch limited to first 100 (no pagination)** — playlists >100 tracks show truncated `trackCount` in the synthetic result card. Pre-existing limitation. (`src/server/music/spotify.ts`)
+
+## Deferred from: code review of 14-2-playlist-url-paste-and-help-tip (2026-04-24, pass 2 — playlist meta)
+
+- **Orphaned `getPlaylistMeta` fetch on InsufficientTracksError** — when `getPlaylistTracks` throws, `Promise.all` rejects immediately but the in-flight `getPlaylistMeta` request runs to completion with no consumer; no `AbortController` in play. Pre-existing no-cancellation pattern. (`src/server/music/router.ts`)
+- **`getPlaylistTracks` track mapping no longer integration-tested** — "returns mapped tracks" assertions removed in this pass; `getPlaylistTracks` logic is unchanged so no regression, but coverage gap remains. Address in next test quality pass. (`src/server/__tests__/music.test.ts`)
+- **`SpotifyPlaylistMetaResponse.owner.display_name` typed `?: string` not `?: string | null`** — Spotify API can return `null`; `??` handles it correctly at runtime but the interface type is inaccurate. (`src/server/music/spotify.ts`)
+
 ## Deferred from: code review of 14-5-overlay-escape-and-focus (2026-04-23)
 
 - **`document.contains()` passes for inert-subtree elements** — `returnTo.focus()` silently no-ops when `returnTo` is inside an `inert` ancestor. Fix would be to add `&& !returnTo.closest('[inert]')` to the guard. Narrow edge case; inert usage in HostRoomPage only applies to `.host-game` when RoundConfigOverlay is open, and overlays are rendered outside that subtree in the common path. (`src/client/lib/useOverlay.svelte.ts:26`)

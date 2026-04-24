@@ -185,10 +185,9 @@
             searchError = 'Failed to load. Try again.'
             return
           }
-          const tracks = (await res.json()) as { id: string }[]
+          const { name, owner, trackCount } = await res.json() as { name: string; owner: string; trackCount: number }
           if (seq !== searchSeq) return
-          const name = 'Pasted playlist'
-          searchResults = [{ playlistId: pastedId, name, owner: '', trackCount: tracks.length }]
+          searchResults = [{ playlistId: pastedId, name, owner, trackCount }]
           searchHasMore = false
           selectedPlaylist = { id: pastedId, name }
           if (playlistRegionEl) playlistRegionEl.scrollTop = 0
@@ -479,7 +478,7 @@
                     onclick={() => selectResult(result)}
                   >
                     <span class="preset-name">{result.name}</span>
-                    <span class="preset-desc">{result.owner} · {result.trackCount} tracks</span>
+                    <span class="preset-desc">{result.owner ? `${result.owner} · ` : ''}{result.trackCount} tracks</span>
                   </button>
                 {/each}
               </div>

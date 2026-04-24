@@ -93,6 +93,30 @@ export async function searchPlaylists(
   return { results, hasMore: data.playlists?.next != null }
 }
 
+interface SpotifyPlaylistMetaResponse {
+  name: string
+  owner: { display_name?: string; id: string }
+  tracks: { total: number }
+}
+
+export async function getPlaylistMeta(
+  playlistId: string,
+  accessToken: string,
+): Promise<{ name: string; owner: string; trackCount: number }> {
+  const url = new URL(`https://api.spotify.com/v1/playlists/${playlistId}`)
+  url.searchParams.set('fields', 'name,owner(display_name,id),tracks(total)')
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) throw new SpotifyApiError(res.status, await res.text())
+  const data = await res.json() as SpotifyPlaylistMetaResponse
+  return {
+    name: data.name,
+    owner: data.owner.display_name ?? data.owner.id,
+    trackCount: data.tracks.total,
+  }
+}
+
 export async function getPlaylistTracks(playlistId: string, accessToken: string): Promise<Track[]> {
   const url = new URL(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`)
   url.searchParams.set('limit', '100')

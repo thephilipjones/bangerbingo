@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-03
-last_updated: 2026-04-23 # 14-5 overlay escape + focus → done
+last_updated: 2026-04-24 # 14-2 pass 2 review — playlist meta patches applied → done
 project: bangerbingo
 project_key: NOKEY
 tracking_system: file-system
@@ -162,7 +162,7 @@ development_status:
   # Recommended sequence: 14-4 → 14-3 → 14-5 → 14-1 → 14-2 → 14-6.
   epic-14: in-progress
   14-1-near-bingo-tension: ready-for-dev
-  14-2-playlist-url-paste-and-help-tip: ready-for-dev
+  14-2-playlist-url-paste-and-help-tip: done
   14-3-reconnect-replay-completeness: done
   14-4-websocket-origin-check: done
   14-5-overlay-escape-and-focus: done

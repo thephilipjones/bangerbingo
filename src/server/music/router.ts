@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { requireAuth, withFreshToken, type AuthEnv } from '../auth.ts'
 import { PRESETS } from './presets.ts'
-import { searchPlaylists, getPlaylistTracks, SpotifyApiError, InsufficientTracksError } from './spotify.ts'
+import { searchPlaylists, getPlaylistTracks, getPlaylistMeta, SpotifyApiError, InsufficientTracksError } from './spotify.ts'
 
 export const musicRouter = new Hono<AuthEnv>()
 
@@ -56,13 +56,20 @@ musicRouter.get('/music/tracks/:playlistId', requireAuth, async (ctx) => {
   if (!freshHost) return ctx.json({ message: 'Spotify authentication degraded — please re-authenticate' }, 503)
 
   try {
-    const tracks = await getPlaylistTracks(playlistId, freshHost.access_token)
-    return ctx.json(tracks)
+    const [tracks, meta] = await Promise.all([
+      getPlaylistTracks(playlistId, freshHost.access_token),
+      getPlaylistMeta(playlistId, freshHost.access_token)
+        .catch(() => ({ name: 'Pasted playlist', owner: '', trackCount: 0 })),
+    ])
+    return ctx.json({ name: meta.name, owner: meta.owner, trackCount: meta.trackCount || tracks.length })
   } catch (err) {
     if (err instanceof InsufficientTracksError) {
       return ctx.json({ message: err.message }, 422)
     }
     if (err instanceof SpotifyApiError) {
+      // Pass through 404/401 so the client can show a specific "is it public?" message
+      if (err.status === 404) return ctx.json({ message: 'Playlist not found or not accessible' }, 404)
+      if (err.status === 401) return ctx.json({ message: 'Not authorized to access this playlist' }, 401)
       return ctx.json({ message: `Spotify API error: ${err.message}` }, 502)
     }
     throw err

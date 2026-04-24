@@ -232,10 +232,9 @@ describe('GET /api/music/tracks/:playlistId', () => {
     expect(body.message).toContain('Invalid playlist ID')
   })
 
-  it('returns mapped tracks for a playlist with >= 25 tracks', async () => {
+  it('returns name and trackCount for a valid playlist', async () => {
     seedHost()
 
-    // Build 25 mock tracks
     const mockItems = Array.from({ length: 25 }, (_, i) => ({
       track: {
         id: `track_${i}`,
@@ -246,27 +245,22 @@ describe('GET /api/music/tracks/:playlistId', () => {
       },
     }))
 
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ items: mockItems }),
-    } as Response)
+    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/tracks')) {
+        return { ok: true, json: async () => ({ items: mockItems }) } as Response
+      }
+      return { ok: true, json: async () => ({ name: 'Chill Vibes', owner: { display_name: 'DJ Cool' }, tracks: { total: 87 } }) } as Response
+    })
 
     const app = makeApp()
     const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
       headers: { Cookie: sessionCookie() },
     })
     expect(res.status).toBe(200)
-    const tracks = await res.json() as Array<{
-      id: string; title: string; artist: string; albumArtUrl: string
-    }>
-    expect(tracks).toHaveLength(25)
-    expect(tracks[0]).toEqual({
-      id: 'track_0',
-      title: 'Song 0',
-      artist: 'Artist 0',
-      albumArtUrl: 'https://img.example.com/0.jpg',
-      durationMs: 210_000,
-    })
+    const body = await res.json() as { name: string; owner: string; trackCount: number }
+    expect(body.name).toBe('Chill Vibes')
+    expect(body.owner).toBe('DJ Cool')
+    expect(body.trackCount).toBe(87)
   })
 
   it('returns 422 when playlist has fewer than 25 usable tracks', async () => {
@@ -281,10 +275,12 @@ describe('GET /api/music/tracks/:playlistId', () => {
       },
     }))
 
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ items: mockItems }),
-    } as Response)
+    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/tracks')) {
+        return { ok: true, json: async () => ({ items: mockItems }) } as Response
+      }
+      return { ok: true, json: async () => ({ name: 'Test', owner: { display_name: 'Host' }, tracks: { total: 10 } }) } as Response
+    })
 
     const app = makeApp()
     const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
@@ -311,10 +307,12 @@ describe('GET /api/music/tracks/:playlistId', () => {
       ...Array.from({ length: 10 }, () => ({ track: null })),
     ]
 
-    vi.spyOn(global, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ items: mockItems }),
-    } as Response)
+    vi.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/tracks')) {
+        return { ok: true, json: async () => ({ items: mockItems }) } as Response
+      }
+      return { ok: true, json: async () => ({ name: 'Test', owner: { display_name: 'Host' }, tracks: { total: 30 } }) } as Response
+    })
 
     const app = makeApp()
     const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
@@ -323,13 +321,31 @@ describe('GET /api/music/tracks/:playlistId', () => {
     expect(res.status).toBe(422)
   })
 
-  it('returns 502 when Spotify returns a non-2xx response', async () => {
+  it('returns 404 when Spotify returns 404 (private/not-found playlist)', async () => {
     seedHost()
 
     vi.spyOn(global, 'fetch').mockResolvedValue({
       ok: false,
       status: 404,
       text: async () => 'Not Found',
+    } as Response)
+
+    const app = makeApp()
+    const res = await app.request('/api/music/tracks/37i9dQZF1DXcBWIGoYBM5M', {
+      headers: { Cookie: sessionCookie() },
+    })
+    expect(res.status).toBe(404)
+    const body = await res.json() as { message: string }
+    expect(body.message).toContain('not accessible')
+  })
+
+  it('returns 502 when Spotify returns a 5xx response', async () => {
+    seedHost()
+
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => 'Service Unavailable',
     } as Response)
 
     const app = makeApp()
