@@ -1,12 +1,13 @@
 import type { MeResponse } from './api.ts'
 
-export type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'lobby' | 'room' | 'hostroom'
+export type Page = 'loading' | 'login' | 'join' | 'dashboard' | 'lobby' | 'room' | 'hostroom' | 'privacy'
 
 /** Pure routing function — determines which page to show on app load. */
 export function determineInitialPage(
   me: MeResponse | null,
   pathname: string
 ): { page: Page; prefillCode?: string; roomCode?: string } {
+  if (pathname === '/privacy') return { page: 'privacy' }
   if (pathname === '/host') {
     return me ? { page: 'dashboard' } : { page: 'login' }
   }

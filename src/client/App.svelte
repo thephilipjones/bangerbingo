@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import LoginPage from './pages/LoginPage.svelte'
+  import PrivacyPage from './pages/PrivacyPage.svelte'
   import JoinPage from './pages/JoinPage.svelte'
   import RoomPage from './pages/RoomPage.svelte'
   import DashboardPage from './pages/DashboardPage.svelte'
@@ -124,5 +125,7 @@
   <RoomPage name={guestName} code={guestRoomCode} ws={guestWs!} initialPlayers={guestPlayers} hostName={guestHostName} initialWinsByName={guestWinsByName} initialLastRoundWinner={guestLastRoundWinner} initialCasualModeNames={guestCasualModeNames} pendingMessages={guestPendingMessages} onLeave={handleGuestLeave} onSelfRename={handleGuestRename} />
 {:else if page === 'hostroom'}
   <HostRoomPage code={currentRoomCode} onRoundEnded={handleRoundEnded} onSessionEnded={handleSessionEnded} />
+{:else if page === 'privacy'}
+  <PrivacyPage />
 {/if}
 

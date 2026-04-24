@@ -74,6 +74,10 @@
     <ThemeToggle />
   </div>
   <Logo size={72} variant="full" />
+  <div class="tagline">
+    <p class="tagline-headline">Music bingo for your party.</p>
+    <p class="tagline-sub">Host picks the playlist. Guests mark tiles. First to bingo wins.</p>
+  </div>
   <Button variant="primary" size="lg" onclick={() => (window.location.href = '/auth/login')}>
     Connect Spotify
   </Button>
@@ -87,6 +91,7 @@
       {/if}
     </div>
   {/if}
+  <a href="/privacy" class="privacy-link">Privacy policy</a>
 </div>
 
 <style>
@@ -118,9 +123,46 @@
     text-align: center;
   }
 
+  .tagline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    text-align: center;
+  }
+
+  .tagline-headline {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    text-transform: uppercase;
+    letter-spacing: var(--track-display);
+    margin: 0;
+  }
+
+  .tagline-sub {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--fg-muted);
+    margin: 0;
+  }
+
   .error {
     color: var(--danger);
     margin: 0;
+  }
+
+  .privacy-link {
+    position: absolute;
+    bottom: var(--space-4);
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    text-decoration: none;
+    opacity: 0.6;
+  }
+
+  .privacy-link:hover {
+    opacity: 1;
   }
 
   @media (min-width: 768px) {

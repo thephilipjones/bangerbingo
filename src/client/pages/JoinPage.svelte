@@ -182,6 +182,11 @@
     </Panel>
   </main>
 
+  <footer class="footer">
+    <a href="https://github.com/thephilipjones/bangerbingo" class="footer-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <span class="footer-sep" aria-hidden="true">·</span>
+    <a href="/privacy" class="footer-link">Privacy</a>
+  </footer>
 </div>
 
 <style>
@@ -304,6 +309,30 @@
 
   .lock {
     font-size: 0.75rem;
+  }
+
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    margin-top: auto;
+  }
+
+  .footer-link {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    text-decoration: none;
+    opacity: 0.6;
+  }
+
+  .footer-link:hover { opacity: 1; }
+
+  .footer-sep {
+    color: var(--fg-muted);
+    opacity: 0.4;
+    font-size: 0.8rem;
   }
 
   @media (min-width: 768px) {
